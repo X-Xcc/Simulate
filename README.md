@@ -41,8 +41,8 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Java** 8 or higher
-- **Python** 3.8 or higher
+- **Java** 17 or higher
+- **Python** 3.10 or higher
 - **pip** package manager
 
 ### Installation
@@ -240,7 +240,7 @@ docker run -p 5000:5000 -p 5001:5001 \
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Backend** | Spring Boot, Java 8+ | REST API, Service orchestration |
+| **Backend** | Spring Boot, Java 17+ | REST API, Service orchestration |
 | **Frontend** | HTML5, CSS3, JavaScript | Real-time dashboard |
 | **AI/ML** | YOLOv8, PyTorch, Transformers | Object detection & behavior recognition |
 | **Vision AI** | Qwen2.5-VL | Advanced scene understanding |
