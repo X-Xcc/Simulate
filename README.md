@@ -3,8 +3,8 @@
 <div align="center">
 
 ![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)
-![Python](https://img.shields.io/badge/Python-3.8+-green.svg)
-![Java](https://img.shields.io/badge/Java-8+-orange.svg)
+![Python](https://img.shields.io/badge/Python-3.10+-green.svg)
+![Java](https://img.shields.io/badge/Java-17+-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-red.svg)
 
 A comprehensive real-time security monitoring system based on **YOLOv8** with multi-person pose detection, behavior recognition (falls, fights, fatigue), and AI-powered analysis using **Qwen2.5-VL**.
