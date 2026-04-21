@@ -193,7 +193,14 @@ python yolov8_security.py
 ```
 
 **终端3: 启动Qwen VL服务 (可选 - 需要千问大模型)**
-如果你的代码包含千问大模型分析功能：
+如果你的代码包含千问大模型分析功能，需要先配置Qwen2.5-VL模型：
+
+**第一步: 下载Qwen2.5-VL模型**
+- 模型下载地址: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
+- 下载完整的模型文件 (约15GB，需要良好的网络)
+- 放置路径: `D:\yolov8_security\models\Qwen2.5-VL-7B-Instruct`
+
+**第二步: 启动Qwen VL服务**
 ```bash
 # 激活conda环境
 conda activate yolov8
@@ -207,9 +214,97 @@ python qwen_vl_service.py
 ```
 *注意: 如果没有配置千问大模型，此服务会报错，可以跳过此步骤*
 
-#### 8. 访问系统
-- 打开浏览器访问: `http://localhost:5000/yolov8-security`
+#### 8. 完整的运行步骤详解
+
+如果你是第一次运行代码，请按照以下步骤操作 (假设所有前置环境已安装完毕)：
+
+**初始化环境 (只需做一次):**
+```bash
+# 打开PowerShell或命令提示符
+# 进入项目目录
+cd D:\yolov8_security
+
+# 创建Conda环境
+conda create -n yolov8 python=3.10 -y
+
+# 激活环境
+conda activate yolov8
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 进入backend目录构建Java后端
+cd backend
+mvn clean package
+cd ..
+```
+
+**每次运行项目时的步骤:**
+
+**第一步: 打开第一个命令窗口 - 启动后端服务**
+```bash
+# 打开新的PowerShell或命令提示符
+# 进入项目的backend目录
+cd D:\yolov8_security\backend
+
+# 启动后端服务
+java -jar target/yolov8-security.war
+
+# 看到以下信息表示成功:
+# Application 'yolov8-security' has started
+# Listening on port 5000
+```
+
+**第二步: 打开第二个命令窗口 - 启动YOLOv8检测服务**
+```bash
+# 打开新的PowerShell或命令提示符
+# 激活环境
+conda activate yolov8
+
+# 进入ai-models目录
+cd D:\yolov8_security\ai-models
+
+# 启动YOLOv8服务
+python yolov8_security.py
+
+# 看到以下信息表示成功:
+# YOLOv8 Detection Service started
+# Ready to process video streams
+```
+
+**第三步: (可选) 打开第三个命令窗口 - 启动Qwen VL服务**
+如果你已配置千问大模型：
+```bash
+# 打开新的PowerShell或命令提示符
+# 激活环境
+conda activate yolov8
+
+# 进入ai-models目录
+cd D:\yolov8_service\ai-models
+
+# 启动Qwen VL服务
+python qwen_vl_service.py
+
+# 看到以下信息表示成功:
+# Qwen VL Service started
+# Listening on port 5001
+```
+
+**第四步: 打开浏览器访问系统**
+- 打开浏览器 (Chrome, Edge, Firefox等)
+- 访问: `http://localhost:5000/yolov8-security`
 - 查看实时监控界面
+- 上传视频或连接摄像头开始检测
+
+**常见错误处理:**
+- **后端启动失败**: 检查Java是否正确安装 (`java -version`)
+- **YOLOv8服务报错**: 检查Python依赖是否安装完成 (`pip list`)
+- **GPU显存不足**: 系统会自动使用CPU模式，性能会较慢
+- **端口被占用**: 检查5000或5001端口是否被其他程序占用
+
+**停止运行:**
+- 在各个命令窗口按 `Ctrl+C` 停止服务
+- 每次关闭VS Code或PyCharm时，记得在命令窗口停止后端和AI服务
 
 ### 同步到GitHub
 
