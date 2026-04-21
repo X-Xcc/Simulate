@@ -34,7 +34,6 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 - **Full Stack Solution** - Backend (Java/Spring Boot) + Frontend (Web) + AI (Python)
 - **GPU Acceleration** - Automatic GPU detection and optimization for RTX series
 - **Performance Optimized** - Sub-second processing with intelligent resource management
-- **Docker Support** - Easy deployment with containerization
 - **RESTful API** - Well-documented REST endpoints for integration
 - **Responsive Dashboard** - Real-time monitoring interface with live video, statistics, and alerts
 
@@ -44,8 +43,7 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 
 ### Prerequisites
 - **Java** 17 (JDK 17)
-- **Python** 3.10.11
-- **Conda** (Miniconda or Anaconda)
+- **Anaconda** (with Python 3.10)
 - **Git** for version control
 - **Maven** 3.6+ (for Java backend)
 
@@ -53,24 +51,25 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 
 #### 1. 环境准备
 
+**安装Anaconda (推荐包含Python 3.10)**
+- 下载Anaconda: https://www.anaconda.com/download
+- 选择Python 3.10版本的安装包
+- 安装时勾选 "Add Anaconda to PATH"
+- 验证安装: `conda --version` 和 `python --version` 应显示 Python 3.10.x
+
 **安装Java 17 (JDK)**
 - 下载并安装 JDK 17
 - 下载地址: https://adoptium.net/temurin/releases/
 - 设置环境变量 `JAVA_HOME` 指向JDK安装目录 (例如: `C:\Program Files\Java\jdk-17`)
 - 将 `%JAVA_HOME%\bin` 添加到系统PATH
-- 验证安装: 打开命令提示符运行 `java -version`，应显示 Java 17.x.x
+- 验证安装: `java -version` 应显示 Java 17.x.x
 
-**安装Python 3.10.11**
-- 下载并安装 Python 3.10.11
-- 下载地址: https://www.python.org/downloads/release/python-31011/
-- 确保在安装时勾选 "Add Python to PATH"
-- 验证安装: `python --version` 应显示 Python 3.10.11
-
-**安装Conda (Miniconda推荐)**
-- 下载Miniconda: https://docs.conda.io/en/latest/miniconda.html
-- 选择Python 3.10版本的安装包
-- 安装时勾选 "Add Miniconda to PATH"
-- 验证安装: `conda --version`
+**安装Maven 3.6+ (用于Java后端)**
+- 下载Maven: https://maven.apache.org/download.cgi
+- 解压到文件夹 (例如: `C:\apache-maven-3.9.5`)
+- 设置环境变量 `MAVEN_HOME` 指向Maven目录
+- 将 `%MAVEN_HOME%\bin` 添加到PATH
+- 验证安装: `mvn -version`
 
 **安装Git**
 - 下载并安装 Git: https://git-scm.com/downloads
@@ -79,13 +78,6 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
 ```
-
-**安装Maven 3.6+ (用于Java后端)**
-- 下载Maven: https://maven.apache.org/download.cgi
-- 解压到文件夹 (例如: `C:\apache-maven-3.9.5`)
-- 设置环境变量 `MAVEN_HOME` 指向Maven目录
-- 将 `%MAVEN_HOME%\bin` 添加到PATH
-- 验证安装: `mvn -version`
 
 #### 2. 克隆项目
 ```bash
@@ -103,7 +95,7 @@ conda create -n yolov8 python=3.10 -y
 conda activate yolov8
 
 # 验证环境
-python --version  # 应显示 Python 3.10.11
+python --version  # 应显示 Python 3.10.x
 ```
 
 #### 4. 安装Python依赖
@@ -121,22 +113,12 @@ python -c "import cv2; print('OpenCV版本:', cv2.__version__)"
 python -c "import flask; print('Flask版本:', flask.__version__)"
 ```
 
-#### 5. 下载AI模型 (如果需要)
-```bash
-# 进入models目录
-cd models
-
-# 下载YOLOv8模型 (如果没有预训练模型)
-# 模型文件通常已经包含在仓库中
-# 如果需要手动下载，请参考models/.README
-```
-
-#### 6. 构建Java后端
+#### 5. 构建Java后端
 ```bash
 # 进入backend目录
 cd backend
 
-# 使用Maven构建项目
+# 使用Maven构建项目 (需要Java 17)
 mvn clean compile
 
 # 打包为WAR文件
@@ -146,7 +128,7 @@ mvn clean package
 cd ..
 ```
 
-#### 7. 启动服务
+#### 6. 启动服务
 
 **方式一: 使用一键启动脚本 (Windows)**
 ```bash
@@ -189,9 +171,8 @@ cd ai-models
 python yolov8_security.py
 ```
 
-#### 8. 访问系统
+#### 7. 访问系统
 - 打开浏览器访问: `http://localhost:5000/yolov8-security`
-- 查看实时监控界面
 - 查看实时监控界面
 
 ### 同步到GitHub
@@ -274,33 +255,24 @@ python -c "import torch, ultralytics, cv2, flask; print('所有包正常')"
 
 ## 📋 System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Web Frontend (Dashboard)                  │
-│                        (index.html)                          │
-└────────────────────────┬────────────────────────────────────┘
-                         │ HTTP/WebSocket
-┌────────────────────────▼────────────────────────────────────┐
-│         Backend Service (Spring Boot - Port 5000)            │
-│  ┌──────────────┬──────────────┬──────────────┐             │
-│  │ REST API     │ Page Render  │ Video Stream │             │
-│  │ Controller   │ Controller   │ Controller   │             │
-│  └──────────────┴──────────────┴──────────────┘             │
-│                         ▲                                    │
-└─────┬──────────────────┼──────────────────────┬─────────────┘
-      │                  │                      │
-      │ REST API         │ File I/O            │ REST API
-      │ (Detection)      │ (Videos/Results)    │ (Qwen)
-      ▼                  ▼                      ▼
-  ┌──────────────────────────────┐    ┌──────────────┐
-  │   AI Models (Python)         │    │  Qwen VL     │
-  │  ┌────────────────────────┐  │    │  Service     │
-  │  │ YOLOv8 Detection       │  │    │ (Port 5001)  │
-  │  │ • Pose Detection       │  │    │              │
-  │  │ • Behavior Recognition │  │    │ Advanced AI  │
-  │  │ • Multi-person Tracking│  │    │ Analysis     │
-  │  └────────────────────────┘  │    └──────────────┘
-  └──────────────────────────────┘
+```mermaid
+graph TB
+    A[Web Frontend<br/>Dashboard<br/>index.html] --> B[Backend Service<br/>Spring Boot<br/>Port 5000]
+    B --> C[REST API Controller<br/>Detection API]
+    B --> D[Page Render Controller<br/>Web Pages]
+    B --> E[Video Stream Controller<br/>Live Stream]
+    
+    C --> F[AI Models<br/>Python Services]
+    D --> G[File I/O<br/>Videos/Results]
+    E --> H[Qwen VL Service<br/>Port 5001<br/>AI Analysis]
+    
+    F --> I[YOLOv8 Detection<br/>• Pose Detection<br/>• Behavior Recognition<br/>• Multi-person Tracking]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style F fill:#e8f5e8
+    style H fill:#fff3e0
+    style I fill:#fce4ec
 ```
 
 ---
