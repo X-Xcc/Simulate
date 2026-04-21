@@ -32,6 +32,8 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 
 ### 🔧 Technical Highlights
 - **Full Stack Solution** - Backend (Java/Spring Boot) + Frontend (Web) + AI (Python)
+- **GPU Acceleration** - Automatic GPU detection and optimization for RTX series
+- **Performance Optimized** - Sub-second processing with intelligent resource management
 - **Docker Support** - Easy deployment with containerization
 - **RESTful API** - Well-documented REST endpoints for integration
 - **Responsive Dashboard** - Real-time monitoring interface with live video, statistics, and alerts
@@ -41,49 +43,191 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Java** 8 or higher
+- **Java** 8 or higher (JDK 8+)
 - **Python** 3.8 or higher
 - **pip** package manager
+- **Git** for version control
+- **Maven** 3.6+ (for Java backend)
+- **Node.js** (optional, for frontend development)
 
-### Installation
+### 从零开始详细构建步骤
 
-1. **Clone the repository**
+#### 1. 环境准备
+**安装Java (JDK)**
+- 下载并安装 JDK 8 或更高版本
+- 设置环境变量 `JAVA_HOME` 指向JDK安装目录
+- 将 `%JAVA_HOME%\bin` 添加到系统PATH
+
+**安装Python**
+- 下载并安装 Python 3.8 或更高版本
+- 确保在安装时勾选 "Add Python to PATH"
+- 验证安装: `python --version`
+
+**安装Git**
+- 下载并安装 Git
+- 配置用户信息:
 ```bash
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
+
+**安装Maven (可选，用于Java后端)**
+- 下载并安装 Maven
+- 设置环境变量 `MAVEN_HOME`
+- 将 `%MAVEN_HOME%\bin` 添加到PATH
+
+#### 2. 克隆项目
+```bash
+# 克隆仓库到本地
 git clone https://github.com/X-Xcc/EverBright-Security.git
 cd EverBright-Security
 ```
 
-2. **Install Python dependencies**
+#### 3. 设置Python虚拟环境 (推荐)
 ```bash
+# 创建虚拟环境
+python -m venv .venv
+
+# 激活虚拟环境 (Windows)
+.venv\Scripts\activate
+
+# 激活虚拟环境 (Linux/Mac)
+# source .venv/bin/activate
+
+# 升级pip
+pip install --upgrade pip
+```
+
+#### 4. 安装Python依赖
+```bash
+# 安装项目依赖
 pip install -r requirements.txt
 ```
 
-3. **One-Click Start (Windows)**
+#### 5. 下载AI模型 (如果需要)
 ```bash
-scripts/start_all.bat
+# 进入models目录
+cd models
+
+# 下载YOLOv8模型 (如果没有预训练模型)
+# 模型文件通常已经包含在仓库中
+# 如果需要手动下载，请参考models/.README
 ```
 
-### Manual Startup
+#### 6. 构建Java后端
+```bash
+# 进入backend目录
+cd backend
 
-**Terminal 1: Backend Service**
+# 使用Maven构建项目
+mvn clean compile
+
+# 打包为WAR文件
+mvn clean package
+
+# 返回根目录
+cd ..
+```
+
+#### 7. 启动服务
+
+**方式一: 一键启动 (Windows)**
+```bash
+# 运行启动脚本
+scripts\start_all.bat
+```
+
+**方式二: 手动启动**
+
+**终端1: 启动后端服务**
 ```bash
 cd backend
-mvn clean package
 java -jar target/yolov8-security.war
-# Access at http://localhost:8080/yolov8-security
+# 服务将在 http://localhost:8080/yolov8-security 启动
 ```
 
-**Terminal 2: Qwen VL Service**
+**终端2: 启动Qwen VL服务**
 ```bash
 cd ai-models
 python qwen_vl_service.py
-# Service running at http://localhost:5001
+# 服务将在 http://localhost:5001 启动
 ```
 
-**Terminal 3: YOLOv8 Monitoring**
+**终端3: 启动YOLOv8监控服务**
 ```bash
 cd ai-models
 python yolov8_security.py
+```
+
+#### 8. 访问系统
+- 打开浏览器访问: `http://localhost:8080/yolov8-security`
+- 查看实时监控界面
+
+### 同步到GitHub
+
+#### 首次推送代码到GitHub
+```bash
+# 初始化Git仓库 (如果还没有)
+git init
+
+# 添加所有文件
+git add .
+
+# 提交更改
+git commit -m "Initial commit: YOLOv8 Security Monitoring System"
+
+# 添加远程仓库
+git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+
+# 推送代码
+git push -u origin main
+```
+
+#### 更新代码并推送
+```bash
+# 添加更改的文件
+git add .
+
+# 提交更改
+git commit -m "Update: 添加详细构建步骤"
+
+# 推送更改
+git push origin main
+```
+
+#### 创建新分支并推送
+```bash
+# 创建新分支
+git checkout -b feature/new-feature
+
+# 提交更改
+git add .
+git commit -m "Add new feature"
+
+# 推送分支
+git push origin feature/new-feature
+```
+
+### 故障排除
+
+**常见问题:**
+- **Python依赖安装失败**: 确保虚拟环境已激活，使用 `pip install --upgrade pip`
+- **Java构建失败**: 检查JDK版本和MAVEN_HOME设置
+- **端口冲突**: 修改配置文件中的端口号
+- **GPU不可用**: 安装CUDA和cuDNN，或在代码中禁用GPU使用
+
+**验证安装:**
+```bash
+# 检查Python环境
+python --version
+pip list
+
+# 检查Java环境
+java -version
+mvn -version
+
+# 检查Git
+git --version
 ```
 
 ---
@@ -228,10 +372,20 @@ docker run -p 5000:5000 -p 5001:5001 \
 
 ## 📊 Performance Metrics
 
-- **Detection Speed**: ~33ms per frame (YOLOv8 Nano on GPU)
-- **Supported Resolution**: 640x480 to 1920x1080
-- **FPS**: 15-30 FPS (depending on model and hardware)
-- **Memory Usage**: ~2GB (with GPU acceleration)
+### Hardware Acceleration
+- **GPU Support**: NVIDIA RTX 30/40 series (CUDA 12.1+)
+- **CPU Fallback**: Optimized for Intel/AMD processors
+- **Auto Detection**: Automatic hardware optimization
+
+### Detection Speed
+- **GPU Mode**: ~15-25ms per frame (YOLOv8 Nano on RTX 40-series)
+- **CPU Mode**: ~50-80ms per frame (optimized configuration)
+- **Supported Resolution**: 416x416 to 1920x1080
+- **FPS**: 15-60 FPS (depending on model and hardware)
+
+### Resource Usage
+- **GPU Memory**: ~500MB (YOLOv8n-pose) + ~2GB (batch processing)
+- **CPU Memory**: ~1-2GB (with optimization)
 - **Concurrent Users**: 10+ simultaneous viewers
 
 ---
@@ -267,11 +421,28 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 🙋 Support
+## � Troubleshooting
 
-- 📖 Check the [documentation](docs/) folder for detailed guides
-- 🐛 Report bugs via [GitHub Issues](https://github.com/X-Xcc/EverBright-Security/issues)
-- 💬 Discussions and Q&A in [GitHub Discussions](https://github.com/X-Xcc/EverBright-Security/discussions)
+### Performance Issues
+- **Slow Detection**: Check GPU utilization with `nvidia-smi`
+- **High CPU Usage**: Ensure CUDA drivers are installed
+- **Memory Errors**: Reduce batch size or image resolution
+
+### GPU Not Detected
+```bash
+# Check CUDA installation
+python -c "import torch; print(torch.cuda.is_available())"
+
+# Install CUDA PyTorch
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
+### Common Fixes
+- Update NVIDIA drivers to latest version
+- Install CUDA 12.1+ toolkit
+- Use Python 3.8-3.11 for best compatibility
+
+See [PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md) for detailed optimization guide.
 
 ---
 
