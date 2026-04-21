@@ -46,6 +46,7 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 - **Anaconda** (with Python 3.10)
 - **Git** for version control
 - **Maven** 3.6+ (for Java backend)
+- **IDE** (VS Code or PyCharm recommended)
 
 ### 从零开始详细构建步骤
 
@@ -79,6 +80,13 @@ git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
 ```
 
+**安装IDE (推荐选择一个)**
+- **VS Code**: https://code.visualstudio.com/download
+  - 安装Python扩展
+  - 安装Java扩展包
+- **PyCharm**: https://www.jetbrains.com/pycharm/download
+  - 推荐Community版本 (免费)
+
 #### 2. 克隆项目
 ```bash
 # 克隆仓库到本地
@@ -86,7 +94,21 @@ git clone https://github.com/X-Xcc/EverBright-Security.git
 cd EverBright-Security
 ```
 
-#### 3. 创建Conda环境
+#### 3. 配置PyCharm开发环境 (可选)
+如果使用PyCharm进行开发：
+1. 打开PyCharm，点击 "Open" 选择项目文件夹
+2. 设置Python解释器：
+   - File → Settings → Project → Python Interpreter
+   - 点击齿轮图标 → Add Interpreter → Conda Environment
+   - 选择 "Existing environment"
+   - Interpreter路径: 选择 `yolov8` 环境中的python.exe
+   - 通常位于: `C:\Users\YourName\anaconda3\envs\yolov8\python.exe`
+3. 配置Java环境 (用于后端开发):
+   - File → Settings → Build, Execution, Deployment → Build Tools → Maven
+   - Maven home path: 设置为你的Maven安装目录
+   - JDK: 确保选择Java 17
+
+#### 4. 创建Conda环境
 ```bash
 # 创建名为yolov8的conda环境，使用Python 3.10
 conda create -n yolov8 python=3.10 -y
@@ -98,7 +120,7 @@ conda activate yolov8
 python --version  # 应显示 Python 3.10.x
 ```
 
-#### 4. 安装Python依赖
+#### 5. 安装Python依赖
 ```bash
 # 确保在yolov8环境中
 conda activate yolov8
@@ -113,7 +135,7 @@ python -c "import cv2; print('OpenCV版本:', cv2.__version__)"
 python -c "import flask; print('Flask版本:', flask.__version__)"
 ```
 
-#### 5. 构建Java后端
+#### 6. 构建Java后端
 ```bash
 # 进入backend目录
 cd backend
@@ -128,7 +150,7 @@ mvn clean package
 cd ..
 ```
 
-#### 6. 启动服务
+#### 7. 启动服务
 
 **方式一: 使用一键启动脚本 (Windows)**
 ```bash
@@ -146,20 +168,7 @@ java -jar target/yolov8-security.war
 # 服务将在 http://localhost:5000/yolov8-security 启动
 ```
 
-**终端2: 启动Qwen VL服务**
-```bash
-# 激活conda环境
-conda activate yolov8
-
-# 进入ai-models目录
-cd ai-models
-
-# 启动服务
-python qwen_vl_service.py
-# 服务将在 http://localhost:5001 启动
-```
-
-**终端3: 启动YOLOv8监控服务**
+**终端2: 启动YOLOv8监控服务**
 ```bash
 # 激活conda环境
 conda activate yolov8
@@ -171,7 +180,22 @@ cd ai-models
 python yolov8_security.py
 ```
 
-#### 7. 访问系统
+**终端3: 启动Qwen VL服务 (可选 - 需要千问大模型)**
+如果你的代码包含千问大模型分析功能：
+```bash
+# 激活conda环境
+conda activate yolov8
+
+# 进入ai-models目录
+cd ai-models
+
+# 启动服务
+python qwen_vl_service.py
+# 服务将在 http://localhost:5001 启动
+```
+*注意: 如果没有配置千问大模型，此服务会报错，可以跳过此步骤*
+
+#### 8. 访问系统
 - 打开浏览器访问: `http://localhost:5000/yolov8-security`
 - 查看实时监控界面
 
