@@ -48,43 +48,55 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 - **Maven** 3.6+ (for Java backend)
 - **IDE** (VS Code or PyCharm recommended)
 
+> ⚠️ **重要提醒**: 建议将所有软件安装到 **D盘**，以避免C盘空间不足和权限问题。例如：
+> - Anaconda: `D:\Anaconda3`
+> - JDK: `D:\Java\jdk-17`
+> - Maven: `D:\apache-maven-3.9.5`
+> - Git: `D:\Git`
+> - VS Code: `D:\Microsoft VS Code`
+> - PyCharm: `D:\PyCharm Community Edition`
+
 ### 从零开始详细构建步骤
 
 #### 1. 环境准备
 
 **安装Anaconda (推荐包含Python 3.10)**
 - 下载Anaconda: https://www.anaconda.com/download
-- 选择Python 3.10版本的安装包
+- 安装到: `D:\Anaconda3` (自定义安装路径时选择此目录)
 - 安装时勾选 "Add Anaconda to PATH"
 - 验证安装: `conda --version` 和 `python --version` 应显示 Python 3.10.x
 
 **安装Java 17 (JDK)**
 - 下载并安装 JDK 17
 - 下载地址: https://adoptium.net/temurin/releases/
-- 设置环境变量 `JAVA_HOME` 指向JDK安装目录 (例如: `C:\Program Files\Java\jdk-17`)
+- 安装到: `D:\Java\jdk-17` (自定义安装路径时选择此目录)
+- 设置环境变量 `JAVA_HOME` 指向JDK安装目录 (例如: `D:\Java\jdk-17`)
 - 将 `%JAVA_HOME%\bin` 添加到系统PATH
 - 验证安装: `java -version` 应显示 Java 17.x.x
 
 **安装Maven 3.6+ (用于Java后端)**
 - 下载Maven: https://maven.apache.org/download.cgi
-- 解压到文件夹 (例如: `C:\apache-maven-3.9.5`)
-- 设置环境变量 `MAVEN_HOME` 指向Maven目录
+- 解压到文件夹: `D:\apache-maven-3.9.5`
+- 设置环境变量 `MAVEN_HOME` 指向Maven目录 (例如: `D:\apache-maven-3.9.5`)
 - 将 `%MAVEN_HOME%\bin` 添加到PATH
 - 验证安装: `mvn -version`
 
 **安装Git**
 - 下载并安装 Git: https://git-scm.com/downloads
+- 安装到: `D:\Git` (自定义安装路径时选择此目录)
 - 配置用户信息:
 ```bash
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
 ```
 
-**安装IDE (推荐选择一个)**
+**安装IDE (推荐都安装)**
 - **VS Code**: https://code.visualstudio.com/download
+  - 安装到: `D:\Microsoft VS Code` (自定义安装路径时选择此目录)
   - 安装Python扩展
   - 安装Java扩展包
 - **PyCharm**: https://www.jetbrains.com/pycharm/download
+  - 安装到: `D:\PyCharm Community Edition` (自定义安装路径时选择此目录)
   - 推荐Community版本 (免费)
 
 #### 2. 克隆项目
@@ -102,10 +114,10 @@ cd EverBright-Security
    - 点击齿轮图标 → Add Interpreter → Conda Environment
    - 选择 "Existing environment"
    - Interpreter路径: 选择 `yolov8` 环境中的python.exe
-   - 通常位于: `C:\Users\YourName\anaconda3\envs\yolov8\python.exe`
+   - 通常位于: `D:\Anaconda3\envs\yolov8\python.exe`
 3. 配置Java环境 (用于后端开发):
    - File → Settings → Build, Execution, Deployment → Build Tools → Maven
-   - Maven home path: 设置为你的Maven安装目录
+   - Maven home path: 设置为你的Maven安装目录 (例如: `D:\apache-maven-3.9.5`)
    - JDK: 确保选择Java 17
 
 #### 4. 创建Conda环境
