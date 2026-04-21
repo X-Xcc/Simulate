@@ -43,42 +43,49 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Java** 8 or higher (JDK 8+)
-- **Python** 3.8 or higher
-- **pip** package manager
+- **Java** 17 (JDK 17)
+- **Python** 3.10.11
+- **Conda** (Miniconda or Anaconda)
 - **Git** for version control
 - **Maven** 3.6+ (for Java backend)
-- **Node.js** (optional, for frontend development)
-- **pip** package manager
-- **Git** for version control
-- **Maven** 3.6+ (for Java backend)
-- **Node.js** (optional, for frontend development)
 
 ### 从零开始详细构建步骤
 
 #### 1. 环境准备
-**安装Java (JDK)**
-- 下载并安装 JDK 8 或更高版本
-- 设置环境变量 `JAVA_HOME` 指向JDK安装目录
-- 将 `%JAVA_HOME%\bin` 添加到系统PATH
 
-**安装Python**
-- 下载并安装 Python 3.8 或更高版本
+**安装Java 17 (JDK)**
+- 下载并安装 JDK 17
+- 下载地址: https://adoptium.net/temurin/releases/
+- 设置环境变量 `JAVA_HOME` 指向JDK安装目录 (例如: `C:\Program Files\Java\jdk-17`)
+- 将 `%JAVA_HOME%\bin` 添加到系统PATH
+- 验证安装: 打开命令提示符运行 `java -version`，应显示 Java 17.x.x
+
+**安装Python 3.10.11**
+- 下载并安装 Python 3.10.11
+- 下载地址: https://www.python.org/downloads/release/python-31011/
 - 确保在安装时勾选 "Add Python to PATH"
-- 验证安装: `python --version`
+- 验证安装: `python --version` 应显示 Python 3.10.11
+
+**安装Conda (Miniconda推荐)**
+- 下载Miniconda: https://docs.conda.io/en/latest/miniconda.html
+- 选择Python 3.10版本的安装包
+- 安装时勾选 "Add Miniconda to PATH"
+- 验证安装: `conda --version`
 
 **安装Git**
-- 下载并安装 Git
+- 下载并安装 Git: https://git-scm.com/downloads
 - 配置用户信息:
 ```bash
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
 ```
 
-**安装Maven (可选，用于Java后端)**
-- 下载并安装 Maven
-- 设置环境变量 `MAVEN_HOME`
+**安装Maven 3.6+ (用于Java后端)**
+- 下载Maven: https://maven.apache.org/download.cgi
+- 解压到文件夹 (例如: `C:\apache-maven-3.9.5`)
+- 设置环境变量 `MAVEN_HOME` 指向Maven目录
 - 将 `%MAVEN_HOME%\bin` 添加到PATH
+- 验证安装: `mvn -version`
 
 #### 2. 克隆项目
 ```bash
@@ -87,25 +94,31 @@ git clone https://github.com/X-Xcc/EverBright-Security.git
 cd EverBright-Security
 ```
 
-#### 3. 设置Python虚拟环境 (推荐)
+#### 3. 创建Conda环境
 ```bash
-# 创建虚拟环境
-python -m venv .venv
+# 创建名为yolov8的conda环境，使用Python 3.10
+conda create -n yolov8 python=3.10 -y
 
-# 激活虚拟环境 (Windows)
-.venv\Scripts\activate
+# 激活环境
+conda activate yolov8
 
-# 激活虚拟环境 (Linux/Mac)
-# source .venv/bin/activate
-
-# 升级pip
-pip install --upgrade pip
+# 验证环境
+python --version  # 应显示 Python 3.10.11
 ```
 
 #### 4. 安装Python依赖
 ```bash
+# 确保在yolov8环境中
+conda activate yolov8
+
 # 安装项目依赖
 pip install -r requirements.txt
+
+# 验证安装的关键包
+python -c "import torch; print('PyTorch版本:', torch.__version__)"
+python -c "import ultralytics; print('Ultralytics版本:', ultralytics.__version__)"
+python -c "import cv2; print('OpenCV版本:', cv2.__version__)"
+python -c "import flask; print('Flask版本:', flask.__version__)"
 ```
 
 #### 5. 下载AI模型 (如果需要)
@@ -135,10 +148,11 @@ cd ..
 
 #### 7. 启动服务
 
-**方式一: 一键启动 (Windows)**
+**方式一: 使用一键启动脚本 (Windows)**
 ```bash
-# 运行启动脚本
-scripts\start_all.bat
+# 确保在项目根目录
+# 双击运行 start_all.bat 或在命令行运行:
+start_all.bat
 ```
 
 **方式二: 手动启动**
@@ -147,24 +161,37 @@ scripts\start_all.bat
 ```bash
 cd backend
 java -jar target/yolov8-security.war
-# 服务将在 http://localhost:8080/yolov8-security 启动
+# 服务将在 http://localhost:5000/yolov8-security 启动
 ```
 
 **终端2: 启动Qwen VL服务**
 ```bash
+# 激活conda环境
+conda activate yolov8
+
+# 进入ai-models目录
 cd ai-models
+
+# 启动服务
 python qwen_vl_service.py
 # 服务将在 http://localhost:5001 启动
 ```
 
 **终端3: 启动YOLOv8监控服务**
 ```bash
+# 激活conda环境
+conda activate yolov8
+
+# 进入ai-models目录
 cd ai-models
+
+# 启动服务
 python yolov8_security.py
 ```
 
 #### 8. 访问系统
-- 打开浏览器访问: `http://localhost:8080/yolov8-security`
+- 打开浏览器访问: `http://localhost:5000/yolov8-security`
+- 查看实时监控界面
 - 查看实时监控界面
 
 ### 同步到GitHub
@@ -215,23 +242,32 @@ git push origin feature/new-feature
 ### 故障排除
 
 **常见问题:**
-- **Python依赖安装失败**: 确保虚拟环境已激活，使用 `pip install --upgrade pip`
-- **Java构建失败**: 检查JDK版本和MAVEN_HOME设置
-- **端口冲突**: 修改配置文件中的端口号
-- **GPU不可用**: 安装CUDA和cuDNN，或在代码中禁用GPU使用
+- **Conda环境激活失败**: 确保Conda已正确安装并添加到PATH
+- **Python依赖安装失败**: 确保在yolov8环境中运行 `conda activate yolov8`
+- **Java构建失败**: 确保使用Java 17，运行 `java -version` 检查
+- **端口冲突**: 检查5000和5001端口是否被占用
+- **GPU不可用**: 如果没有GPU，系统会自动使用CPU模式
 
 **验证安装:**
 ```bash
-# 检查Python环境
-python --version
-pip list
+# 检查Java
+java -version  # 应显示 Java 17.x.x
 
-# 检查Java环境
-java -version
+# 检查Python
+conda activate yolov8
+python --version  # 应显示 Python 3.10.11
+
+# 检查Conda
+conda --version
+
+# 检查Maven
 mvn -version
 
 # 检查Git
 git --version
+
+# 检查Python包
+python -c "import torch, ultralytics, cv2, flask; print('所有包正常')"
 ```
 
 ---
@@ -245,7 +281,7 @@ git --version
 └────────────────────────┬────────────────────────────────────┘
                          │ HTTP/WebSocket
 ┌────────────────────────▼────────────────────────────────────┐
-│         Backend Service (Spring Boot - Port 8080)            │
+│         Backend Service (Spring Boot - Port 5000)            │
 │  ┌──────────────┬──────────────┬──────────────┐             │
 │  │ REST API     │ Page Render  │ Video Stream │             │
 │  │ Controller   │ Controller   │ Controller   │             │
