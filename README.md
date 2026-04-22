@@ -91,10 +91,15 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 
 **安装Java 17 (JDK)**
 
-**推荐方式：使用命令行安装 (winget - Windows 10/11内置)**
+**推荐方式：使用命令行安装 (winget - Windows 10/11内置，使用国产源加速下载)**
 ```powershell
 # 以管理员身份打开PowerShell，运行以下命令：
-winget install --id EclipseAdoptium.Temurin.17.JDK --version 17.0.10.7 -e
+
+# 首先添加清华大学镜像源（国产源，下载更快）
+winget source add -n tuna https://mirrors.tuna.tsinghua.edu.cn/winget/
+
+# 安装Java 17
+winget install --id EclipseAdoptium.Temurin.17.JDK --version 17.0.10.7 -e --source tuna
 
 # 验证安装
 java -version
@@ -110,10 +115,15 @@ java -version
 
 **安装Maven 3.6+ (用于Java后端)**
 
-**推荐方式：使用命令行安装 (winget)**
+**推荐方式：使用命令行安装 (winget，使用国产源)**
 ```powershell
 # 以管理员身份打开PowerShell，运行以下命令：
-winget install --id Apache.Maven -e
+
+# 如果还没添加源，先添加清华大学镜像源
+winget source add -n tuna https://mirrors.tuna.tsinghua.edu.cn/winget/
+
+# 安装Maven
+winget install --id Apache.Maven -e --source tuna
 
 # 验证安装
 mvn -version
@@ -128,10 +138,15 @@ mvn -version
 
 **安装Git**
 
-**推荐方式：使用命令行安装 (winget)**
+**推荐方式：使用命令行安装 (winget，使用国产源)**
 ```powershell
 # 以管理员身份打开PowerShell，运行以下命令：
-winget install --id Git.Git -e
+
+# 如果还没添加源，先添加清华大学镜像源
+winget source add -n tuna https://mirrors.tuna.tsinghua.edu.cn/winget/
+
+# 安装Git
+winget install --id Git.Git -e --source tuna
 
 # 配置用户信息
 git config --global user.name "Your Name"
