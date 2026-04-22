@@ -32,70 +32,99 @@ git pull origin main
 
 A comprehensive real-time security monitoring system based on **YOLOv8** with multi-person pose detection, behavior recognition (falls, fights, fatigue), and AI-powered analysis using **Qwen2.5-VL**.
 
-[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Architecture](#architecture)
+[快速开始](#-快速开始) • [详细部署](#-详细部署指南) • [故障排除](#-故障排除)
 
 </div>
 
 ---
 
-## ✨ Features
+## ✨ 系统功能
 
-### 🎯 Core Detection Capabilities
-- **Multi-Person Pose Detection** - Simultaneous detection and tracking of multiple people
-- **Behavior Recognition**
-  - 🔴 Fall Detection - Identify dangerous falls in real-time
-  - ⚔️ Fight Detection - Detect altercations and violent behavior
-  - 😴 Fatigue Detection - Monitor worker alertness and fatigue
-  - 📍 Loitering Detection - Track suspicious loitering behavior
+### 🎯 核心检测能力
+- **多人姿态检测** - 同时检测和跟踪多人
+- **行为识别**
+  - 🔴 跌倒检测 - 实时识别危险跌倒
+  - ⚔️ 打斗检测 - 检测打斗和暴力行为
+  - 😴 疲劳检测 - 监测工人疲劳状态
+  - 📍 徘徊检测 - 跟踪可疑徘徊行为
 
-### 🤖 AI Features
-- **Qwen2.5-VL Integration** - Advanced visual reasoning and scene understanding
-- **Real-time Analysis** - Sub-second processing for live video streams
-- **Batch Processing** - Support for multiple video sources simultaneously
+### 🤖 AI功能
+- **千问VL集成** - 先进的视觉推理和场景理解
+- **实时分析** - 亚秒级处理直播视频流
+- **批量处理** - 支持同时处理多个视频源
 
-### 🔧 Technical Highlights
-- **Full Stack Solution** - Backend (Java/Spring Boot) + Frontend (Web) + AI (Python)
-- **GPU Acceleration** - Automatic GPU detection and optimization for RTX series
-- **Performance Optimized** - Sub-second processing with intelligent resource management
-- **RESTful API** - Well-documented REST endpoints for integration
-- **Responsive Dashboard** - Real-time monitoring interface with live video, statistics, and alerts
+### 🔧 技术亮点
+- **全栈解决方案** - 后端(Java/Spring Boot) + 前端(Web) + AI(Python)
+- **GPU加速** - 自动GPU检测和RTX系列优化
+- **性能优化** - 亚秒级处理和智能资源管理
+- **RESTful API** - 完善的REST端点用于集成
+- **响应式仪表板** - 实时监控界面，包含直播视频、统计和警报
 
 ---
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### Prerequisites
-- **Java** 17 (JDK 17)
-- **Anaconda** (with Python 3.10)
-- **Git** for version control
-- **Maven** 3.6+ (for Java backend)
-- **IDE** (VS Code or PyCharm recommended)
+### 系统要求
+- **操作系统**: Windows 10/11
+- **Java**: JDK 17
+- **Python**: 3.10 (通过Anaconda)
+- **Git**: 用于代码管理
 
-> ⚠️ **重要提醒**: 建议将所有软件安装到 **D盘**，以避免C盘空间不足和权限问题。例如：
-> - Anaconda: `D:\Anaconda3`
-> - JDK: `D:\Java\jdk-17`
-> - Maven: `D:\apache-maven-3.9.5`
-> - Git: `D:\Git`
-> - VS Code: `D:\Microsoft VS Code`
-> - PyCharm: `D:\PyCharm Community Edition`
+### 一键启动 (推荐)
+```bash
+# 确保所有环境已安装
+# 双击运行 start_all.bat 文件
+# 或在命令行运行:
+start_all.bat
+```
 
-### 从零开始详细构建步骤
+### 手动启动
+1. **启动后端服务** (新命令窗口):
+   ```bash
+   cd backend
+   java -jar target/yolov8-security.war
+   ```
 
-#### 1. 环境准备
+2. **启动AI检测服务** (新命令窗口):
+   ```bash
+   conda activate yolov8
+   cd ai-models
+   python yolov8_security.py
+   ```
 
-**安装Anaconda (推荐包含Python 3.10)**
-- 下载Anaconda: https://www.anaconda.com/download
-- 安装到: `D:\Anaconda3` (自定义安装路径时选择此目录)
-- 安装时勾选 "Add Anaconda to PATH"
-- 验证安装: `conda --version` 和 `python --version` 应显示 Python 3.10.x
+3. **访问系统**:
+   - 打开浏览器访问: `http://localhost:5000/yolov8-security`
 
-**安装Java 17 (JDK)**
+---
 
-**推荐方式：使用命令行安装 (winget - Windows 10/11内置，使用国产源加速下载)**
+## 📋 详细部署指南
+
+### 步骤1: 环境准备
+
+#### 安装Anaconda (Python环境)
+```bash
+# 下载并安装Anaconda
+# 下载地址: https://www.anaconda.com/download
+# 安装到: D:\Anaconda3
+# 安装时勾选 "Add Anaconda to PATH"
+```
+
+#### 安装Java 17 (JDK)
+
+**推荐方式：使用命令行安装 (winget - Windows 10/11内置)**
+```powershell
+# 以管理员身份打开PowerShell，运行以下命令：
+winget install --id EclipseAdoptium.Temurin.17.JDK --version 17.0.10.7 -e
+
+# 验证安装
+java -version
+```
+
+**备选方式：使用清华大学镜像源 (国内用户推荐，更快)**
 ```powershell
 # 以管理员身份打开PowerShell，运行以下命令：
 
-# 首先添加清华大学镜像源（国产源，下载更快）
+# 首先添加清华大学镜像源
 winget source add -n tuna https://mirrors.tuna.tsinghua.edu.cn/winget/
 
 # 安装Java 17
@@ -105,7 +134,7 @@ winget install --id EclipseAdoptium.Temurin.17.JDK --version 17.0.10.7 -e --sour
 java -version
 ```
 
-**备选方式：手动下载安装**
+**手动下载安装 (最后备选)**
 - 下载并安装 JDK 17
 - 下载地址: https://adoptium.net/temurin/releases/
 - 安装到: `D:\Java\jdk-17` (自定义安装路径时选择此目录)
@@ -113,9 +142,18 @@ java -version
 - 将 `%JAVA_HOME%\bin` 添加到系统PATH
 - 验证安装: `java -version` 应显示 Java 17.x.x
 
-**安装Maven 3.6+ (用于Java后端)**
+#### 安装Maven 3.6+ (用于Java后端)
 
-**推荐方式：使用命令行安装 (winget，使用国产源)**
+**推荐方式：使用命令行安装 (winget)**
+```powershell
+# 以管理员身份打开PowerShell，运行以下命令：
+winget install --id Apache.Maven -e
+
+# 验证安装
+mvn -version
+```
+
+**备选方式：使用清华大学镜像源 (国内用户推荐，更快)**
 ```powershell
 # 以管理员身份打开PowerShell，运行以下命令：
 
@@ -129,16 +167,29 @@ winget install --id Apache.Maven -e --source tuna
 mvn -version
 ```
 
-**备选方式：手动下载安装**
+**手动下载安装 (最后备选)**
 - 下载Maven: https://maven.apache.org/download.cgi
 - 解压到文件夹: `D:\apache-maven-3.9.5`
 - 设置环境变量 `MAVEN_HOME` 指向Maven目录 (例如: `D:\apache-maven-3.9.5`)
 - 将 `%MAVEN_HOME%\bin` 添加到PATH
 - 验证安装: `mvn -version`
 
-**安装Git**
+#### 安装Git
 
-**推荐方式：使用命令行安装 (winget，使用国产源)**
+**推荐方式：使用命令行安装 (winget)**
+```powershell
+# 以管理员身份打开PowerShell，运行以下命令：
+winget install --id Git.Git -e
+
+# 配置用户信息
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
+# 验证安装
+git --version
+```
+
+**备选方式：使用清华大学镜像源 (国内用户推荐，更快)**
 ```powershell
 # 以管理员身份打开PowerShell，运行以下命令：
 
@@ -156,7 +207,7 @@ git config --global user.email "your.email@example.com"
 git --version
 ```
 
-**备选方式：手动下载安装**
+**手动下载安装 (最后备选)**
 - 下载并安装 Git: https://git-scm.com/downloads
 - 安装到: `D:\Git` (自定义安装路径时选择此目录)
 - 配置用户信息:
@@ -165,109 +216,214 @@ git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
 ```
 
-**安装IDE (推荐都安装)**
-- **VS Code**: https://code.visualstudio.com/download
-  - 安装到: `D:\Microsoft VS Code` (自定义安装路径时选择此目录)
-  - 安装Python扩展
-  - 安装Java扩展包
-- **PyCharm**: https://www.jetbrains.com/pycharm/download
-  - 安装到: `D:\PyCharm Community Edition` (自定义安装路径时选择此目录)
-  - 推荐Community版本 (免费)
+### 步骤2: 获取项目代码
 
-#### 2. 克隆项目
 ```bash
-# 克隆仓库到本地
-git clone https://github.com/X-Xcc/EverBright-Security.git
-cd EverBright-Security
+# 克隆项目到本地
+git clone https://github.com/X-Xcc/EverBright.git
+cd yolov8_security
 ```
 
-#### 3. 配置PyCharm开发环境 (可选)
-如果使用PyCharm进行开发：
-1. 打开PyCharm，点击 "Open" 选择项目文件夹
-2. 设置Python解释器：
-   - File → Settings → Project → Python Interpreter
-   - 点击齿轮图标 → Add Interpreter → Conda Environment
-   - 选择 "Existing environment"
-   - Interpreter路径: 选择 `yolov8` 环境中的python.exe
-   - 通常位于: `D:\Anaconda3\envs\yolov8\python.exe`
-3. 配置Java环境 (用于后端开发):
-   - File → Settings → Build, Execution, Deployment → Build Tools → Maven
-   - Maven home path: 设置为你的Maven安装目录 (例如: `D:\apache-maven-3.9.5`)
-   - JDK: 确保选择Java 17
+### 步骤3: 配置Python环境
 
-#### 4. 创建Conda环境
 ```bash
-# 创建名为yolov8的conda环境，使用Python 3.10
+# 创建Conda环境
 conda create -n yolov8 python=3.10 -y
 
 # 激活环境
 conda activate yolov8
 
-# 验证环境
-python --version  # 应显示 Python 3.10.x
-```
-
-#### 5. 安装Python依赖
-```bash
-# 确保在yolov8环境中
-conda activate yolov8
-
-# 安装项目依赖
+# 安装Python依赖
 pip install -r requirements.txt
 
-# 验证安装的关键包
+# 验证安装
 python -c "import torch; print('PyTorch版本:', torch.__version__)"
 python -c "import ultralytics; print('Ultralytics版本:', ultralytics.__version__)"
-python -c "import cv2; print('OpenCV版本:', cv2.__version__)"
-python -c "import flask; print('Flask版本:', flask.__version__)"
 ```
 
-#### 6. 构建Java后端
+### 步骤4: 构建Java后端
+
 ```bash
 # 进入backend目录
 cd backend
 
-# 使用Maven构建项目 (需要Java 17)
+# 构建项目
 mvn clean compile
 
-# 打包为WAR文件
+# 打包
 mvn clean package
 
 # 返回根目录
 cd ..
 ```
 
-#### 7. 启动服务
+### 步骤5: 启动系统
 
-**方式一: 使用一键启动脚本 (Windows)**
+#### 方式一: 一键启动 (推荐)
 ```bash
-# 确保在项目根目录
-# 双击运行 start_all.bat 或在命令行运行:
+# 双击运行 start_all.bat
+# 或命令行运行:
 start_all.bat
 ```
 
-**方式二: 手动启动**
+#### 方式二: 手动启动
 
 **终端1: 启动后端服务**
 ```bash
 cd backend
 java -jar target/yolov8-security.war
-# 服务将在 http://localhost:5000/yolov8-security 启动
 ```
 
-**终端2: 启动YOLOv8监控服务**
+**终端2: 启动AI检测服务**
 ```bash
-# 激活conda环境
 conda activate yolov8
-
-# 进入ai-models目录
 cd ai-models
-
-# 启动服务
 python yolov8_security.py
 ```
 
-**终端3: 启动Qwen VL服务 (可选 - 需要千问大模型)**
+**终端3: 启动千问VL服务 (可选)**
+```bash
+conda activate yolov8
+cd ai-models
+python qwen_vl_service.py
+```
+
+### 步骤6: 访问系统
+- 打开浏览器访问: `http://localhost:5000/yolov8-security`
+- 开始实时监控！
+
+---
+
+## 🔧 故障排除
+
+### 常见问题
+
+**Java安装问题**
+```bash
+# 检查Java版本
+java -version
+# 应显示: Java 17.x.x
+```
+
+**Python环境问题**
+```bash
+# 激活环境
+conda activate yolov8
+
+# 检查Python版本
+python --version
+# 应显示: Python 3.10.x
+```
+
+**依赖安装失败**
+```bash
+# 重新安装依赖
+pip install -r requirements.txt --force-reinstall
+```
+
+**后端启动失败**
+```bash
+# 检查端口是否被占用
+netstat -ano | findstr :5000
+
+# 如果被占用，杀掉进程或换端口
+```
+
+**AI服务启动失败**
+```bash
+# 检查GPU
+python -c "import torch; print(torch.cuda.is_available())"
+
+# 如果没有GPU，系统会自动使用CPU
+```
+
+### 验证安装
+
+```bash
+# 检查所有组件
+java -version          # Java 17+
+conda --version        # Conda
+mvn -version          # Maven
+git --version         # Git
+
+# 检查Python包
+conda activate yolov8
+python -c "import torch, ultralytics, cv2, flask; print('✅ 所有包正常')"
+```
+
+---
+
+## 📊 系统架构
+
+```mermaid
+graph TB
+    A[Web前端<br/>仪表板<br/>index.html] --> B[后端服务<br/>Spring Boot<br/>端口5000]
+    B --> C[REST API<br/>检测接口]
+    B --> D[页面控制器<br/>Web页面]
+    B --> E[视频流控制器<br/>直播流]
+    
+    C --> F[AI模型<br/>Python服务]
+    D --> G[文件I/O<br/>视频/结果]
+    E --> H[千问VL服务<br/>端口5001<br/>AI分析]
+    
+    F --> I[YOLOv8检测<br/>• 姿态检测<br/>• 行为识别<br/>• 多人跟踪]
+    
+    style A fill:#e1f5fe
+    style B fill:#f3e5f5
+    style F fill:#e8f5e8
+    style H fill:#fff3e0
+    style I fill:#fce4ec
+```
+
+---
+
+## 📁 项目结构
+
+```
+yolov8_security/
+├── ai-models/              # AI模型服务
+│   ├── yolov8_security.py # 核心检测和行为识别
+│   ├── qwen_vl_service.py # 千问VL API服务
+│   └── gpu_test.py        # GPU测试
+├── backend/                # Java后端服务
+│   ├── src/               # 源代码
+│   ├── pom.xml           # Maven配置
+│   └── target/           # 编译输出
+├── frontend/              # Web仪表板
+│   └── index.html        # 实时监控界面
+├── models/                # 预训练模型
+├── scripts/               # 自动化脚本
+├── requirements.txt       # Python依赖
+└── README.md             # 项目文档
+```
+
+---
+
+## 🤝 贡献指南
+
+欢迎贡献代码！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+---
+
+## 📝 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+---
+
+<div align="center">
+
+Made with ❤️ by X-Xcc
+
+[⭐ 在GitHub上加星](https://github.com/X-Xcc/EverBright)
+
+</div>
 如果你的代码包含千问大模型分析功能，需要先配置Qwen2.5-VL模型：
 
 **第一步: 下载Qwen2.5-VL模型**
@@ -547,10 +703,9 @@ POST /batch_analyze         # Batch analyze multiple images
 GET  /health               # Service health check
 ```
 
-### Dashboard
+### 仪表板
 ```
-http://localhost:8080/yolov8-security
-http://localhost:5000              # Docker deployment
+http://localhost:5000/yolov8-security
 ```
 
 ---
@@ -567,24 +722,6 @@ Detailed documentation available in the `docs/` folder:
 Each module also has a `.README` file with specific implementation details.
 
 ---
-
-## 🐳 Docker Deployment
-
-Build and run with Docker:
-
-```bash
-# Build the backend
-cd backend
-mvn clean package -DskipTests
-
-# Build Docker image
-docker build -t yolov8-security .
-
-# Run container
-docker run -p 5000:5000 -p 5001:5001 \
-  -e QWEN_VL_MODEL_PATH=/app/models \
-  yolov8-security
-```
 
 ---
 
@@ -617,7 +754,7 @@ docker run -p 5000:5000 -p 5001:5001 \
 | **AI/ML** | YOLOv8, PyTorch, Transformers | Object detection & behavior recognition |
 | **Vision AI** | Qwen2.5-VL | Advanced scene understanding |
 | **Build** | Maven | Java project build |
-| **Runtime** | Docker | Containerization |
+| **运行时** | Windows | 本机运行 |
 
 ---
 
