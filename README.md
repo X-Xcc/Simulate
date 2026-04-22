@@ -1,3 +1,26 @@
+# 🚨 重要提示：首次使用前请同步最新代码
+
+**⚠️ 小白用户必读：每次使用项目前，请先运行以下命令同步最新代码！**
+
+```bash
+# 进入项目目录
+cd D:\yolov8_security
+
+# 拉取最新代码（重要！）
+git pull origin main
+
+# 如果有冲突，强制覆盖本地更改
+git reset --hard origin/main
+git pull origin main
+```
+
+**为什么需要这样做？**
+- 项目会不定期更新，修复bug和添加新功能
+- 确保你使用的是最新版本
+- 避免版本不一致导致的问题
+
+---
+
 # YOLOv8 Real-Time Security Monitoring System
 
 <div align="center">
