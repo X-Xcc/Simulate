@@ -90,6 +90,17 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 - 验证安装: `conda --version` 和 `python --version` 应显示 Python 3.10.x
 
 **安装Java 17 (JDK)**
+
+**推荐方式：使用命令行安装 (winget - Windows 10/11内置)**
+```powershell
+# 以管理员身份打开PowerShell，运行以下命令：
+winget install --id EclipseAdoptium.Temurin.17.JDK --version 17.0.10.7 -e
+
+# 验证安装
+java -version
+```
+
+**备选方式：手动下载安装**
 - 下载并安装 JDK 17
 - 下载地址: https://adoptium.net/temurin/releases/
 - 安装到: `D:\Java\jdk-17` (自定义安装路径时选择此目录)
@@ -98,6 +109,17 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 - 验证安装: `java -version` 应显示 Java 17.x.x
 
 **安装Maven 3.6+ (用于Java后端)**
+
+**推荐方式：使用命令行安装 (winget)**
+```powershell
+# 以管理员身份打开PowerShell，运行以下命令：
+winget install --id Apache.Maven -e
+
+# 验证安装
+mvn -version
+```
+
+**备选方式：手动下载安装**
 - 下载Maven: https://maven.apache.org/download.cgi
 - 解压到文件夹: `D:\apache-maven-3.9.5`
 - 设置环境变量 `MAVEN_HOME` 指向Maven目录 (例如: `D:\apache-maven-3.9.5`)
@@ -105,6 +127,21 @@ A comprehensive real-time security monitoring system based on **YOLOv8** with mu
 - 验证安装: `mvn -version`
 
 **安装Git**
+
+**推荐方式：使用命令行安装 (winget)**
+```powershell
+# 以管理员身份打开PowerShell，运行以下命令：
+winget install --id Git.Git -e
+
+# 配置用户信息
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
+# 验证安装
+git --version
+```
+
+**备选方式：手动下载安装**
 - 下载并安装 Git: https://git-scm.com/downloads
 - 安装到: `D:\Git` (自定义安装路径时选择此目录)
 - 配置用户信息:
