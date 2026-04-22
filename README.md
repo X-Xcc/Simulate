@@ -399,6 +399,77 @@ yolov8_security/
 
 ---
 
+## 🔗 API接口
+
+### 视频检测API
+```
+GET  /yolov8-security/api/video/stream     # 视频流端点
+GET  /yolov8-security/api/detection/latest # 获取最新检测结果
+GET  /yolov8-security/api/stats            # 获取系统统计
+POST /yolov8-security/api/detection/save   # 保存检测数据
+```
+
+### 千问VL API
+```
+POST /analyze                # 分析base64编码图片
+POST /analyze_file          # 分析上传的图片文件
+POST /batch_analyze         # 批量分析多个图片
+GET  /health               # 服务健康检查
+```
+
+### 仪表板
+```
+http://localhost:5000/yolov8-security
+```
+
+---
+
+## 📚 文档
+
+docs/ 文件夹包含详细文档：
+
+- **[Java后端指南](docs/README_JAVA.md)** - 后端架构和开发
+- **[运行部署指南](docs/README_RUN.md)** - 运行和部署说明
+- **[千问模型配置](docs/Qwen_VL_详细配置指南.md)** - 千问设置详细说明
+- **[部署指南](docs/部署指南.md)** - 一步步部署说明
+
+每个模块都有 .README 文件，包含具体实现细节。
+
+---
+
+## 📊 性能指标
+
+### 硬件加速
+- **GPU支持**: NVIDIA RTX 30/40系列 (CUDA 12.1+)
+- **CPU回退**: 针对Intel/AMD处理器优化
+- **自动检测**: 自动硬件优化
+
+### 检测速度
+- **GPU模式**: RTX 40系列上 ~15-25ms每帧
+- **CPU模式**: ~50-80ms每帧 (优化配置)
+- **支持分辨率**: 416x416 到 1920x1080
+- **FPS**: 15-60 FPS (取决于模型和硬件)
+
+### 资源使用
+- **GPU内存**: YOLOv8n-pose ~500MB + 批量处理 ~2GB
+- **CPU内存**: ~1-2GB (优化后)
+- **并发用户**: 10+ 同时查看者
+
+---
+
+## 🛠️ 技术栈
+
+| 组件 | 技术 | 用途 |
+|------|------|------|
+| **后端** | Spring Boot, Java 17+ | REST API, 服务编排 |
+| **前端** | HTML5, CSS3, JavaScript | 实时仪表板 |
+| **AI/ML** | YOLOv8, PyTorch, Transformers | 对象检测和行为识别 |
+| **视觉AI** | Qwen2.5-VL | 高级场景理解 |
+| **构建** | Maven | Java项目构建 |
+| **运行时** | Windows | 本机运行 |
+
+---
+
 ## 🤝 贡献指南
 
 欢迎贡献代码！
@@ -417,396 +488,12 @@ yolov8_security/
 
 ---
 
-<div align="center">
-
-Made with ❤️ by X-Xcc
-
-[⭐ 在GitHub上加星](https://github.com/X-Xcc/EverBright)
-
-</div>
-如果你的代码包含千问大模型分析功能，需要先配置Qwen2.5-VL模型：
-
-**第一步: 下载Qwen2.5-VL模型**
-- 模型下载地址: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
-- 下载完整的模型文件 (约15GB，需要良好的网络)
-- 放置路径: `D:\yolov8_security\models\Qwen2.5-VL-7B-Instruct`
-
-**第二步: 启动Qwen VL服务**
-```bash
-# 激活conda环境
-conda activate yolov8
-
-# 进入ai-models目录
-cd ai-models
-
-# 启动服务
-python qwen_vl_service.py
-# 服务将在 http://localhost:5001 启动
-```
-*注意: 如果没有配置千问大模型，此服务会报错，可以跳过此步骤*
-
-#### 8. 完整的运行步骤详解
-
-如果你是第一次运行代码，请按照以下步骤操作 (假设所有前置环境已安装完毕)：
-
-**初始化环境 (只需做一次):**
-```bash
-# 打开PowerShell或命令提示符
-# 进入项目目录
-cd D:\yolov8_security
-
-# 创建Conda环境
-conda create -n yolov8 python=3.10 -y
-
-# 激活环境
-conda activate yolov8
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 进入backend目录构建Java后端
-cd backend
-mvn clean package
-cd ..
-```
-
-**每次运行项目时的步骤:**
-
-**第一步: 打开第一个命令窗口 - 启动后端服务**
-```bash
-# 打开新的PowerShell或命令提示符
-# 进入项目的backend目录
-cd D:\yolov8_security\backend
-
-# 启动后端服务
-java -jar target/yolov8-security.war
-
-# 看到以下信息表示成功:
-# Application 'yolov8-security' has started
-# Listening on port 5000
-```
-
-**第二步: 打开第二个命令窗口 - 启动YOLOv8检测服务**
-```bash
-# 打开新的PowerShell或命令提示符
-# 激活环境
-conda activate yolov8
-
-# 进入ai-models目录
-cd D:\yolov8_security\ai-models
-
-# 启动YOLOv8服务
-python yolov8_security.py
-
-# 看到以下信息表示成功:
-# YOLOv8 Detection Service started
-# Ready to process video streams
-```
-
-**第三步: (可选) 打开第三个命令窗口 - 启动Qwen VL服务**
-如果你已配置千问大模型：
-```bash
-# 打开新的PowerShell或命令提示符
-# 激活环境
-conda activate yolov8
-
-# 进入ai-models目录
-cd D:\yolov8_service\ai-models
-
-# 启动Qwen VL服务
-python qwen_vl_service.py
-
-# 看到以下信息表示成功:
-# Qwen VL Service started
-# Listening on port 5001
-```
-
-**第四步: 打开浏览器访问系统**
-- 打开浏览器 (Chrome, Edge, Firefox等)
-- 访问: `http://localhost:5000/yolov8-security`
-- 查看实时监控界面
-- 上传视频或连接摄像头开始检测
-
-**常见错误处理:**
-- **后端启动失败**: 检查Java是否正确安装 (`java -version`)
-- **YOLOv8服务报错**: 检查Python依赖是否安装完成 (`pip list`)
-- **GPU显存不足**: 系统会自动使用CPU模式，性能会较慢
-- **端口被占用**: 检查5000或5001端口是否被其他程序占用
-
-**停止运行:**
-- 在各个命令窗口按 `Ctrl+C` 停止服务
-- 每次关闭VS Code或PyCharm时，记得在命令窗口停止后端和AI服务
-
-### 同步到GitHub
-
-#### 首次推送代码到GitHub
-```bash
-# 初始化Git仓库 (如果还没有)
-git init
-
-# 添加所有文件
-git add .
-
-# 提交更改
-git commit -m "Initial commit: YOLOv8 Security Monitoring System"
-
-# 添加远程仓库
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
-
-# 推送代码
-git push -u origin main
-```
-
-#### 更新代码并推送
-```bash
-# 添加更改的文件
-git add .
-
-# 提交更改
-git commit -m "Update: 添加详细构建步骤"
-
-# 推送更改
-git push origin main
-```
-
-#### 创建新分支并推送
-```bash
-# 创建新分支
-git checkout -b feature/new-feature
-
-# 提交更改
-git add .
-git commit -m "Add new feature"
-
-# 推送分支
-git push origin feature/new-feature
-```
-
-### 故障排除
-
-**常见问题:**
-- **Conda环境激活失败**: 确保Conda已正确安装并添加到PATH
-- **Python依赖安装失败**: 确保在yolov8环境中运行 `conda activate yolov8`
-- **Java构建失败**: 确保使用Java 17，运行 `java -version` 检查
-- **端口冲突**: 检查5000和5001端口是否被占用
-- **GPU不可用**: 如果没有GPU，系统会自动使用CPU模式
-
-**验证安装:**
-```bash
-# 检查Java
-java -version  # 应显示 Java 17.x.x
-
-# 检查Python
-conda activate yolov8
-python --version  # 应显示 Python 3.10.11
-
-# 检查Conda
-conda --version
-
-# 检查Maven
-mvn -version
-
-# 检查Git
-git --version
-
-# 检查Python包
-python -c "import torch, ultralytics, cv2, flask; print('所有包正常')"
-```
-
----
-
-## 📋 System Architecture
-
-```mermaid
-graph TB
-    A[Web Frontend<br/>Dashboard<br/>index.html] --> B[Backend Service<br/>Spring Boot<br/>Port 5000]
-    B --> C[REST API Controller<br/>Detection API]
-    B --> D[Page Render Controller<br/>Web Pages]
-    B --> E[Video Stream Controller<br/>Live Stream]
-    
-    C --> F[AI Models<br/>Python Services]
-    D --> G[File I/O<br/>Videos/Results]
-    E --> H[Qwen VL Service<br/>Port 5001<br/>AI Analysis]
-    
-    F --> I[YOLOv8 Detection<br/>• Pose Detection<br/>• Behavior Recognition<br/>• Multi-person Tracking]
-    
-    style A fill:#e1f5fe
-    style B fill:#f3e5f5
-    style F fill:#e8f5e8
-    style H fill:#fff3e0
-    style I fill:#fce4ec
-```
-
----
-
-## 📁 Project Structure
-
-```
-yolov8_security/
-├── ai-models/                          # AI Model Services
-│   ├── yolov8_security.py             # Core detection & behavior recognition
-│   ├── qwen_vl_service.py             # Qwen VL API service
-│   └── .README
-│
-├── backend/                            # Java Backend Service
-│   ├── config/                         # Spring configurations (CORS, Jackson, Web)
-│   ├── controller/                     # REST API endpoints
-│   ├── model/                          # Data models
-│   ├── service/                        # Business logic
-│   ├── application.properties          # Local config
-│   ├── application-docker.properties   # Docker config
-│   ├── pom.xml                        # Maven configuration
-│   └── .README
-│
-├── frontend/                           # Web Dashboard
-│   ├── index.html                     # Real-time monitoring interface
-│   └── .README
-│
-├── docs/                               # Documentation
-│   ├── README_JAVA.md                 # Java backend guide
-│   ├── README_RUN.md                  # Running & deployment guide
-│   ├── Qwen_VL_详细配置指南.md        # Qwen model configuration
-│   ├── 部署指南.md                    # Deployment guide
-│   └── .README
-│
-├── models/                             # Pre-trained Models
-│   ├── yolov8n-pose.pt                # YOLOv8 nano pose detection model
-│   └── .README
-│
-├── scripts/                            # Automation Scripts
-│   ├── start_all.bat                  # Start all services
-│   ├── build_war.bat                  # Build WAR package
-│   ├── deploy.bat                     # Deploy application
-│   └── .README
-│
-├── requirements.txt                    # Python dependencies
-└── README.md                          # This file
-```
-
----
-
-## 🔗 API Endpoints
-
-### Video & Detection API
-```
-GET  /yolov8-security/api/video/stream     # Video stream endpoint
-GET  /yolov8-security/api/detection/latest # Get latest detections
-GET  /yolov8-security/api/stats            # Get system statistics
-POST /yolov8-security/api/detection/save   # Save detection data
-```
-
-### Qwen VL API
-```
-POST /analyze                # Analyze base64 encoded image
-POST /analyze_file          # Analyze uploaded image file
-POST /batch_analyze         # Batch analyze multiple images
-GET  /health               # Service health check
-```
-
-### 仪表板
-```
-http://localhost:5000/yolov8-security
-```
-
----
-
-## 📚 Documentation
-
-Detailed documentation available in the `docs/` folder:
-
-- **[Java Backend Guide](docs/README_JAVA.md)** - Backend architecture and development
-- **[Running & Deployment](docs/README_RUN.md)** - How to run and deploy the system
-- **[Qwen Model Configuration](docs/Qwen_VL_详细配置指南.md)** - Detailed Qwen setup
-- **[Deployment Guide](docs/部署指南.md)** - Step-by-step deployment instructions
-
-Each module also has a `.README` file with specific implementation details.
-
----
-
----
-
-## 📊 Performance Metrics
-
-### Hardware Acceleration
-- **GPU Support**: NVIDIA RTX 30/40 series (CUDA 12.1+)
-- **CPU Fallback**: Optimized for Intel/AMD processors
-- **Auto Detection**: Automatic hardware optimization
-
-### Detection Speed
-- **GPU Mode**: ~15-25ms per frame (YOLOv8 Nano on RTX 40-series)
-- **CPU Mode**: ~50-80ms per frame (optimized configuration)
-- **Supported Resolution**: 416x416 to 1920x1080
-- **FPS**: 15-60 FPS (depending on model and hardware)
-
-### Resource Usage
-- **GPU Memory**: ~500MB (YOLOv8n-pose) + ~2GB (batch processing)
-- **CPU Memory**: ~1-2GB (with optimization)
-- **Concurrent Users**: 10+ simultaneous viewers
-
----
-
-## 🛠️ Technology Stack
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Backend** | Spring Boot, Java 17+ | REST API, Service orchestration |
-| **Frontend** | HTML5, CSS3, JavaScript | Real-time dashboard |
-| **AI/ML** | YOLOv8, PyTorch, Transformers | Object detection & behavior recognition |
-| **Vision AI** | Qwen2.5-VL | Advanced scene understanding |
-| **Build** | Maven | Java project build |
-| **运行时** | Windows | 本机运行 |
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## � Troubleshooting
-
-### Performance Issues
-- **Slow Detection**: Check GPU utilization with `nvidia-smi`
-- **High CPU Usage**: Ensure CUDA drivers are installed
-- **Memory Errors**: Reduce batch size or image resolution
-
-### GPU Not Detected
-```bash
-# Check CUDA installation
-python -c "import torch; print(torch.cuda.is_available())"
-
-# Install CUDA PyTorch
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
-```
-
-### Common Fixes
-- Update NVIDIA drivers to latest version
-- Install CUDA 12.1+ toolkit
-- Use Python 3.8-3.11 for best compatibility
-
-See [PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md) for detailed optimization guide.
-
----
-
-## 🌟 Acknowledgments
-
-- [YOLOv8](https://github.com/ultralytics/yolov8) - Object detection framework
-- [Qwen](https://github.com/QwenLM/Qwen2.5-VL) - Vision-language model
-- [Spring Boot](https://spring.io/projects/spring-boot) - Java framework
-- [PyTorch](https://pytorch.org/) - Deep learning framework
+## 🌟 致谢
+
+- [YOLOv8](https://github.com/ultralytics/yolov8) - 对象检测框架
+- [Qwen](https://github.com/QwenLM/Qwen2.5-VL) - 视觉语言模型
+- [Spring Boot](https://spring.io/projects/spring-boot) - Java框架
+- [PyTorch](https://pytorch.org/) - 深度学习框架
 
 ---
 
@@ -814,6 +501,6 @@ See [PERFORMANCE_OPTIMIZATION.md](PERFORMANCE_OPTIMIZATION.md) for detailed opti
 
 Made with ❤️ by X-Xcc
 
-[⭐ Star on GitHub](https://github.com/X-Xcc/EverBright-Security)
+[⭐ 在GitHub上加星](https://github.com/X-Xcc/EverBright)
 
 </div>
