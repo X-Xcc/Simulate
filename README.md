@@ -241,7 +241,37 @@ python -c "import torch; print('PyTorch版本:', torch.__version__)"
 python -c "import ultralytics; print('Ultralytics版本:', ultralytics.__version__)"
 ```
 
-### 步骤4: 构建Java后端
+### 步骤3.5: 下载AI模型
+
+#### 下载Qwen2.5-VL模型
+
+系统需要Qwen2.5-VL视觉语言模型来提供AI分析功能。请按照以下步骤下载：
+
+**方法一：使用Git克隆（推荐）**
+
+1. 安装Git（如果尚未安装）
+2. 运行以下命令下载模型：
+   ```bash
+   git clone https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct "D:\AI_Project\Models\Qwen2.5-VL-7B-Instruct"
+   ```
+
+**方法二：手动下载**
+
+1. 访问 [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct)
+2. 点击右上角"Download"按钮，选择"Download as zip"
+3. 解压到 `D:\AI_Project\Models\Qwen2.5-VL-7B-Instruct` 目录
+
+**配置模型路径**
+
+下载完成后，需要设置环境变量：
+```bash
+# 设置模型路径环境变量
+set QWEN_VL_MODEL_PATH=D:\AI_Project\Models\Qwen2.5-VL-7B-Instruct
+```
+
+> 📝 **注意**: 如果模型路径不同，请相应修改环境变量。详细配置请参考 `docs/Qwen_VL_详细配置指南.md`
+
+### 步骤5: 构建Java后端
 
 ```bash
 # 进入backend目录
@@ -257,7 +287,7 @@ mvn clean package
 cd ..
 ```
 
-### 步骤5: 启动系统
+### 步骤6: 启动系统
 
 #### 方式一: 一键启动 (推荐)
 ```bash
@@ -288,7 +318,7 @@ cd ai-models
 python qwen_vl_service.py
 ```
 
-### 步骤6: 访问系统
+### 步骤7: 访问系统
 - 打开浏览器访问: `http://localhost:5000/yolov8-security`
 - 开始实时监控！
 
