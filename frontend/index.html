@@ -1189,6 +1189,20 @@
         /** Backend serves files at GET /api/images/{name} (see ApiController) */
         const API_BASE = '/yolov8-security';
         const API_IMAGES = API_BASE + '/api/images';
+        const API_KEY = localStorage.getItem('apiKey') || '';
+
+        /** Wrap global fetch to attach X-API-Key when available */
+        const _origFetch = window.fetch;
+        window.fetch = async function(url, init) {
+            if (API_KEY && typeof url === 'string' && url.startsWith(API_BASE)) {
+                if (!init) init = {};
+                if (!init.headers) init.headers = {};
+                const h = init.headers;
+                if (h instanceof Headers) h.set('X-API-Key', API_KEY);
+                else h['X-API-Key'] = API_KEY;
+            }
+            return _origFetch.apply(this, arguments);
+        };
         const NO_SCREENSHOT_SVG = 'data:image/svg+xml,' + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect fill="#1e293b" width="100%" height="100%"/>' +
             '<text x="50%" y="50%" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="18" text-anchor="middle">暂无截图文件</text></svg>'
@@ -1236,10 +1250,28 @@
             const icons = { danger: '🚨', success: '✅', warning: '⚠️', info: 'ℹ️' };
             const t = document.createElement('div');
             t.className = 'toast ' + (type || 'info');
-            t.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ️'}</span><div class="toast-text"><div class="toast-title">${title}</div><div class="toast-msg">${msg}</div></div><button class="toast-x">✕</button>`;
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'toast-icon';
+            iconSpan.textContent = icons[type] || 'ℹ️';
+            const textDiv = document.createElement('div');
+            textDiv.className = 'toast-text';
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'toast-title';
+            titleDiv.textContent = title;
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'toast-msg';
+            msgDiv.textContent = msg;
+            textDiv.appendChild(titleDiv);
+            textDiv.appendChild(msgDiv);
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'toast-x';
+            closeBtn.textContent = '✕';
+            t.appendChild(iconSpan);
+            t.appendChild(textDiv);
+            t.appendChild(closeBtn);
             toastBox.appendChild(t);
             const remove = () => { t.style.animation = 'toastOut .3s ease forwards'; setTimeout(() => t.remove(), 300); };
-            t.querySelector('.toast-x').addEventListener('click', remove);
+            closeBtn.addEventListener('click', remove);
             setTimeout(remove, 5000);
         }
 
@@ -1251,9 +1283,14 @@
         const modalCancel = document.getElementById('modalCancel');
         let modalCallback = null;
 
-        function openModal(title, html, cb) {
+        function openModal(title, htmlOrNode, cb) {
             modalTitleEl.textContent = title;
-            modalBodyEl.innerHTML = html;
+            if (typeof htmlOrNode === 'string') {
+                modalBodyEl.innerHTML = htmlOrNode;
+            } else {
+                while (modalBodyEl.firstChild) modalBodyEl.removeChild(modalBodyEl.firstChild);
+                modalBodyEl.appendChild(htmlOrNode);
+            }
             modalOverlay.classList.add('visible');
             modalCallback = cb || null;
         }
@@ -1446,35 +1483,61 @@
             const el = document.createElement('div');
             el.className = 'detection-item ' + det.cls;
 
-            el.innerHTML = `
-                <div class="det-row">
-                    <div class="det-info">
-                        <div class="det-time">${det.timeStr} &nbsp;(人员: ${det.people})</div>
-                        <div class="det-meta">📹 ${det.cam} &nbsp;|&nbsp; 置信度: ${det.conf}%</div>
-                    </div>
-                    <div class="det-right">
-                        <span class="det-tag ${det.tag}">${det.type}</span>
-                        <button class="det-view-btn" data-det-idx="${det.idx}">📷 查看图片</button>
-                    </div>
-                </div>
-            `;
+            const row = document.createElement('div');
+            row.className = 'det-row';
+
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'det-info';
+
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'det-time';
+            timeDiv.textContent = det.timeStr + ' (人员: ' + det.people + ')';
+
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'det-meta';
+            metaDiv.textContent = '📹 ' + det.cam + ' | 置信度: ' + det.conf + '%';
+
+            infoDiv.appendChild(timeDiv);
+            infoDiv.appendChild(metaDiv);
+
+            const rightDiv = document.createElement('div');
+            rightDiv.className = 'det-right';
+
+            const tagSpan = document.createElement('span');
+            tagSpan.className = 'det-tag ' + det.tag;
+            tagSpan.textContent = det.type;
+
+            const viewBtn = document.createElement('button');
+            viewBtn.className = 'det-view-btn';
+            viewBtn.setAttribute('data-det-idx', det.idx);
+            viewBtn.textContent = '📷 查看图片';
+
+            rightDiv.appendChild(tagSpan);
+            rightDiv.appendChild(viewBtn);
+
+            row.appendChild(infoDiv);
+            row.appendChild(rightDiv);
+            el.appendChild(row);
 
             /* Click on the row (not the button) -> show text detail modal */
             el.addEventListener('click', (e) => {
                 if (e.target.closest('.det-view-btn')) return;
-                openModal('检测详情', `
-                    <p><strong>时间：</strong>${det.timeStr}</p>
-                    <p><strong>行为类型：</strong>${det.type}</p>
-                    <p><strong>涉及人员：</strong>${det.people} 人</p>
-                    <p><strong>摄像头：</strong>${det.cam}</p>
-                    <p><strong>置信度：</strong>${det.conf}%</p>
-                    <p><strong>处理状态：</strong>待处理</p>
-                    <p><strong>处置建议：</strong>已通知值班狱警前往现场核实。</p>
-                `);
+                const frag = document.createDocumentFragment();
+                const labels = ['时间：', '行为类型：', '涉及人员：', '摄像头：', '置信度：', '处理状态：', '处置建议：'];
+                const values = [det.timeStr, det.type, det.people + ' 人', det.cam, det.conf + '%', '待处理', '已通知值班狱警前往现场核实。'];
+                for (let i = 0; i < labels.length; i++) {
+                    const p = document.createElement('p');
+                    const strong = document.createElement('strong');
+                    strong.textContent = labels[i];
+                    p.appendChild(strong);
+                    p.appendChild(document.createTextNode(values[i]));
+                    frag.appendChild(p);
+                }
+                openModal('检测详情', frag);
             });
 
             /* Click on "查看图片" button -> open image viewer */
-            el.querySelector('.det-view-btn').addEventListener('click', (e) => {
+            viewBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 openImageViewer(det);
             });
@@ -1997,7 +2060,7 @@
         /* ====== Qwen2.5-VL Model Info ====== */
         async function fetchQwenModelInfo() {
             try {
-                const response = await fetch('http://127.0.0.1:5001/health');
+                const response = await fetch(API_BASE + '/api/ai/status');
                 const data = await response.json();
                 
                 const sQwenStatus = document.getElementById('sQwenStatus');
@@ -2006,14 +2069,14 @@
                 const sGpuMemory = document.getElementById('sGpuMemory');
                 
                 if (sQwenStatus) {
-                    if (data.status === 'healthy') {
-                        if (data.model_loaded) {
-                            sQwenStatus.textContent = '✅ 已加载';
-                            sQwenStatus.style.color = '#10b981'; // 绿色
-                        } else {
-                            sQwenStatus.textContent = '⏳ 加载中';
-                            sQwenStatus.style.color = '#f59e0b'; // 橙色
-                        }
+                    if (data.status === 'online') {
+                        sQwenStatus.textContent = '✅ 已加载';
+                        sQwenStatus.style.color = '#10b981';
+                    } else {
+                        sQwenStatus.textContent = '❌ 离线';
+                        sQwenStatus.style.color = '#ef4444';
+                        sQwenStatus.title = 'Qwen2.5-VL服务未运行';
+                    }
                         
                         // 显示设备信息
                         if (data.device === 'cuda') {

@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -26,7 +26,6 @@ public class VideoStreamController {
     private volatile BufferedImage latestFrame;
     private volatile long lastFrameId = -1;
 
-    /** Avoid redrawing the full 720p placeholder on every MJPEG poll when no real frame is set. */
     private volatile BufferedImage cachedTestFrame;
     private volatile long cachedTestFrameAtMs;
     private static final long TEST_FRAME_CACHE_MS = 750L;
@@ -44,15 +43,22 @@ public class VideoStreamController {
         response.setHeader("Pragma", "no-cache");
 
         try (OutputStream out = response.getOutputStream()) {
-            while (true) {
-                byte[] frameBytes = getCurrentFrameBytes();
-                if (frameBytes.length > 0) {
-                    writeFrame(out, frameBytes);
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    byte[] frameBytes = getCurrentFrameBytes();
+                    if (frameBytes.length > 0) {
+                        writeFrame(out, frameBytes);
+                    }
+                } catch (IOException e) {
+                    log.debug("Client disconnected during frame write", e);
+                    break;
                 }
                 Thread.sleep(100);
             }
-        } catch (IOException | InterruptedException e) {
-            log.debug("Client disconnected or error streaming video", e);
+        } catch (IOException e) {
+            log.debug("Client disconnected", e);
+        } catch (InterruptedException e) {
+            log.debug("Video feed interrupted");
             Thread.currentThread().interrupt();
         }
     }
@@ -115,7 +121,7 @@ public class VideoStreamController {
             int boxY = 150 + random.nextInt(height - 350);
             int boxWidth = 150 + random.nextInt(100);
             int boxHeight = 200 + random.nextInt(100);
-            
+
             Color boxColor;
             String label;
             if (random.nextBoolean()) {
@@ -125,11 +131,11 @@ public class VideoStreamController {
                 boxColor = new Color(245, 158, 11);
                 label = "object: " + (65 + random.nextInt(25)) + "%";
             }
-            
+
             g2d.setColor(boxColor);
             g2d.drawRect(boxX, boxY, boxWidth, boxHeight);
             g2d.fillRect(boxX, boxY, g2d.getFontMetrics().stringWidth(label) + 16, 24);
-            
+
             g2d.setColor(Color.WHITE);
             g2d.setFont(new Font("Consolas", Font.BOLD, 14));
             g2d.drawString(label, boxX + 8, boxY + 17);
@@ -154,7 +160,7 @@ public class VideoStreamController {
         g2d.setColor(Color.WHITE);
         g2d.setFont(new Font("Microsoft YaHei", Font.BOLD, 16));
         g2d.drawString("系统在线", width - 275, 55);
-        
+
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         String timeStr = sdf.format(new Date());
         g2d.setFont(new Font("Consolas", Font.PLAIN, 16));
@@ -168,7 +174,7 @@ public class VideoStreamController {
         g2d.drawString(status1, 40, height - 65);
         g2d.drawString(status2, 200, height - 65);
         g2d.drawString(status3, 360, height - 65);
-        
+
         g2d.setColor(new Color(59, 130, 246));
         g2d.setFont(new Font("Microsoft YaHei", Font.PLAIN, 16));
         g2d.drawString("点击「测试报警」按钮查看异常报告功能", width - 450, height - 60);
