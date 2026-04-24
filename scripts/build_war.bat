@@ -1,9 +1,12 @@
 @echo off
-chcp 65001 > nul
+chcp 65001 > /dev/null
 echo ========================================
 echo YOLOv8 Security Monitor - Build WAR Package
 echo ========================================
 echo.
+
+REM Change to backend directory where pom.xml lives
+cd /d "%~dp0..\backend"
 
 echo [1/3] Cleaning old build files...
 call mvn clean
