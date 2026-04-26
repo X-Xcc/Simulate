@@ -1,4 +1,4 @@
-﻿# EverBright - YOLOv8 安防智能监控系统
+﻿﻿# EverBright - YOLOv8 安防智能监控系统
 
 基于 **YOLOv8 + Qwen2.5-VL** 的实时安防监控平台，支持跌倒、打架、疲劳、离岗等异常行为检测，并提供 Web 可视化看板和 AI 图像分析功能。
 

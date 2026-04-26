@@ -15,7 +15,6 @@ import time
 import numpy as np
 import json
 import torch
-import torch.nn.functional as F
 from typing import List, Tuple, Optional
 from PIL import ImageFont, ImageDraw, Image
 
@@ -63,7 +62,7 @@ class Config:
     # 使用视频文件作为输入，避免摄像头访问问题
     SOURCE = os.path.join(PROJECT_ROOT, "videos", "test_video.mp4")
     RESULT_VIDEO_PATH = os.path.join(PROJECT_ROOT, "results", "security_result.mp4")
-    DATASET_DIR = os.path.join(PROJECT_ROOT, "data")
+    DATASET_DIR = os.path.join(PROJECT_ROOT, "backend", "data")
 
     # 模型参数
     IMG_SIZE = 512
@@ -113,6 +112,8 @@ class Utils:
     """工具函数类"""
     # 静态变量：缓存可用字体路径，避免重复IO操作
     _AVAILABLE_FONT_PATH = None
+    # 缓存字体对象（key = font size），避免每次 draw 都重新加载字体文件
+    _FONT_CACHE = {}
 
     # YOLOv8 Pose 关键点索引
     KEYPOINT_NAMES = {
@@ -155,6 +156,20 @@ class Utils:
         return cls._AVAILABLE_FONT_PATH
 
     @staticmethod
+    def _get_cached_font(size: int):
+        """Get or create a cached font for the given size"""
+        if size not in Utils._FONT_CACHE:
+            font_path = Utils._get_available_font_path()
+            if font_path is None:
+                Utils._FONT_CACHE[size] = ImageFont.load_default()
+            else:
+                try:
+                    Utils._FONT_CACHE[size] = ImageFont.truetype(font_path, size, encoding="utf-8")
+                except (OSError, IOError):
+                    Utils._FONT_CACHE[size] = ImageFont.load_default()
+        return Utils._FONT_CACHE[size]
+
+    @staticmethod
     def draw_text_cn(img: np.ndarray, text: str, pos: Tuple[int, int],
                      size: int = 30, color: Tuple[int, int, int] = (255, 255, 255)) -> np.ndarray:
         """绘制中文文本，确保正确显示"""
@@ -164,17 +179,8 @@ class Utils:
             img_pil = Image.fromarray(img_rgb)
             draw = ImageDraw.Draw(img_pil)
 
-            # 获取可用字体路径（使用缓存）
-            font_path = Utils._get_available_font_path()
-
-            # 如果找不到字体，使用PIL默认字体
-            if font_path is None:
-                font = ImageFont.load_default()
-            else:
-                try:
-                    font = ImageFont.truetype(font_path, size, encoding="utf-8")
-                except (OSError, IOError):
-                    font = ImageFont.load_default()
+            # 使用缓存字体
+            font = Utils._get_cached_font(size)
 
             # 绘制文本
             draw.text(pos, text, font=font, fill=color)
@@ -255,8 +261,7 @@ class Utils:
         try:
             temp_img = Image.new('RGB', (100, 100))
             temp_draw = ImageDraw.Draw(temp_img)
-            font_path = Utils._get_available_font_path()
-            font = ImageFont.truetype(font_path, font_size) if font_path else ImageFont.load_default()
+            font = Utils._get_cached_font(font_size)
             text_bbox = temp_draw.textbbox((0, 0), text, font=font)
             return int(text_bbox[2] - text_bbox[0]), int(text_bbox[3] - text_bbox[1])
         except (OSError, IOError, AttributeError):
@@ -292,86 +297,6 @@ class Utils:
 
         ear = avg_eye_height / eye_width
         return ear, True
-
-
-# ===================== GradCAM 实现 =====================
-class GradCAM:
-    """GradCAM 可视化类"""
-    
-    def __init__(self, model, target_layers):
-        self.model = model
-        self.target_layers = target_layers
-        self.gradients = {}
-        self.activations = {}
-        
-        # 注册钩子
-        for layer in target_layers:
-            layer.register_forward_hook(self.save_activation)
-            layer.register_backward_hook(self.save_gradient)
-    
-    def save_activation(self, module, input, output):
-        self.activations[module] = output
-    
-    def save_gradient(self, module, grad_in, grad_out):
-        self.gradients[module] = grad_out[0]
-    
-    def __call__(self, x, class_idx=None):
-        # 前向传播
-        output = self.model(x)
-        
-        if class_idx is None:
-            class_idx = torch.argmax(output)
-        
-        # 反向传播
-        self.model.zero_grad()
-        one_hot = torch.zeros_like(output)
-        one_hot[0, class_idx] = 1
-        output.backward(gradient=one_hot, retain_graph=True)
-        
-        # 计算CAM
-        cam = []
-        for layer in self.target_layers:
-            activations = self.activations[layer]
-            gradients = self.gradients[layer]
-            
-            # 计算梯度的全局平均池化
-            weights = torch.mean(gradients, dim=(2, 3), keepdim=True)
-            
-            # 计算加权和
-            cam_map = torch.sum(weights * activations, dim=1)
-            cam_map = F.relu(cam_map)
-            
-            # 调整大小
-            cam_map = F.interpolate(cam_map.unsqueeze(1), size=(x.shape[2], x.shape[3]), mode='bilinear', align_corners=False)
-            cam_map = cam_map.squeeze(1)
-            
-            # 归一化
-            cam_map = (cam_map - cam_map.min()) / (cam_map.max() - cam_map.min() + 1e-8)
-            cam.append(cam_map)
-        
-        return cam, output
-    
-    @staticmethod
-    def visualize_cam(cam_map, image, alpha=0.5):
-        """可视化CAM"""
-        # 转换为numpy
-        cam_map = cam_map.cpu().numpy()
-        
-        # 转换为热力图
-        heatmap = cv2.applyColorMap(np.uint8(255 * cam_map), cv2.COLORMAP_JET)
-        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-        heatmap = np.float32(heatmap) / 255
-        
-        # 调整大小以匹配原始图像
-        heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
-        
-        # 与原始图像融合
-        image = np.float32(image) / 255
-        cam_visualization = heatmap * alpha + image
-        cam_visualization = cam_visualization / np.max(cam_visualization)
-        cam_visualization = np.uint8(255 * cam_visualization)
-        
-        return cam_visualization
 
 
 # ===================== 检测模块 =====================
@@ -935,9 +860,6 @@ class SecurityMonitor:
         self.ui_manager = UIManager(self.config)
 
         self.model = YOLO(self.config.MODEL_PATH)
-        
-        # 初始化GradCAM
-        self.gradcam = self._init_gradcam()
 
         # 初始化视频源
         self.use_static_image, self.cap, self.frame_width, self.frame_height = self._init_video_source()
@@ -962,28 +884,6 @@ class SecurityMonitor:
         # 调整帧大小以减少传输数据量 - 16:9比例，适合观看
         self.web_stream_width = 960  # 发送到web的帧宽度
         self.web_stream_height = 540  # 发送到web的帧高度 (16:9)
-
-    def _init_gradcam(self):
-        """初始化GradCAM"""
-        try:
-            # 获取模型的最后一层卷积层作为目标层
-            model = self.model.model
-            target_layers = []
-            # 遍历模型层，找到最后一个卷积层
-            for name, module in model.named_modules():
-                if isinstance(module, torch.nn.Conv2d):
-                    target_layers = [module]  # 只保留最后一个卷积层
-            
-            if target_layers:
-                gradcam = GradCAM(model, target_layers)
-                print("GradCAM 初始化成功")
-                return gradcam
-            else:
-                print("未找到合适的目标层，GradCAM 已禁用")
-                return None
-        except Exception as e:
-            print(f"GradCAM 初始化失败: {e}")
-            return None
 
     def _init_video_source(self):
         """初始化视频源"""
@@ -1182,25 +1082,21 @@ class SecurityMonitor:
 
             # 4. 可视化关键点
             frame_out = results[0].plot() if results and len(results) > 0 else frame.copy()
-            
-            # 5. 应用GradCAM热力图（当检测到危险行为时）
-            if self.gradcam and ("打架" in actions or "跌倒" in actions):
-                self._apply_gradcam(frame, frame_out)
-            
-            # 6. 框选打架人员
+
+            # 5. 框选打架人员
             if "打架" in actions and results and len(results) > 0:
                 self._draw_fighting_persons(results[0], fighting_persons, frame_out)
 
-            # 7. 标红疲劳人员的关键点（包含眼疲劳和运动疲劳）
+            # 6. 标红疲劳人员的关键点（包含眼疲劳和运动疲劳）
             if "疲劳" in actions and results and len(results) > 0:
                 all_fatigued = list(set(fatigued_persons + eye_fatigued_persons))
                 self._draw_fatigued_persons(results[0], all_fatigued, frame_out)
 
-            # 8. 发送原始帧到 web 服务器（不带标记的纯净视频）
+            # 7. 发送原始帧到 web 服务器（不带标记的纯净视频）
             if frame_count % SEND_FRAME_INTERVAL == 0:
                 self.send_frame_to_web(frame)
 
-            # 9. 检查行为变化，添加日志记录
+            # 8. 检查行为变化，添加日志记录
             current_time = time.strftime("%H:%M:%S")
             for action in actions:
                 if action not in prev_actions:
@@ -1277,33 +1173,6 @@ class SecurityMonitor:
                 self.test_image = np.zeros((720, 1280, 3), dtype=np.uint8)
                 cv2.putText(self.test_image, "Test Image", (500, 360), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
                 return self.test_image.copy()
-
-    def _apply_gradcam(self, frame, frame_out):
-        """应用GradCAM热力图"""
-        try:
-            # 检查模型是否使用半精度
-            use_half = torch.cuda.is_available()
-            
-            # 准备输入 - 根据模型精度选择数据类型
-            if use_half:
-                img = torch.from_numpy(frame).permute(2, 0, 1).unsqueeze(0).half()
-            else:
-                img = torch.from_numpy(frame).permute(2, 0, 1).unsqueeze(0).float()
-            
-            img = img / 255.0
-            img = img.to(self.config.DEVICE)
-            
-            # 应用GradCAM
-            cam_maps, output = self.gradcam(img)
-            
-            # 可视化热力图
-            if cam_maps:
-                cam_visualization = GradCAM.visualize_cam(cam_maps[0], frame)
-                # 融合到输出帧
-                frame_out = cv2.addWeighted(frame_out, 0.7, cam_visualization, 0.3, 0)
-        except Exception as e:
-            # GradCAM失败不影响主流程
-            print(f"GradCAM 应用失败: {e}")
 
     def _draw_fighting_persons(self, result, fighting_persons, frame_out):
         """框选打架人员"""

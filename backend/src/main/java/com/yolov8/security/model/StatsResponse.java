@@ -1,24 +1,22 @@
 package com.yolov8.security.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 
 public class StatsResponse {
-    
+
     private int totalDetections;
     private int totalImages;
     private BehaviorCounts behaviorCounts;
     private List<DetectionData> allDetections;
     private List<DetectionData> recentDetections;
 
-    // Constructor
     public StatsResponse() {
     }
 
-    public StatsResponse(int totalDetections, int totalImages, BehaviorCounts behaviorCounts, List<DetectionData> allDetections, List<DetectionData> recentDetections) {
+    public StatsResponse(int totalDetections, int totalImages, BehaviorCounts behaviorCounts,
+                         List<DetectionData> allDetections, List<DetectionData> recentDetections) {
         this.totalDetections = totalDetections;
         this.totalImages = totalImages;
         this.behaviorCounts = behaviorCounts;
@@ -26,83 +24,64 @@ public class StatsResponse {
         this.recentDetections = recentDetections;
     }
 
-    // Getters
-    public int getTotalDetections() {
-        return totalDetections;
-    }
-    public int getTotalImages() {
-        return totalImages;
-    }
-    public BehaviorCounts getBehaviorCounts() {
-        return behaviorCounts;
-    }
-    public List<DetectionData> getAllDetections() {
-        return allDetections;
-    }
-    public List<DetectionData> getRecentDetections() {
-        return recentDetections;
-    }
+    public int getTotalDetections() { return totalDetections; }
+    public int getTotalImages() { return totalImages; }
+    public BehaviorCounts getBehaviorCounts() { return behaviorCounts; }
+    public List<DetectionData> getAllDetections() { return allDetections; }
+    public List<DetectionData> getRecentDetections() { return recentDetections; }
 
-    // Setters
-    public void setTotalDetections(int totalDetections) {
-        this.totalDetections = totalDetections;
-    }
-    public void setTotalImages(int totalImages) {
-        this.totalImages = totalImages;
-    }
-    public void setBehaviorCounts(BehaviorCounts behaviorCounts) {
-        this.behaviorCounts = behaviorCounts;
-    }
-    public void setAllDetections(List<DetectionData> allDetections) {
-        this.allDetections = allDetections;
-    }
-    public void setRecentDetections(List<DetectionData> recentDetections) {
-        this.recentDetections = recentDetections;
-    }
+    public void setTotalDetections(int totalDetections) { this.totalDetections = totalDetections; }
+    public void setTotalImages(int totalImages) { this.totalImages = totalImages; }
+    public void setBehaviorCounts(BehaviorCounts behaviorCounts) { this.behaviorCounts = behaviorCounts; }
+    public void setAllDetections(List<DetectionData> allDetections) { this.allDetections = allDetections; }
+    public void setRecentDetections(List<DetectionData> recentDetections) { this.recentDetections = recentDetections; }
 
     public static class BehaviorCounts {
-        private int 跌倒;
-        private int 打架;
-        private int 离岗;
-        private int 疲劳;
+        @JsonProperty("跌倒")
+        private int fall;
+        @JsonProperty("打架")
+        private int fight;
+        @JsonProperty("离岗")
+        private int absent;
+        @JsonProperty("疲劳")
+        private int fatigue;
 
-        // Constructor
         public BehaviorCounts() {
         }
 
-        public BehaviorCounts(int 跌倒, int 打架, int 离岗, int 疲劳) {
-            this.跌倒 = 跌倒;
-            this.打架 = 打架;
-            this.离岗 = 离岗;
-            this.疲劳 = 疲劳;
+        public BehaviorCounts(int fall, int fight, int absent, int fatigue) {
+            this.fall = fall;
+            this.fight = fight;
+            this.absent = absent;
+            this.fatigue = fatigue;
         }
 
-        // Getters
-        public int get跌倒() {
-            return 跌倒;
-        }
-        public int get打架() {
-            return 打架;
-        }
-        public int get离岗() {
-            return 离岗;
-        }
-        public int get疲劳() {
-            return 疲劳;
-        }
+        public int getFall() { return fall; }
+        public int getFight() { return fight; }
+        public int getAbsent() { return absent; }
+        public int getFatigue() { return fatigue; }
 
-        // Setters
-        public void set跌倒(int 跌倒) {
-            this.跌倒 = 跌倒;
-        }
-        public void set打架(int 打架) {
-            this.打架 = 打架;
-        }
-        public void set离岗(int 离岗) {
-            this.离岗 = 离岗;
-        }
-        public void set疲劳(int 疲劳) {
-            this.疲劳 = 疲劳;
-        }
+        public void setFall(int fall) { this.fall = fall; }
+        public void setFight(int fight) { this.fight = fight; }
+        public void setAbsent(int absent) { this.absent = absent; }
+        public void setFatigue(int fatigue) { this.fatigue = fatigue; }
+
+        @JsonProperty("跌倒")
+        public int get跌倒() { return fall; }
+        @JsonProperty("打架")
+        public int get打架() { return fight; }
+        @JsonProperty("离岗")
+        public int get离岗() { return absent; }
+        @JsonProperty("疲劳")
+        public int get疲劳() { return fatigue; }
+
+        @JsonProperty("跌倒")
+        public void set跌倒(int fall) { this.fall = fall; }
+        @JsonProperty("打架")
+        public void set打架(int fight) { this.fight = fight; }
+        @JsonProperty("离岗")
+        public void set离岗(int absent) { this.absent = absent; }
+        @JsonProperty("疲劳")
+        public void set疲劳(int fatigue) { this.fatigue = fatigue; }
     }
 }

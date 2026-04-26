@@ -36,6 +36,16 @@ public class AppConfig {
     public QwenVLConfig getQwenVl() {
         return qwenVl;
     }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    private String apiKey;
     
     // Setters
     public void setFile(FileConfig file) {

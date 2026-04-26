@@ -1,26 +1,25 @@
-# 忽略临时文件和缓存，但保留有用的模型和配置文件
-# 注意：小白用户请保留 models/ 目录中的预训练模型文件
-
-# Python缓存
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
+.venv/
 
-# IDE文件
+# IDE files
 .idea/
-.vscode/settings.json
+.vscode/
 *.swp
 *.swo
 
-# 日志文件（保留重要的错误日志）
+# Logs
 *.log
 
-# 临时文件
+# Temp files
 temp/
 *.tmp
 *.bak
+*.gitignore.bak
 
-# 大文件（超过100MB的文件会被GitHub拒绝）
+# Large media files
 *.mp4
 *.mov
 *.avi
@@ -29,19 +28,30 @@ temp/
 *.rar
 *.7z
 
-# AI模型权重文件（如果太大可以忽略）
+# AI model weights (uncomment if too large)
 # weights/
 # *.pt
 # *.pth
 # *.bin
 # *.safetensors
 
-# 运行结果（包含检测结果的目录）
-# results/
-
-# 构建产物
+# Build artifacts
 target/
+*.class
+*.war
+*.jar
 
-# 系统文件
+# Environment files
+.env
+
+# System files
 .DS_Store
 Thumbs.db
+.gstack/
+node_modules/
+
+
+# Detection output data
+data/
+# Claude Code session
+.claude/

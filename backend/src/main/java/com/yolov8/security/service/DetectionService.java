@@ -130,27 +130,15 @@ public class DetectionService {
 
     private StatsResponse.BehaviorCounts calculateBehaviorCounts(List<DetectionData> detections) {
         StatsResponse.BehaviorCounts behaviorCounts = new StatsResponse.BehaviorCounts();
-        behaviorCounts.set跌倒(0);
-        behaviorCounts.set打架(0);
-        behaviorCounts.set离岗(0);
-        behaviorCounts.set疲劳(0);
 
         for (DetectionData detection : detections) {
             if (detection.getActions() != null) {
                 for (String action : detection.getActions()) {
                     switch (action) {
-                        case "跌倒":
-                            behaviorCounts.set跌倒(behaviorCounts.get跌倒() + 1);
-                            break;
-                        case "打架":
-                            behaviorCounts.set打架(behaviorCounts.get打架() + 1);
-                            break;
-                        case "离岗":
-                            behaviorCounts.set离岗(behaviorCounts.get离岗() + 1);
-                            break;
-                        case "疲劳":
-                            behaviorCounts.set疲劳(behaviorCounts.get疲劳() + 1);
-                            break;
+                        case "跌倒": behaviorCounts.setFall(behaviorCounts.getFall() + 1); break;
+                        case "打架": behaviorCounts.setFight(behaviorCounts.getFight() + 1); break;
+                        case "离岗": behaviorCounts.setAbsent(behaviorCounts.getAbsent() + 1); break;
+                        case "疲劳": behaviorCounts.setFatigue(behaviorCounts.getFatigue() + 1); break;
                     }
                 }
             }

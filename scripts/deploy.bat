@@ -33,6 +33,11 @@ if not exist "models\yolov8n.pt" (
 echo Building Docker image...
 docker-compose build
 
+:: Build local JAR with JVM crash diagnostics
+if exist "backend\pom.xml" (
+    call mvn -f backend\pom.xml -DskipTests package
+)
+
 echo Starting services...
 docker-compose up -d
 
