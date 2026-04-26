@@ -10,7 +10,7 @@
 | **index.html** | 实时监控仪表板 - 包含：视频流显示、实时统计、图表、检测结果 |
 
 ## 访问地址
-- 本地: http://localhost:8080/yolov8-security
+- 本地: http://localhost:5000
 - Docker: http://localhost:5000
 
 ## 功能特性

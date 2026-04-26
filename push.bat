@@ -6,7 +6,7 @@ echo.
 
 cd /d "%~dp0"
 
-git add -A
+git add .
 git status --short
 if errorlevel 1 (
     echo [ERROR] git add failed
@@ -29,5 +29,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo [OK] Pushed to GitHub
+echo ========================================
+echo   SUCCESS! Uploaded to GitHub
+echo   https://github.com/X-Xcc/EverBright
+echo ========================================
+echo.
 pause

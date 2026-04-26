@@ -94,7 +94,7 @@ echo ========================================
 echo.
 
 :: 1. Spring Boot backend
-echo [START] Backend (http://localhost:8080)
+echo [START] Backend (http://localhost:5000)
 start "YOLOv8 Backend" cmd /k "cd /d "%BACKEND_DIR%" && java -jar target\yolov8-security.war"
 
 echo [WAIT] 10s for backend...
@@ -115,7 +115,7 @@ echo ========================================
 echo   All services started!
 echo ========================================
 echo.
-echo   Backend:   http://localhost:8080
+echo   Backend:   http://localhost:5000
 echo   Qwen VL:   http://localhost:5001
 echo   Detection: check "YOLOv8 Detection" window
 echo.
@@ -123,5 +123,5 @@ echo   Stop: close windows or Ctrl+C in each
 echo.
 echo   Press any key to open browser...
 pause >nul
-start http://localhost:8080
+start http://localhost:5000
 pause
