@@ -34,8 +34,9 @@ if torch.cuda.is_available():
 else:
     print("使用设备: 🖥 CPU")
     print("警告: GPU 不可用，将使用 CPU（性能会降低）")
-print("=" * 60 + "\n")
-# =======================================================
+print("=" * 60 + "\n") 
+# =====================
+# ==================================
 
 # 尝试导入 requests，用于发送视频帧到 web 服务器
 try:
@@ -655,7 +656,6 @@ class AlertManager:
             if current_time - self.last_alert_time > self.config.ALERT_COOLDOWN:
                 # 触发报警
                 frame = self._draw_alert_banner(frame)
-                self._play_alarm_sound()
                 self.last_alert_time = current_time
                 alert_triggered = True
             else:
@@ -677,12 +677,7 @@ class AlertManager:
         banner = Utils.draw_text_cn(banner, alert_text, (text_x, 5), text_size, (255, 255, 255))
         return np.vstack((banner, img))
 
-    def _play_alarm_sound(self) -> None:
-        """播放报警声音（已移除）"""
-        pass
-
-
-# ===================== UI模块 =====================
+    # ===================== UI模块 =====================
 class UIManager:
     """UI绘制管理模块"""
 
@@ -952,98 +947,22 @@ class SecurityMonitor:
             encode_params = [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
             _, img_encoded = cv2.imencode('.jpg', frame_resized, encode_params)
 
+            # 打印发送信息
+            print(f"发送帧到: {WEB_SERVER_URL}/api/update_frame")
+            
             # 使用连接池发送 POST 请求
             response = self.session.post(
                 f"{WEB_SERVER_URL}/api/update_frame",
                 files={'frame': ('frame.jpg', img_encoded.tobytes(), 'image/jpeg')},
                 timeout=0.5  # 减少超时时间
             )
+            print(f"发送成功，状态码: {response.status_code}")
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
             # 发送失败不报错，静默处理
+            print(f"发送失败: {str(e)}")
             return False
     
-    def print_model_quantization_info(self):
-        """打印模型量化相关信息"""
-        print("\n" + "=" * 60)
-        print("模型量化信息")
-        print("=" * 60)
-        
-        try:
-            model = self.model.model
-            
-            # 统计模型层数
-            total_layers = 0
-            conv_layers = 0
-            linear_layers = 0
-            quantized_layers = 0
-            
-            for name, module in model.named_modules():
-                total_layers += 1
-                if isinstance(module, torch.nn.Conv2d):
-                    conv_layers += 1
-                elif isinstance(module, torch.nn.Linear):
-                    linear_layers += 1
-                
-                # 检查是否量化
-                if hasattr(module, 'weight') and module.weight.dtype != torch.float32:
-                    quantized_layers += 1
-                    print(f"量化层: {name}, 权重类型: {module.weight.dtype}")
-            
-            print(f"\n模型统计:")
-            print(f"总层数: {total_layers}")
-            print(f"卷积层: {conv_layers}")
-            print(f"全连接层: {linear_layers}")
-            print(f"量化层: {quantized_layers}")
-            
-            # 检查模型是否使用半精度
-            gpu_available = torch.cuda.is_available()
-            half_precision = gpu_available
-            print(f"\n使用半精度推理: {gpu_available}")
-            
-            # 计算模型大小
-            model_size_mb = 0
-            if hasattr(model, 'state_dict'):
-                state_dict = model.state_dict()
-                model_size = sum(p.numel() * p.element_size() for p in state_dict.values())
-                model_size_mb = model_size / 1024 / 1024
-                print(f"模型大小: {model_size_mb:.2f} MB")
-            
-            # 发送模型信息到后端
-            self.send_model_info_to_backend({
-                'precision': 'FP16' if half_precision else 'FP32',
-                'device': 'GPU' if gpu_available else 'CPU',
-                'model_size_mb': round(model_size_mb, 2),
-                'total_layers': total_layers,
-                'conv_layers': conv_layers,
-                'quantized_layers': quantized_layers,
-                'gpu_available': gpu_available,
-                'half_precision': half_precision
-            })
-            
-        except Exception as e:
-            print(f"获取模型量化信息失败: {e}")
-        
-        print("=" * 60)
-    
-    def send_model_info_to_backend(self, model_info: dict):
-        """发送模型量化信息到后端"""
-        if not self.enable_web_stream or self.session is None:
-            return
-        
-        try:
-            response = self.session.post(
-                f"{WEB_SERVER_URL}/api/model_info",
-                json=model_info,
-                timeout=2.0
-            )
-            if response.status_code == 200:
-                print("模型量化信息已发送到后端")
-            else:
-                print(f"发送模型信息失败: {response.status_code}")
-        except Exception as e:
-            print(f"发送模型信息失败: {e}")
-
     def run(self):
         """主运行循环"""
         print("系统启动...按Enter退出")
@@ -1137,7 +1056,7 @@ class SecurityMonitor:
                     self.data_saver.save_frame_image(frame, actions, timestamp)
 
             # 11. 检查退出
-            key = cv2.waitKey(1)
+            key = cv2.waitKey(1) & 0xFF
             if key == 13:  # Enter键
                 print("系统正在退出...")
                 break

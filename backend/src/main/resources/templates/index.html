@@ -962,8 +962,23 @@
                         // 优化视频流加载
                         const videoFeed = document.getElementById('videoFeed');
 
-                        // MJPEG 持续推送，无需定时重连；频繁改 src 会导致闪烁与重复连接
-                        videoFeed.src = '/yolov8-security/video_feed?t=' + Date.now();
+                        // 强制使用新的 URL，避免缓存
+                        function updateVideoFeed() {
+                            const newUrl = '/yolov8-security/video_feed?t=' + Date.now();
+                            videoFeed.src = newUrl;
+                            console.log('视频流 URL 已更新:', newUrl);
+                        }
+
+                        // 页面加载时更新视频流 URL
+                        window.onload = function() {
+                            updateVideoFeed();
+                        };
+
+                        // 视频加载失败时重新尝试
+                        videoFeed.onerror = function() {
+                            console.error('视频流加载失败，正在重新尝试...');
+                            setTimeout(updateVideoFeed, 1000);
+                        };
                     </script>
                     <div class="video-actions">
                         <button class="v-btn" id="btnFull">⛶ 全屏</button>
@@ -1607,7 +1622,7 @@
             
             // 刷新视频流 - 添加时间戳强制刷新
             const timestamp = new Date().getTime();
-            videoFeed.src = `/video_feed?cam=${cam}&t=${timestamp}`;
+            videoFeed.src = `/yolov8-security/video_feed?cam=${cam}&t=${timestamp}`;
             
             console.log('视频流已刷新:', videoFeed.src);
         }

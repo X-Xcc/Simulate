@@ -53,5 +53,13 @@ node_modules/
 
 # Detection output data
 data/
+results/
+
+# Frontend standalone (dashboard served from backend templates)
+frontend/
+
+# Windows build scripts
+*.bat
+
 # Claude Code session
 .claude/
