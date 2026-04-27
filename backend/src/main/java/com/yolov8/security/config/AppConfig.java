@@ -46,7 +46,17 @@ public class AppConfig {
     }
 
     private String apiKey;
-    
+
+    private String jwtSecret;
+
+    public String getJwtSecret() {
+        return jwtSecret;
+    }
+
+    public void setJwtSecret(String jwtSecret) {
+        this.jwtSecret = jwtSecret;
+    }
+
     // Setters
     public void setFile(FileConfig file) {
         this.file = file;
