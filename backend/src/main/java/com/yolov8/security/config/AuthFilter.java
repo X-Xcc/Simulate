@@ -36,6 +36,12 @@ public class AuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
+        // Strip context-path for matching
+        String cp = request.getContextPath();
+        if (cp != null && !cp.isEmpty() && path.startsWith(cp)) {
+            path = path.substring(cp.length());
+        }
+        if (path.isEmpty()) path = "/";
         for (String pub : PUBLIC_PATHS) {
             if (matcher.match(pub, path)) return true;
         }
