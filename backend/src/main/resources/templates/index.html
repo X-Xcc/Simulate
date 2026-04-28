@@ -1212,6 +1212,23 @@
 
         /** Backend serves files at GET /api/images/{name} (see ApiController) */
         const API_BASE = '/yolov8-security';
+
+        /** Wraps fetch() to auto-attach JWT Bearer token from storage */
+        async function authFetch(url, options = {}) {
+            const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
+            const headers = { ...(options.headers || {}) };
+            if (token) {
+                headers['Authorization'] = 'Bearer ' + token;
+            }
+            const res = await fetch(url, { ...options, headers });
+            if (res.status === 401) {
+                sessionStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_token');
+                window.location.href = '/yolov8-security/login';
+                throw new Error('Unauthorized');
+            }
+            return res;
+        }
         const API_IMAGES = API_BASE + '/api/images';
         const NO_SCREENSHOT_SVG = 'data:image/svg+xml,' + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect fill="#1e293b" width="100%" height="100%"/>' +
@@ -1524,7 +1541,7 @@
         document.getElementById('btnDelImages').addEventListener('click', () => {
             openModal('确认删除', '<p>确定要删除所有截图吗？此操作不可恢复。</p>', async () => {
                 try {
-                    const response = await fetch(API_BASE + '/api/delete_all_images', {
+                    const response = await authFetch(API_BASE + '/api/delete_all_images', {
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json' }
                     });
@@ -1550,7 +1567,7 @@
         // 截图按钮 - 打开截图文件夹
         document.getElementById('btnSnap').addEventListener('click', async () => {
             try {
-                const response = await fetch(API_BASE + '/api/open_folder', {
+                const response = await authFetch(API_BASE + '/api/open_folder', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ folder_type: 'screenshots' })
@@ -1578,7 +1595,7 @@
             if (!S.recOn) {
                 // 停止录制时打开视频文件夹
                 try {
-                    const response = await fetch(API_BASE + '/api/open_folder', {
+                    const response = await authFetch(API_BASE + '/api/open_folder', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ folder_type: 'videos' })
@@ -1685,7 +1702,7 @@
             if (statsFetchInFlight) return;
             statsFetchInFlight = true;
             try {
-                const response = await fetch(API_BASE + '/api/stats');
+                const response = await authFetch(API_BASE + '/api/stats');
                 const data = await response.json();
                 
                 // 确保 behaviorCounts 存在
@@ -1892,7 +1909,7 @@
         async function loadAllImages() {
             console.log('加载所有图片...');
             try {
-                const response = await fetch(API_BASE + '/api/images');
+                const response = await authFetch(API_BASE + '/api/images');
                 const data = await response.json();
                 console.log('收到图片列表数据:', data);
                 
@@ -1967,7 +1984,7 @@
         /* ====== Model Quantization Info ====== */
         async function fetchModelInfo() {
             try {
-                const response = await fetch(API_BASE + '/api/model_info');
+                const response = await authFetch(API_BASE + '/api/model_info');
                 const data = await response.json();
                 
                 const sQuantization = document.getElementById('sQuantization');
