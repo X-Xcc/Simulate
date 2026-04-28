@@ -139,6 +139,7 @@ public class DetectionService {
                         case "打架": behaviorCounts.setFight(behaviorCounts.getFight() + 1); break;
                         case "离岗": behaviorCounts.setAbsent(behaviorCounts.getAbsent() + 1); break;
                         case "疲劳": behaviorCounts.setFatigue(behaviorCounts.getFatigue() + 1); break;
+                        case "人员聚集": behaviorCounts.setGather(behaviorCounts.getGather() + 1); break;
                     }
                 }
             }

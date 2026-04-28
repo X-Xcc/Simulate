@@ -2,6 +2,7 @@ package com.yolov8.security.config;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,26 +23,34 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
     private static final String HEADER = "X-API-Key";
     private static final String[] PUBLIC_PATHS = {
-        "/", "/index", "/login", "/static/**", "/error", "/api/login",
+        "/", "/index", "/admin", "/monitor", "/login", "/static/**", "/error", "/api/login",
         "/video_feed", "/api/images/**"
     };
 
     private final AntPathMatcher matcher = new AntPathMatcher();
-    private final String apiKey;
-    private final SecretKey jwtKey;
+    private final AppConfig appConfig;
+    private String apiKey;
+    private SecretKey jwtKey;
 
     public AuthFilter(AppConfig appConfig) {
+        this.appConfig = appConfig;
+    }
+
+    @PostConstruct
+    public void init() {
         this.apiKey = appConfig.getApiKey();
-        // 预构建 JWT 密钥，避免每次请求重复解析
-        this.jwtKey = Keys.hmacShaKeyFor(
-            appConfig.getJwtSecret().getBytes(StandardCharsets.UTF_8)
-        );
+        String secret = appConfig.getJwtSecret();
+        if (secret != null && !secret.isBlank()) {
+            this.jwtKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        } else {
+            this.jwtKey = null;
+            log.warn("JWT secret is not configured, JWT auth will be disabled");
+        }
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // 移除 context-path 后进行路径匹配
         String cp = request.getContextPath();
         if (!cp.isEmpty() && path.startsWith(cp)) {
             path = path.substring(cp.length());
@@ -60,7 +69,6 @@ public class AuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        // 1. 静态 API Key（向后兼容）
         if (apiKey != null && !apiKey.isBlank()) {
             String key = request.getHeader(HEADER);
             if (apiKey.equals(key)) {
@@ -69,9 +77,8 @@ public class AuthFilter extends OncePerRequestFilter {
             }
         }
 
-        // 2. Bearer JWT Token（登录后颁发）
         String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        if (authHeader != null && authHeader.startsWith("Bearer ") && jwtKey != null) {
             String token = authHeader.substring(7);
             try {
                 Jwts.parser()
@@ -81,11 +88,10 @@ public class AuthFilter extends OncePerRequestFilter {
                 chain.doFilter(request, response);
                 return;
             } catch (Exception e) {
-                // JWT 校验失败，继续执行拒绝逻辑
             }
         }
 
-        log.warn("未授权访问 {} 来自 {}", request.getRequestURI(), request.getRemoteAddr());
+        log.warn("Unauthorized access {} from {}", request.getRequestURI(), request.getRemoteAddr());
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"status\":\"error\",\"message\":\"Unauthorized\"}");

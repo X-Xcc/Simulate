@@ -78,6 +78,10 @@ class Config:
     # 眼疲劳参数
     EYE_AR_THRESHOLD = 0.2  # EAR阈值，低于此值认为是闭眼
     EYE_FATIGUE_FRAMES = 30  # 连续多少帧EAR过低判定为疲劳
+    # 人员聚集参数（讲稿要求：阈值3人、聚集半径<1.5m、持续≥3s）
+    GATHER_THRESHOLD = 3        # 聚集人数阈值
+    GATHER_RADIUS = 0.08       # 归一化聚集半径（约占画面8%，实际按像素换算）
+    GATHER_DURATION = 3.0       # 聚集持续秒数
 
     # 报警参数
     ALERT_COOLDOWN = 5.0
@@ -455,6 +459,69 @@ class DetectionModule:
 
         return len(fighting_persons) > 0, list(fighting_persons)
 
+    def detect_gathering(self, keypoints_list: List[np.ndarray],
+                         img_shape: Tuple[int, int],
+                         gather_start_times: Optional[dict]) -> Tuple[bool, int, float]:
+        """检测人员聚集行为
+        讲稿标准：聚集半径<1.5m、持续≥3s、人数阈值≥3人
+        返回：(是否聚集, 聚集人数, 聚集置信度)
+        """
+        n = len(keypoints_list)
+        if n < self.config.GATHER_THRESHOLD:
+            return False, 0, 0.0
+
+        h, w = img_shape[:2]
+        max_dim = max(w, h)
+
+        # 聚类：找出彼此距离在阈值内的人员
+        in_gather = [False] * n
+        clusters = []
+
+        for i, kp_i in enumerate(keypoints_list):
+            center_i = Utils.get_body_center(kp_i)
+            if center_i is None:
+                continue
+            cluster = [i]
+            for j, kp_j in enumerate(keypoints_list):
+                if j <= i:
+                    continue
+                center_j = Utils.get_body_center(kp_j)
+                if center_j is None:
+                    continue
+                # 归一化距离
+                dist = Utils.calculate_distance(center_i, center_j) / max_dim
+                if dist < self.config.GATHER_RADIUS:
+                    cluster.append(j)
+            clusters.append(cluster)
+
+        # 取最大聚集簇
+        best_cluster = max(clusters, key=len)
+        gather_count = len(best_cluster)
+
+        if gather_count < self.config.GATHER_THRESHOLD:
+            return False, 0, 0.0
+
+        # 计算聚集持续时间
+        current_time = time.time()
+        cluster_key = tuple(sorted(best_cluster))
+        if gather_start_times is None:
+            gather_start_times = {}
+
+        if all(in_gather[i] for i in best_cluster):
+            # 之前就在聚集中
+            pass
+        else:
+            # 新聚集，记录开始时间
+            gather_start_times[cluster_key] = current_time
+
+        start_time = gather_start_times.get(cluster_key, current_time)
+        duration = current_time - start_time
+
+        confidence = min(gather_count / 8.0, 1.0)  # 人数越多置信度越高
+
+        is_gathering = duration >= self.config.GATHER_DURATION
+        return is_gathering, gather_count, confidence
+
     def detect_fatigue(self, keypoints: np.ndarray, prev_center: Optional[np.ndarray],
                        last_move_time: float) -> Tuple[bool, float, np.ndarray, float]:
         """检测疲劳状态，返回检测结果、置信度、新的中心和时间"""
@@ -504,7 +571,8 @@ class DetectionModule:
 
     def detect_security_actions(self, pose_results: List, prev_centers: Optional[List[np.ndarray]],
                                 last_move_times: Optional[List[float]],
-                                eye_fatigue_counts: Optional[List[int]] = None) -> Tuple[List[str], int, List[int], List[int], List[int], List[np.ndarray], List[float], List[int], dict]:
+                                eye_fatigue_counts: Optional[List[int]] = None,
+                                gather_start_times: Optional[dict] = None) -> Tuple[List[str], int, List[int], List[int], List[int], List[np.ndarray], List[float], List[int], dict, dict]:
         """检测所有安全行为，支持多人检测"""
         detected_actions = set()
         person_count = 0
@@ -514,6 +582,7 @@ class DetectionModule:
         new_prev_centers = prev_centers if prev_centers is not None else []
         new_last_move_times = last_move_times if last_move_times is not None else []
         new_eye_fatigue_counts = eye_fatigue_counts if eye_fatigue_counts is not None else []
+        new_gather_start_times = gather_start_times if gather_start_times is not None else {}
         fighting_persons = []
         fatigued_persons = []
         eye_fatigued_persons = []
@@ -593,9 +662,20 @@ class DetectionModule:
             # 离岗检测
             if person_count == 0:
                 detected_actions.add("离岗")
-                action_confidences["离岗"] = 1.0  # 简化处理
+                action_confidences["离岗"] = 1.0
 
-        return list(detected_actions), person_count, fighting_persons, fatigued_persons, eye_fatigued_persons, new_prev_centers, new_last_move_times, new_eye_fatigue_counts, action_confidences
+            # 人员聚集检测
+            if person_count >= 2 and img_shape is not None:
+                is_gathering, gather_count, gather_conf = self.detect_gathering(
+                    keypoints_list, img_shape, new_gather_start_times
+                )
+                if is_gathering:
+                    detected_actions.add("人员聚集")
+                    action_confidences["人员聚集"] = gather_conf
+
+        return (list(detected_actions), person_count, fighting_persons, fatigued_persons,
+                eye_fatigued_persons, new_prev_centers, new_last_move_times,
+                new_eye_fatigue_counts, action_confidences, new_gather_start_times)
 
 
 # ===================== 数据保存模块 =====================
@@ -976,6 +1056,7 @@ class SecurityMonitor:
         prev_centers = []
         last_move_times = []
         eye_fatigue_counts = []
+        gather_start_times = {}
         logs = []
         prev_actions = []
 
@@ -995,8 +1076,8 @@ class SecurityMonitor:
             )
 
             # 3. 检测行为
-            actions, person_num, fighting_persons, fatigued_persons, eye_fatigued_persons, prev_centers, last_move_times, eye_fatigue_counts, action_confidences = self.detection_module.detect_security_actions(
-                results, prev_centers, last_move_times, eye_fatigue_counts
+            actions, person_num, fighting_persons, fatigued_persons, eye_fatigued_persons, prev_centers, last_move_times, eye_fatigue_counts, action_confidences, gather_start_times = self.detection_module.detect_security_actions(
+                results, prev_centers, last_move_times, eye_fatigue_counts, gather_start_times
             )
 
             # 4. 可视化关键点
@@ -1011,7 +1092,20 @@ class SecurityMonitor:
                 all_fatigued = list(set(fatigued_persons + eye_fatigued_persons))
                 self._draw_fatigued_persons(results[0], all_fatigued, frame_out)
 
-            # 7. 发送原始帧到 web 服务器（不带标记的纯净视频）
+            # 7. 绘制人员聚集框
+            if "人员聚集" in actions and results and len(results) > 0:
+                kp_list = [r.keypoints.data[j].cpu().numpy() if hasattr(r.keypoints.data[j], 'cpu') else r.keypoints.data[j]
+                           for j in range(len(r.keypoints.data))]
+                # 重新收集本帧所有关键点
+                all_kp = []
+                for r in results:
+                    if r.keypoints is not None:
+                        for kp in r.keypoints.data:
+                            all_kp.append(kp.cpu().numpy() if hasattr(kp, 'cpu') else kp)
+                if len(all_kp) >= self.config.GATHER_THRESHOLD:
+                    self._draw_gathering_persons(results[0], all_kp, frame_out)
+
+            # 8. 发送原始帧到 web 服务器（不带标记的纯净视频）
             if frame_count % SEND_FRAME_INTERVAL == 0:
                 self.send_frame_to_web(frame)
 
@@ -1117,13 +1211,61 @@ class SecurityMonitor:
                 for i in fatigued_persons:
                     if i < len(keypoints):
                         kp = keypoints[i].cpu().numpy() if hasattr(keypoints[i], 'cpu') else keypoints[i]
-                        # 绘制红色关键点
                         for j in range(len(kp)):
-                            if kp[j][2] > 0.5:  # 只绘制置信度高的关键点
+                            if kp[j][2] > 0.5:
                                 x, y = int(kp[j][0]), int(kp[j][1])
                                 cv2.circle(frame_out, (x, y), 5, (0, 0, 255), -1)
         except Exception as e:
             print(f"标红疲劳人员关键点失败: {e}")
+
+    def _draw_gathering_persons(self, result, keypoints_list, frame_out):
+        """用黄色圆弧框选聚集人员"""
+        try:
+            n = len(keypoints_list)
+            if n < self.config.GATHER_THRESHOLD:
+                return
+            h, w = frame_out.shape[:2]
+            max_dim = max(w, h)
+            # 找聚集簇
+            clusters = []
+            used = [False] * n
+            for i in range(n):
+                if used[i]:
+                    continue
+                center_i = Utils.get_body_center(keypoints_list[i])
+                if center_i is None:
+                    continue
+                cluster = [i]
+                used[i] = True
+                for j in range(i + 1, n):
+                    if used[j]:
+                        continue
+                    center_j = Utils.get_body_center(keypoints_list[j])
+                    if center_j is None:
+                        continue
+                    dist = Utils.calculate_distance(center_i, center_j) / max_dim
+                    if dist < self.config.GATHER_RADIUS:
+                        cluster.append(j)
+                        used[j] = True
+                clusters.append(cluster)
+            best = max(clusters, key=len) if clusters else []
+            if len(best) < self.config.GATHER_THRESHOLD:
+                return
+            # 取最外圈
+            xs = [Utils.get_body_center(keypoints_list[i])[0] * w for i in best]
+            ys = [Utils.get_body_center(keypoints_list[i])[1] * h for i in best]
+            if not xs:
+                return
+            min_x, max_x = int(min(xs)), int(max(xs))
+            min_y, max_y = int(min(ys)), int(max(ys))
+            pad = 20
+            cv2.rectangle(frame_out, (min_x - pad, min_y - pad), (max_x + pad, max_y + pad),
+                         (0, 255, 255), 3)
+            label = f"人员聚集 {len(best)}人"
+            cv2.putText(frame_out, label, (min_x - pad, min_y - pad - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+        except Exception as e:
+            print(f"绘制聚集人员失败: {e}")
 
     def _draw_ui(self, frame_out, is_alarm, actions, logs, action_confidences, person_num, fps):
         """绘制UI"""

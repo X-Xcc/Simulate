@@ -45,26 +45,31 @@ public class StatsResponse {
         private int absent;
         @JsonProperty("疲劳")
         private int fatigue;
+        @JsonProperty("人员聚集")
+        private int gather;
 
         public BehaviorCounts() {
         }
 
-        public BehaviorCounts(int fall, int fight, int absent, int fatigue) {
+        public BehaviorCounts(int fall, int fight, int absent, int fatigue, int gather) {
             this.fall = fall;
             this.fight = fight;
             this.absent = absent;
             this.fatigue = fatigue;
+            this.gather = gather;
         }
 
         public int getFall() { return fall; }
         public int getFight() { return fight; }
         public int getAbsent() { return absent; }
         public int getFatigue() { return fatigue; }
+        public int getGather() { return gather; }
 
         public void setFall(int fall) { this.fall = fall; }
         public void setFight(int fight) { this.fight = fight; }
         public void setAbsent(int absent) { this.absent = absent; }
         public void setFatigue(int fatigue) { this.fatigue = fatigue; }
+        public void setGather(int gather) { this.gather = gather; }
 
         @JsonProperty("跌倒")
         public int get跌倒() { return fall; }
@@ -74,6 +79,8 @@ public class StatsResponse {
         public int get离岗() { return absent; }
         @JsonProperty("疲劳")
         public int get疲劳() { return fatigue; }
+        @JsonProperty("人员聚集")
+        public int get人员聚集() { return gather; }
 
         @JsonProperty("跌倒")
         public void set跌倒(int fall) { this.fall = fall; }
@@ -83,5 +90,7 @@ public class StatsResponse {
         public void set离岗(int absent) { this.absent = absent; }
         @JsonProperty("疲劳")
         public void set疲劳(int fatigue) { this.fatigue = fatigue; }
+        @JsonProperty("人员聚集")
+        public void set人员聚集(int gather) { this.gather = gather; }
     }
 }
