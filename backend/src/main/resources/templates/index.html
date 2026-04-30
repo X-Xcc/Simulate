@@ -928,6 +928,19 @@
 
                 <div class="stat-card">
                     <div class="stat-card-top">
+                        <div class="stat-icon green">👥</div>
+                        <span class="stat-trend neutral">区域</span>
+                    </div>
+                    <div class="stat-value" id="sGather">0</div>
+                    <div class="stat-label">人员聚集</div>
+                    <div class="stat-bar-row">
+                        <div class="stat-bar"><div class="stat-bar-fill" id="sGatherBar" style="width:0%; background:var(--green)"></div></div>
+                        <span class="stat-bar-pct" id="sGatherPct">0%</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-card-top">
                         <div class="stat-icon green">📡</div>
                         <span class="stat-trend up">120台</span>
                     </div>
@@ -1511,12 +1524,13 @@ const TYPES = [
     { name:'跌倒', cls:'badge-orange', color:'#bf8700' },
     { name:'打架', cls:'badge-red', color:'#cf222e' },
     { name:'疲劳', cls:'badge-purple', color:'#8250df' },
-    { name:'离岗', cls:'badge-blue', color:'#0969da' }
+    { name:'离岗', cls:'badge-blue', color:'#0969da' },
+    { name:'人员聚集', cls:'badge-green', color:'#1a7f37' }
 ];
 const CAMS = ['A区-监舍走廊','B区-放风场','C区-劳动车间','D区-食堂'];
 
 /* ===== STATE ===== */
-const S = { total:0, images:0, fall:0, fight:0, fatigue:0, leave:0 };
+const S = { total:0, images:0, fall:0, fight:0, fatigue:0, leave:0, gather:0 };
 
 async function authFetch(url, opts={}) {
     const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
@@ -1613,31 +1627,13 @@ function testAlert() {
 function dismissTicker() { document.getElementById('alertTicker').classList.remove('show'); }
 
 /* ===== LINE CHART ===== */
-function genLineData(range) {
-    const labels=[], data=[];
-    const now = new Date();
-    let count, step;
-    if (range==='min') { count=20; step=60000; }
-    else if (range==='hour') { count=24; step=3600000; }
-    else { count=7; step=86400000; }
-    for (let i=count-1; i>=0; i--) {
-        const t = new Date(now - i*step);
-        if (range==='min') labels.push(String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0'));
-        else if (range==='hour') labels.push(String(t.getHours()).padStart(2,'0')+':00');
-        else labels.push((t.getMonth()+1)+'/'+t.getDate());
-        data.push(Math.floor(Math.random()*8+1));
-    }
-    return { labels, data };
-}
-
 const lineCtx = document.getElementById('lineChart').getContext('2d');
-const lineInit = genLineData('min');
 const lineChart = new Chart(lineCtx, {
     type: 'line',
     data: {
-        labels: lineInit.labels,
+        labels: [],
         datasets: [{
-            data: lineInit.data,
+            data: [],
             borderColor: '#0969da',
             backgroundColor: 'rgba(9,105,218,0.08)',
             fill: true,
@@ -1675,10 +1671,8 @@ const lineChart = new Chart(lineCtx, {
 function setChartRange(range, btn) {
     document.querySelectorAll('[id^=chartBtn]').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
-    const d = genLineData(range);
-    lineChart.data.labels = d.labels;
-    lineChart.data.datasets[0].data = d.data;
-    lineChart.update();
+    // Refresh data which will rebuild the chart with real timestamps
+    fetchData();
 }
 
 /* ===== PIE CHART ===== */
@@ -1778,35 +1772,17 @@ function buildDetRow(det, isFull) {
     </tr>`;
 }
 
-function genMockDets(count) {
-    const result = [];
-    const now = Date.now();
-    for (let i=0; i<count; i++) {
-        const ti = Math.random() < 0.65 ? 0 : Math.floor(Math.random()*4);
-        const t = new Date(now - i * 40000);
-        const pad = v => String(v).padStart(2,'0');
-        result.push({
-            type: TYPES[ti].name,
-            timeStr: t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate())+' '+pad(t.getHours())+':'+pad(t.getMinutes())+':'+pad(t.getSeconds()),
-            people: Math.floor(Math.random()*3)+1,
-            cam: 'IPC-'+['A','B','C','D'][Math.floor(Math.random()*4)]+String(Math.floor(Math.random()*3)+1).padStart(2,'0'),
-            conf: (Math.random()*14+85).toFixed(1)
-        });
-    }
-    return result;
-}
-
 function updateDetTable(data) {
     const tbody = document.getElementById('detTableBody');
     if (!tbody) return;
     const dets = data?.allDetections?.length > 0 ? data.allDetections.slice(0,20).map(d => ({
-        type: d.actions?.[0] || '跌倒',
+        type: d.actions?.[0] || '—',
         timeStr: d.timestamp,
-        people: d.person_count ?? d.personCount ?? 1,
+        people: d.person_count ?? d.personCount ?? 0,
         cam: 'IPC-A01',
         conf: '85.0',
         imageFilename: d.image_filename || d.imageFilename || ''
-    })) : genMockDets(8);
+    })) : [];
 
     tbody.innerHTML = dets.map(d => buildDetRow(d)).join('');
 }
@@ -1815,7 +1791,9 @@ function updateDetTable(data) {
 function updateRecordTable() {
     const tbody = document.getElementById('recordTableBody');
     if (!tbody) return;
-    const dets = genMockDets(50);
+    // 使用 API 真实数据（复用 fetchData 已加载的最新50条）
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px">请查看「实时监控」页面的最近检测记录</td></tr>';
+    const cnt = document.getElementById('recordCount');
     tbody.innerHTML = dets.map(d => buildDetRow(d, true)).join('');
     const cnt = document.getElementById('recordCount');
     if (cnt) cnt.textContent = '共 ' + dets.length + ' 条记录';
@@ -1888,6 +1866,7 @@ document.getElementById('imageViewer').addEventListener('click', e => { if(e.tar
 async function fetchData() {
     try {
         const res = await authFetch(API_BASE + '/api/stats');
+        if (!res.ok) { updateDetTable(null); return; }
         const data = await res.json();
         const bc = data.behaviorCounts || {};
         S.total = data.totalDetections || 0;
@@ -1896,6 +1875,7 @@ async function fetchData() {
         S.fight = bc['打架'] || 0;
         S.fatigue = bc['疲劳'] || 0;
         S.leave = bc['离岗'] || 0;
+        S.gather = bc['人员聚集'] || 0;
 
         const setEl = (id, val, barId, pctId) => {
             const el = document.getElementById(id);
@@ -1909,48 +1889,67 @@ async function fetchData() {
         setEl('sFight', S.fight, 'sFightBar', 'sFightPct');
         setEl('sFatigue', S.fatigue, 'sFatigueBar', 'sFatiguePct');
         setEl('sLeave', S.leave, 'sLeaveBar', 'sLeavePct');
+        setEl('sGather', S.gather, 'sGatherBar', 'sGatherPct');
 
-        // Update pie chart
-        pieChart.data.datasets[0].data = [S.fall, S.fight, S.leave, S.fatigue];
+        // Update pie chart — only show types that have > 0
+        const pieData = [];
+        const pieLabels = [];
+        const pieColors = [];
+        const entries = [
+            { label:'跌倒', val:S.fall, color:'#bf8700' },
+            { label:'打架', val:S.fight, color:'#cf222e' },
+            { label:'离岗', val:S.leave, color:'#0969da' },
+            { label:'疲劳', val:S.fatigue, color:'#8250df' },
+            { label:'人员聚集', val:S.gather, color:'#1a7f37' }
+        ];
+        entries.forEach(e => {
+            if (e.val > 0) { pieLabels.push(e.label); pieData.push(e.val); pieColors.push(e.color); }
+        });
+        if (pieData.length === 0) { pieLabels.push('无数据'); pieData.push(1); pieColors.push('#e4e6eb'); }
+        pieChart.data.labels = pieLabels;
+        pieChart.data.datasets[0].data = pieData;
+        pieChart.data.datasets[0].backgroundColor = pieColors;
         pieChart.update('none');
 
-        // Update line chart with mock data
-        const labels=[], data=[];
+        // Build line chart from real detection timestamps
+        const ad = data.allDetections || [];
         const now = new Date();
-        for (let i=19; i>=0; i--) {
-            const t = new Date(now - i*60000);
-            labels.push(String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')+':'+String(t.getSeconds()).padStart(2,'0'));
-            data.push(Math.floor(Math.random()*8+1));
+        const labels = [], values = [];
+        // Determine range from active button
+        const activeBtn = document.querySelector('[id^=chartBtn].active');
+        const range = activeBtn?.id === 'chartBtnHour' ? 'hour' : activeBtn?.id === 'chartBtnDay' ? 'day' : 'min';
+        let count, step, timeKeyFmt;
+        if (range === 'hour') { count = 24; step = 3600000; timeKeyFmt = (t) => String(t.getHours()).padStart(2,'0')+':00'; }
+        else if (range === 'day') { count = 7; step = 86400000; timeKeyFmt = (t) => (t.getMonth()+1)+'/'+t.getDate(); }
+        else { count = 20; step = 60000; timeKeyFmt = (t) => String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'); }
+        const buckets = {};
+        for (let i=count-1; i>=0; i--) {
+            const t = new Date(now - i*step);
+            const key = timeKeyFmt(t);
+            labels.push(key);
+            buckets[key] = 0;
         }
+        const rangeMin = count * step;
+        ad.forEach(d => {
+            if (!d.timestamp) return;
+            try {
+                const dt = new Date(d.timestamp.replace(/-/g,'/'));
+                const diffMs = now - dt;
+                if (diffMs >= 0 && diffMs < rangeMin) {
+                    const key = timeKeyFmt(dt);
+                    if (buckets[key] !== undefined) buckets[key]++;
+                }
+            } catch(e) {}
+        });
+        labels.forEach(k => values.push(buckets[k] || 0));
         lineChart.data.labels = labels;
-        lineChart.data.datasets[0].data = data;
+        lineChart.data.datasets[0].data = values;
         lineChart.update('none');
 
         updateDetTable(data);
 
     } catch(e) {
-        // Use mock data when API unavailable
-        const fall = Math.floor(Math.random()*15+5);
-        const fight = Math.floor(Math.random()*5+1);
-        const fatigue = Math.floor(Math.random()*8+2);
-        const leave = Math.floor(Math.random()*12+5);
-        const total = fall + fight + fatigue + leave + Math.floor(Math.random()*200+100);
-
-        const setMock = (id, val, barId) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = val;
-            const bar = document.getElementById(barId);
-            if (bar) bar.style.width = Math.min(val/(total||1)*100,100)+'%';
-        };
-
-        setMock('sTotal', total, 'sTotalBar');
-        setMock('sFall', fall, 'sFallBar');
-        setMock('sFight', fight, 'sFightBar');
-        setMock('sFatigue', fatigue, 'sFatigueBar');
-        setMock('sLeave', leave, 'sLeaveBar');
-
-        pieChart.data.datasets[0].data = [fall, fight, leave, fatigue];
-        pieChart.update('none');
+        console.warn('fetchData error:', e);
         updateDetTable(null);
     }
 }

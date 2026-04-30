@@ -1,65 +1,38 @@
-# Python cache
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.venv/
+.conda/
 
-# IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Logs
-*.log
-
-# Temp files
-temp/
-*.tmp
-*.bak
-*.gitignore.bak
-
-# Large media files
-*.mp4
-*.mov
-*.avi
-*.mkv
-*.zip
-*.rar
-*.7z
-
-# AI model weights (uncomment if too large)
-# weights/
-# *.pt
-# *.pth
-# *.bin
-# *.safetensors
-
-# Build artifacts
+# Java / Maven
 target/
 *.class
-*.war
 *.jar
+*.war
+*.log
 
-# Environment files
-.env
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
 
-# System files
+# OS
 .DS_Store
 Thumbs.db
-.gstack/
-node_modules/
 
+# Data (auto-generated)
+backend/data/
 
-# Detection output data
-data/
+# Videos (auto-generated)
 results/
+videos/
 
-# Frontend standalone (dashboard served from backend templates)
-frontend/
+# Models (large, download separately)
+models/*.pt
 
-# Windows build scripts
-*.bat
+# AI tools
+.ai/
 
-# Claude Code session
-.claude/
+# Environment
+.env

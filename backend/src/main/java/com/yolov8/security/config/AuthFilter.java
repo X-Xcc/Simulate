@@ -24,7 +24,7 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final String HEADER = "X-API-Key";
     private static final String[] PUBLIC_PATHS = {
         "/", "/index", "/admin", "/monitor", "/login", "/static/**", "/error", "/api/login",
-        "/video_feed", "/api/images/**"
+        "/video_feed", "/api/images/**", "/api/update_frame", "/api/stats", "/api/model_info", "/api/ai/**"
     };
 
     private final AntPathMatcher matcher = new AntPathMatcher();

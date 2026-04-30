@@ -60,8 +60,8 @@ class Config:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
     MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "yolov8n-pose.pt")
-    # 使用视频文件作为输入，避免摄像头访问问题
-    SOURCE = os.path.join(PROJECT_ROOT, "videos", "test_video.mp4")
+    # 使用摄像头作为输入源
+    SOURCE = 0
     RESULT_VIDEO_PATH = os.path.join(PROJECT_ROOT, "results", "security_result.mp4")
     DATASET_DIR = os.path.join(PROJECT_ROOT, "backend", "data")
 

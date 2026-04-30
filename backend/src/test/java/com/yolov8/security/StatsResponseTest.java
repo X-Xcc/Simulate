@@ -26,7 +26,7 @@ class StatsResponseTest {
 
     @Test
     void fullConstructor_setsAllFields() {
-        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(1, 2, 3, 4);
+        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(1, 2, 3, 4, 0);
         List<DetectionData> all = Collections.singletonList(new DetectionData());
         List<DetectionData> recent = Collections.singletonList(new DetectionData());
 
@@ -66,15 +66,17 @@ class StatsResponseTest {
         assertEquals(0, bc.getFight());
         assertEquals(0, bc.getAbsent());
         assertEquals(0, bc.getFatigue());
+        assertEquals(0, bc.getGather());
     }
 
     @Test
     void behaviorCounts_fullConstructor_setsValues() {
-        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(5, 3, 2, 1);
+        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(5, 3, 2, 1, 0);
         assertEquals(5, bc.getFall());
         assertEquals(3, bc.getFight());
         assertEquals(2, bc.getAbsent());
         assertEquals(1, bc.getFatigue());
+        assertEquals(0, bc.getGather());
     }
 
     @Test
@@ -89,17 +91,19 @@ class StatsResponseTest {
         assertEquals(20, bc.getFight());
         assertEquals(30, bc.getAbsent());
         assertEquals(40, bc.getFatigue());
+        assertEquals(0, bc.getGather());
     }
 
     @Test
     void behaviorCounts_chineseGettersMirrorEnglishOnes() {
-        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(7, 6, 5, 4);
+        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(7, 6, 5, 4, 0);
 
         // Chinese-named getters should return the same values as English ones
         assertEquals(bc.getFall(), bc.get跌倒());
         assertEquals(bc.getFight(), bc.get打架());
         assertEquals(bc.getAbsent(), bc.get离岗());
         assertEquals(bc.getFatigue(), bc.get疲劳());
+        assertEquals(bc.getGather(), bc.get人员聚集());
     }
 
     @Test
@@ -114,5 +118,6 @@ class StatsResponseTest {
         assertEquals(200, bc.getFight());
         assertEquals(300, bc.getAbsent());
         assertEquals(400, bc.getFatigue());
+        assertEquals(0, bc.getGather());
     }
 }
