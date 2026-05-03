@@ -21,10 +21,19 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM 2. 检查Python是否安装
-python --version >/dev/null 2>&1
+REM 2. 检查Conda环境
+where conda >nul 2>nul
 if %errorlevel% neq 0 (
-    echo 错误：未检测到Python环境，请先安装Python 3.8或更高版本
+    echo 错误：未检测到Conda环境，请先安装Anaconda或Miniconda
+    pause
+    exit /b 1
+)
+
+REM 3. 激活项目Conda环境
+echo 激活项目Conda环境: d:\yolov8_security\.conda\yolov8-security
+call conda activate d:\yolov8_security\.conda\yolov8-security
+if %errorlevel% neq 0 (
+    echo 错误：Conda环境激活失败，请检查环境是否存在
     pause
     exit /b 1
 )

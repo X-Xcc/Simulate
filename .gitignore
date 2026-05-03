@@ -3,12 +3,16 @@ __pycache__/
 *.pyc
 *.pyo
 .conda/
+fix-java.bat
 
 # Java / Maven
 target/
 *.class
-*.jar
 *.war
+*.jar
+jdk18.zip
+jdk-18*/
+openjdk/
 *.log
 
 # IDE

@@ -204,4 +204,15 @@ public class ApiController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    @GetMapping("/system_info")
+    public ResponseEntity<Map<String, Object>> getSystemInfo() {
+        try {
+            Map<String, Object> info = detectionService.getSystemInfo();
+            return ResponseEntity.ok(info);
+        } catch (Exception e) {
+            log.error("Error getting system info", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 }

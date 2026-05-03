@@ -23,7 +23,7 @@ public class DetectionService {
 
     private static final Logger log = LoggerFactory.getLogger(DetectionService.class);
     /** One directory walk serves both JSON detections and frame_*.jpg listing. */
-    private record DirScan(List<DetectionData> detections, List<String> imageFiles) {}
+    private record DirScan(List<DetectionData> detections, List<String> imageFiles, int totalDetectionCount) {}
 
     private static final int MAX_DETECTIONS_IN_STATS_PAYLOAD = 200;
 
@@ -62,7 +62,8 @@ public class DetectionService {
     private DirScan scanUploadDirectory() throws IOException {
         File dataDir = new File(appConfig.getFile().getUploadDir());
         if (!dataDir.exists()) {
-            return new DirScan(Collections.emptyList(), Collections.emptyList());
+            log.warn("Data directory does not exist: {}", dataDir.getAbsolutePath());
+            return new DirScan(Collections.emptyList(), Collections.emptyList(), 0);
         }
 
         List<Path> jsonPaths = new ArrayList<>();
@@ -90,7 +91,11 @@ public class DetectionService {
         jsonPaths.sort(byMtimeDesc);
         jpgPaths.sort(byMtimeDesc);
 
+        int totalCount = jsonPaths.size();
+
+        // Only parse the most recent MAX_DETECTIONS_IN_STATS_PAYLOAD files for performance
         List<DetectionData> detections = jsonPaths.stream()
+                .limit(MAX_DETECTIONS_IN_STATS_PAYLOAD)
                 .map(this::loadDetectionFile)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
@@ -99,7 +104,10 @@ public class DetectionService {
                 .map(p -> p.getFileName().toString())
                 .collect(Collectors.toList());
 
-        return new DirScan(detections, images);
+        log.info("Scanned {}: {} JSON files (parsed {}), {} JPG files",
+                dataDir.getAbsolutePath(), totalCount, detections.size(), images.size());
+
+        return new DirScan(detections, images, totalCount);
     }
 
     public StatsResponse getStats() {
@@ -111,12 +119,10 @@ public class DetectionService {
             StatsResponse.BehaviorCounts behaviorCounts = calculateBehaviorCounts(allDetections);
 
             StatsResponse stats = new StatsResponse();
-            stats.setTotalDetections(allDetections.size());
+            stats.setTotalDetections(scan.totalDetectionCount());
             stats.setTotalImages(imageFiles.size());
             stats.setBehaviorCounts(behaviorCounts);
-            stats.setAllDetections(allDetections.stream()
-                    .limit(MAX_DETECTIONS_IN_STATS_PAYLOAD)
-                    .collect(Collectors.toList()));
+            stats.setAllDetections(allDetections);
             stats.setRecentDetections(allDetections.stream()
                     .limit(50)
                     .collect(Collectors.toList()));
@@ -285,5 +291,43 @@ public class DetectionService {
             log.error("Error loading detection file: {}", path, e);
             return null;
         }
+    }
+
+    public Map<String, Object> getSystemInfo() {
+        Map<String, Object> info = new HashMap<>();
+        try {
+            File dataDir = new File(appConfig.getFile().getUploadDir());
+            long totalSize = 0;
+            int jsonCount = 0;
+            int jpgCount = 0;
+            if (dataDir.exists() && dataDir.isDirectory()) {
+                File[] files = dataDir.listFiles();
+                if (files != null) {
+                    for (File f : files) {
+                        if (f.isFile()) {
+                            totalSize += f.length();
+                            String name = f.getName();
+                            if (name.startsWith("detection_") && name.endsWith(".json")) jsonCount++;
+                            else if (name.startsWith("frame_") && name.endsWith(".jpg")) jpgCount++;
+                        }
+                    }
+                }
+            }
+            Runtime rt = Runtime.getRuntime();
+            long usedMemory = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
+            long maxMemory = rt.maxMemory() / (1024 * 1024);
+
+            info.put("status", "success");
+            info.put("dataDirSizeMb", Math.round(totalSize / 1024.0 / 1024.0 * 100.0) / 100.0);
+            info.put("detectionCount", jsonCount);
+            info.put("imageCount", jpgCount);
+            info.put("jvmUsedMb", usedMemory);
+            info.put("jvmMaxMb", maxMemory);
+        } catch (Exception e) {
+            log.error("Error getting system info", e);
+            info.put("status", "error");
+            info.put("message", e.getMessage());
+        }
+        return info;
     }
 }

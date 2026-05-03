@@ -957,11 +957,11 @@
                         <div class="stat-icon green">🤖</div>
                         <span class="stat-trend up">GPU</span>
                     </div>
-                    <div class="stat-value" id="sInference">28<span style="font-size:14px;color:var(--text-muted)">ms</span></div>
+                    <div class="stat-value" id="sInference">--<span style="font-size:14px;color:var(--text-muted)">ms</span></div>
                     <div class="stat-label">AI推理速度</div>
                     <div class="stat-bar-row">
-                        <div class="stat-bar"><div class="stat-bar-fill" style="width:72%; background:var(--green)"></div></div>
-                        <span class="stat-bar-pct">正常</span>
+                        <div class="stat-bar"><div class="stat-bar-fill" style="width:0%; background:var(--green)"></div></div>
+                        <span class="stat-bar-pct">--</span>
                     </div>
                 </div>
 
@@ -992,16 +992,12 @@
                     <div class="video-main-wrap" id="videoWrap">
                         <img id="videoFeed" src="/yolov8-security/video_feed" alt="实时监控">
                         <div class="video-overlay">
-                            <div class="video-label"><span class="video-dot"></span>实时监控 · A区-监舍走廊</div>
+                            <div class="video-label"><span class="video-dot"></span>实时监控 · 主摄像头</div>
                             <div class="video-fps" id="fpsDisplay">FPS: --</div>
                         </div>
                     </div>
                     <div class="video-actions">
-                        <button class="v-btn" onclick="switchCamera('main')">📹 主摄像头</button>
-                        <button class="v-btn" onclick="switchCamera('A区-监舍走廊')">🏢 A区走廊</button>
-                        <button class="v-btn" onclick="switchCamera('B区-放风场')">🌳 B区放风场</button>
-                        <button class="v-btn" onclick="switchCamera('C区-劳动车间')">🔧 C区车间</button>
-                        <button class="v-btn" onclick="switchCamera('D区-食堂')">🍽 D区食堂</button>
+                        <button class="v-btn active">📹 主摄像头 (在线)</button>
                     </div>
                 </div>
 
@@ -1011,45 +1007,13 @@
                     </div>
                     <div class="card-body" style="padding:10px 12px">
                         <div class="thumb-list">
-                            <div class="thumb-item active" onclick="switchCamera('main')">
-                                <div class="thumb-img"><img src="https://bailian-bmp-pre.oss-cn-hangzhou.aliyuncs.com/public/system_agent/PlaceHolder.png"></div>
+                            <div class="thumb-item active">
+                                <div class="thumb-img"><img src="/yolov8-security/video_feed" style="width:100%;height:100%;object-fit:cover"></div>
                                 <div class="thumb-info">
-                                    <div class="thumb-name">A区-监舍走廊</div>
-                                    <div class="thumb-meta">IPC-A01 · FPS: 28</div>
+                                    <div class="thumb-name">主摄像头</div>
+                                    <div class="thumb-meta" id="camFpsMeta">FPS: --</div>
                                 </div>
                                 <span class="thumb-status badge badge-green badge-dot">在线</span>
-                            </div>
-                            <div class="thumb-item" onclick="switchCamera('A区-监舍走廊')">
-                                <div class="thumb-img"><img src="https://bailian-bmp-pre.oss-cn-hangzhou.aliyuncs.com/public/system_agent/PlaceHolder.png"></div>
-                                <div class="thumb-info">
-                                    <div class="thumb-name">B区-放风场</div>
-                                    <div class="thumb-meta">IPC-B02 · FPS: 25</div>
-                                </div>
-                                <span class="thumb-status badge badge-green badge-dot">在线</span>
-                            </div>
-                            <div class="thumb-item" onclick="switchCamera('C区-劳动车间')">
-                                <div class="thumb-img"><img src="https://bailian-bmp-pre.oss-cn-hangzhou.aliyuncs.com/public/system_agent/PlaceHolder.png"></div>
-                                <div class="thumb-info">
-                                    <div class="thumb-name">C区-劳动车间</div>
-                                    <div class="thumb-meta">IPC-C01 · FPS: 27</div>
-                                </div>
-                                <span class="thumb-status badge badge-green badge-dot">在线</span>
-                            </div>
-                            <div class="thumb-item" onclick="switchCamera('D区-食堂')">
-                                <div class="thumb-img"><img src="https://bailian-bmp-pre.oss-cn-hangzhou.aliyuncs.com/public/system_agent/PlaceHolder.png"></div>
-                                <div class="thumb-info">
-                                    <div class="thumb-name">D区-食堂</div>
-                                    <div class="thumb-meta">IPC-D01 · FPS: 29</div>
-                                </div>
-                                <span class="thumb-status badge badge-green badge-dot">在线</span>
-                            </div>
-                            <div class="thumb-item" onclick="switchCamera('A区-监舍走廊')">
-                                <div class="thumb-img"><img src="https://bailian-bmp-pre.oss-cn-hangzhou.aliyuncs.com/public/system_agent/PlaceHolder.png"></div>
-                                <div class="thumb-info">
-                                    <div class="thumb-name">B区-放风场(离线)</div>
-                                    <div class="thumb-meta">IPC-B01 · 离线</div>
-                                </div>
-                                <span class="thumb-status badge badge-red">离线</span>
                             </div>
                         </div>
                     </div>
@@ -1097,7 +1061,7 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>时间</th><th>类型</th><th>摄像头</th><th>位置</th><th>置信度</th><th>处置</th><th>操作</th>
+                                    <th>时间</th><th>类型</th><th>位置</th><th>人数</th><th>FPS</th><th>状态</th><th>操作</th>
                                 </tr>
                             </thead>
                             <tbody id="detTableBody">
@@ -1117,7 +1081,7 @@
                                 <div class="server-icon" style="background:var(--accent-bg);color:var(--accent)">☁</div>
                                 <div class="server-info">
                                     <div class="server-name">Spring Boot 服务</div>
-                                    <div class="server-meta">Java 17 · 内存 3.8GB · 192.168.1.100</div>
+                                    <div class="server-meta">Java 17 · 端口 5000</div>
                                 </div>
                                 <span class="badge badge-green badge-dot">在线</span>
                             </div>
@@ -1125,33 +1089,17 @@
                                 <div class="server-icon" style="background:var(--green-bg);color:var(--green)">🤖</div>
                                 <div class="server-info">
                                     <div class="server-name">YOLOv8 推理引擎</div>
-                                    <div class="server-meta">Python · RTX 3060 · FPS 28</div>
+                                    <div class="server-meta" id="yoloServiceMeta">Python · 检测中</div>
                                 </div>
-                                <span class="badge badge-green badge-dot">运行中</span>
+                                <span class="badge badge-green badge-dot" id="yoloServiceStatus">运行中</span>
                             </div>
                             <div class="server-item">
                                 <div class="server-icon" style="background:var(--purple-bg);color:var(--purple)">🧠</div>
                                 <div class="server-info">
                                     <div class="server-name">Qwen2.5-VL-7B 模型</div>
-                                    <div class="server-meta">GPU · 推理耗时 42ms/帧</div>
+                                    <div class="server-meta" id="qwenServiceMeta">检查中...</div>
                                 </div>
-                                <span class="badge badge-green badge-dot">已加载</span>
-                            </div>
-                            <div class="server-item">
-                                <div class="server-icon" style="background:var(--orange-bg);color:var(--orange)">📹</div>
-                                <div class="server-info">
-                                    <div class="server-name">NVR 录像服务器</div>
-                                    <div class="server-meta">海康 DS-8632N · 在线率 93.8%</div>
-                                </div>
-                                <span class="badge badge-green badge-dot">正常</span>
-                            </div>
-                            <div class="server-item">
-                                <div class="server-icon" style="background:var(--red-bg);color:var(--red)">🗄</div>
-                                <div class="server-info">
-                                    <div class="server-name">MySQL 数据库</div>
-                                    <div class="server-meta">8.0.35 · 连接池 12/50</div>
-                                </div>
-                                <span class="badge badge-green badge-dot">在线</span>
+                                <span class="badge badge-gray badge-dot" id="qwenServiceStatus">检查中</span>
                             </div>
                         </div>
                     </div>
@@ -1162,49 +1110,49 @@
             <div class="card" style="margin-bottom:14px">
                 <div class="card-header">
                     <div class="card-title">📊 系统资源占用</div>
-                    <span class="badge badge-blue badge-dot" id="resUpdateTime">实时</span>
+                    <span class="badge badge-gray badge-dot">未接入监控</span>
                 </div>
                 <div class="card-body">
                     <div class="progress-list" style="display:grid;grid-template-columns:repeat(5,1fr);gap:20px">
                         <div>
                             <div style="display:flex;justify-content:space-between;margin-bottom:6px">
                                 <span style="font-size:11px;font-weight:600;color:var(--text-secondary)">CPU</span>
-                                <span style="font-size:11px;font-weight:700" id="resCpuPct">23%</span>
+                                <span style="font-size:11px;font-weight:700;color:var(--text-muted)">N/A</span>
                             </div>
-                            <div class="progress-bar" style="height:6px"><div class="progress-fill" id="resCpuBar" style="width:23%;background:var(--accent)"></div></div>
-                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">Intel i7-12700K @ 3.6GHz</div>
+                            <div class="progress-bar" style="height:6px"><div class="progress-fill" style="width:0%;background:var(--accent)"></div></div>
+                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">未接入系统监控</div>
                         </div>
                         <div>
                             <div style="display:flex;justify-content:space-between;margin-bottom:6px">
                                 <span style="font-size:11px;font-weight:600;color:var(--text-secondary)">内存</span>
-                                <span style="font-size:11px;font-weight:700" id="resMemPct">62%</span>
+                                <span style="font-size:11px;font-weight:700;color:var(--text-muted)">N/A</span>
                             </div>
-                            <div class="progress-bar" style="height:6px"><div class="progress-fill" id="resMemBar" style="width:62%;background:var(--green)"></div></div>
-                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">19.8 GB / 32 GB</div>
+                            <div class="progress-bar" style="height:6px"><div class="progress-fill" style="width:0%;background:var(--green)"></div></div>
+                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">未接入系统监控</div>
                         </div>
                         <div>
                             <div style="display:flex;justify-content:space-between;margin-bottom:6px">
                                 <span style="font-size:11px;font-weight:600;color:var(--text-secondary)">GPU</span>
-                                <span style="font-size:11px;font-weight:700" id="resGpuPct">59%</span>
+                                <span style="font-size:11px;font-weight:700;color:var(--text-muted)">N/A</span>
                             </div>
-                            <div class="progress-bar" style="height:6px"><div class="progress-fill" id="resGpuBar" style="width:59%;background:var(--purple)"></div></div>
-                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">RTX 3060 · 7.1 GB / 12 GB</div>
+                            <div class="progress-bar" style="height:6px"><div class="progress-fill" style="width:0%;background:var(--purple)"></div></div>
+                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">未接入系统监控</div>
                         </div>
                         <div>
                             <div style="display:flex;justify-content:space-between;margin-bottom:6px">
                                 <span style="font-size:11px;font-weight:600;color:var(--text-secondary)">磁盘</span>
-                                <span style="font-size:11px;font-weight:700" id="resDiskPct">68%</span>
+                                <span style="font-size:11px;font-weight:700;color:var(--text-muted)">N/A</span>
                             </div>
-                            <div class="progress-bar" style="height:6px"><div class="progress-fill" id="resDiskBar" style="width:68%;background:var(--orange)"></div></div>
-                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">1.2 TB / 2 TB SSD</div>
+                            <div class="progress-bar" style="height:6px"><div class="progress-fill" style="width:0%;background:var(--orange)"></div></div>
+                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">未接入系统监控</div>
                         </div>
                         <div>
                             <div style="display:flex;justify-content:space-between;margin-bottom:6px">
                                 <span style="font-size:11px;font-weight:600;color:var(--text-secondary)">网络</span>
-                                <span style="font-size:11px;font-weight:700" id="resNetPct">12%</span>
+                                <span style="font-size:11px;font-weight:700;color:var(--text-muted)">N/A</span>
                             </div>
-                            <div class="progress-bar" style="height:6px"><div class="progress-fill" id="resNetBar" style="width:12%;background:var(--cyan)"></div></div>
-                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">↑ 8.2 MB/s  ↓ 24.1 MB/s</div>
+                            <div class="progress-bar" style="height:6px"><div class="progress-fill" style="width:0%;background:var(--cyan)"></div></div>
+                            <div style="font-size:10px;color:var(--text-muted);margin-top:4px">未接入系统监控</div>
                         </div>
                     </div>
                 </div>
@@ -1217,31 +1165,11 @@
                         <div class="card-title">🕐 最新活动</div>
                     </div>
                     <div class="card-body" style="padding:12px 16px">
-                        <div class="activity-list">
+                        <div class="activity-list" id="activityList">
                             <div class="activity-item">
-                                <div class="activity-dot" style="background:var(--red)"></div>
-                                <div class="activity-text">系统处理跌倒告警 <strong>IPC-A01</strong> · A区-监舍走廊 · 已通知值班民警</div>
-                                <div class="activity-time">刚刚</div>
-                            </div>
-                            <div class="activity-item">
-                                <div class="activity-dot" style="background:var(--accent)"></div>
-                                <div class="activity-text">张伟 (J-001) 登录系统</div>
-                                <div class="activity-time">3 分钟前</div>
-                            </div>
-                            <div class="activity-item">
-                                <div class="activity-dot" style="background:var(--orange)"></div>
-                                <div class="activity-text">摄像头 <strong>IPC-B01</strong> 恢复在线（B区-放风场）</div>
-                                <div class="activity-time">18 分钟前</div>
-                            </div>
-                            <div class="activity-item">
-                                <div class="activity-dot" style="background:var(--green)"></div>
-                                <div class="activity-text">每日自动备份完成 · backup_20260428.bak (1.2GB)</div>
-                                <div class="activity-time">2 小时前</div>
-                            </div>
-                            <div class="activity-item">
-                                <div class="activity-dot" style="background:var(--purple)"></div>
-                                <div class="activity-text">陈明 (J-005) 修改离岗告警延迟 60s → 90s</div>
-                                <div class="activity-time">4 小时前</div>
+                                <div class="activity-dot" style="background:var(--text-muted)"></div>
+                                <div class="activity-text">等待检测数据...</div>
+                                <div class="activity-time">--</div>
                             </div>
                         </div>
                     </div>
@@ -1259,40 +1187,23 @@
                             </div>
                             <div class="info-item">
                                 <div class="info-label">精度</div>
-                                <div class="info-val green">FP16</div>
+                                <div class="info-val" id="modelPrecision">N/A</div>
                             </div>
                             <div class="info-item">
-                                <div class="info-label">准确率</div>
-                                <div class="info-val">91.3%</div>
+                                <div class="info-label">设备</div>
+                                <div class="info-val" id="modelDevice">N/A</div>
                             </div>
                             <div class="info-item">
                                 <div class="info-label">推理速度</div>
-                                <div class="info-val green">28 ms/帧</div>
+                                <div class="info-val green" id="modelInference">N/A</div>
                             </div>
                             <div class="info-item">
-                                <div class="info-label">GPU显存</div>
-                                <div class="info-val">7.1 GB</div>
+                                <div class="info-label">GPU可用</div>
+                                <div class="info-val" id="modelGpu">N/A</div>
                             </div>
                             <div class="info-item">
                                 <div class="info-label">运行状态</div>
-                                <div class="info-val green">● 正常</div>
-                            </div>
-                        </div>
-                        <div class="progress-list">
-                            <div class="progress-row">
-                                <span class="progress-label">检测灵敏度</span>
-                                <div class="progress-bar"><div class="progress-fill" style="width:72%;background:var(--accent)"></div></div>
-                                <span class="progress-val">72%</span>
-                            </div>
-                            <div class="progress-row">
-                                <span class="progress-label">模型利用率</span>
-                                <div class="progress-bar"><div class="progress-fill" style="width:85%;background:var(--green)"></div></div>
-                                <span class="progress-val">85%</span>
-                            </div>
-                            <div class="progress-row">
-                                <span class="progress-label">误报抑制</span>
-                                <div class="progress-bar"><div class="progress-fill" style="width:91%;background:var(--purple)"></div></div>
-                                <span class="progress-val">91%</span>
+                                <div class="info-val" id="modelStatus">● 检查中</div>
                             </div>
                         </div>
                     </div>
@@ -1309,10 +1220,10 @@
                 </div>
             </div>
             <div class="stat-row">
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📊</div></div><div class="stat-value">59,312</div><div class="stat-label">本月总检测</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon red">🚨</div></div><div class="stat-value">342</div><div class="stat-label">本月告警总数</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">✅</div></div><div class="stat-value">336</div><div class="stat-label">已处理告警</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon orange">⚠</div></div><div class="stat-value">2.1%</div><div class="stat-label">误报率</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📊</div></div><div class="stat-value" id="bhvTotal">0</div><div class="stat-label">总检测数</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon red">🚨</div></div><div class="stat-value" id="bhvAlerts">0</div><div class="stat-label">告警总数</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon orange">📊</div></div><div class="stat-value" id="bhvFall">0</div><div class="stat-label">跌倒检测</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon purple">📊</div></div><div class="stat-value" id="bhvFight">0</div><div class="stat-label">打架检测</div></div>
             </div>
             <div class="grid-2" style="margin-bottom:14px">
                 <div class="card">
@@ -1341,11 +1252,8 @@
                         <thead>
                             <tr><th>区域</th><th>检测次数</th><th>跌倒</th><th>打架</th><th>离岗</th><th>疲劳</th><th>在线率</th><th>操作</th></tr>
                         </thead>
-                        <tbody>
-                            <tr><td>A区-监舍走廊</td><td>18,420</td><td><span class="badge badge-orange">28</span></td><td><span class="badge badge-red">12</span></td><td><span class="badge badge-blue">56</span></td><td><span class="badge badge-purple">34</span></td><td><span class="badge badge-green">100%</span></td><td><button class="btn btn-sm" onclick="toast('A区数据已加载', 'info')">查看</button></td></tr>
-                            <tr><td>B区-放风场</td><td>15,832</td><td><span class="badge badge-orange">42</span></td><td><span class="badge badge-red">8</span></td><td><span class="badge badge-blue">38</span></td><td><span class="badge badge-purple">22</span></td><td><span class="badge badge-red">75%</span></td><td><button class="btn btn-sm" onclick="toast('B区数据已加载', 'info')">查看</button></td></tr>
-                            <tr><td>C区-劳动车间</td><td>14,560</td><td><span class="badge badge-orange">18</span></td><td><span class="badge badge-red">5</span></td><td><span class="badge badge-blue">72</span></td><td><span class="badge badge-purple">48</span></td><td><span class="badge badge-green">100%</span></td><td><button class="btn btn-sm" onclick="toast('C区数据已加载', 'info')">查看</button></td></tr>
-                            <tr><td>D区-食堂</td><td>10,500</td><td><span class="badge badge-orange">12</span></td><td><span class="badge badge-red">3</span></td><td><span class="badge badge-blue">24</span></td><td><span class="badge badge-purple">16</span></td><td><span class="badge badge-green">100%</span></td><td><button class="btn btn-sm" onclick="toast('D区数据已加载', 'info')">查看</button></td></tr>
+                        <tbody id="areaDetailBody">
+                            <tr><td>监控区域</td><td id="areaTotal">0</td><td><span class="badge badge-orange" id="areaFall">0</span></td><td><span class="badge badge-red" id="areaFight">0</span></td><td><span class="badge badge-blue" id="areaLeave">0</span></td><td><span class="badge badge-purple" id="areaFatigue">0</span></td><td><span class="badge badge-green">在线</span></td><td>--</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1373,7 +1281,7 @@
                 <div class="table-wrap">
                     <table>
                         <thead>
-                            <tr><th>时间</th><th>类型</th><th>摄像头</th><th>位置</th><th>人员</th><th>置信度</th><th>处置人</th><th>状态</th><th>操作</th></tr>
+                            <tr><th>时间</th><th>类型</th><th>位置</th><th>人数</th><th>FPS</th><th>状态</th><th>操作</th></tr>
                         </thead>
                         <tbody id="recordTableBody">
                         </tbody>
@@ -1395,10 +1303,10 @@
                 </div>
             </div>
             <div class="stat-row">
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">📹</div></div><div class="stat-value">120</div><div class="stat-label">在线</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon red">⚠</div></div><div class="stat-value">8</div><div class="stat-label">离线</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📊</div></div><div class="stat-value">128</div><div class="stat-label">设备总数</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">📡</div></div><div class="stat-value">93.8%</div><div class="stat-label">在线率</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">📹</div></div><div class="stat-value">1</div><div class="stat-label">在线</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon red">⚠</div></div><div class="stat-value">0</div><div class="stat-label">离线</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📊</div></div><div class="stat-value">1</div><div class="stat-label">设备总数</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">📡</div></div><div class="stat-value">100%</div><div class="stat-label">在线率</div></div>
             </div>
             <div class="card">
                 <div class="card-header">
@@ -1410,12 +1318,7 @@
                             <tr><th>设备编号</th><th>型号</th><th>区域</th><th>位置</th><th>状态</th><th>FPS</th><th>最后心跳</th><th>操作</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>IPC-A01</td><td>海康 DS-2CD3T86FWD</td><td>A区</td><td>监舍走廊东</td><td><span class="badge badge-green badge-dot">在线</span></td><td>28</td><td>刚刚</td><td><button class="btn btn-sm btn-success" onclick="toast('视频流已打开', 'success')">观看</button></td></tr>
-                            <tr><td>IPC-A02</td><td>大华 DH-IPC-HFW54</td><td>A区</td><td>监舍走廊西</td><td><span class="badge badge-green badge-dot">在线</span></td><td>30</td><td>刚刚</td><td><button class="btn btn-sm btn-success" onclick="toast('视频流已打开', 'success')">观看</button></td></tr>
-                            <tr><td>IPC-B01</td><td>宇视 IPC2145</td><td>B区</td><td>放风场主通道</td><td><span class="badge badge-red badge-dot">离线</span></td><td>—</td><td>04-27 15:32</td><td><button class="btn btn-sm btn-danger" onclick="toast('设备离线', 'error')">查看</button></td></tr>
-                            <tr><td>IPC-B02</td><td>海康 DS-2CD3T86FWD</td><td>B区</td><td>放风场出口</td><td><span class="badge badge-green badge-dot">在线</span></td><td>25</td><td>刚刚</td><td><button class="btn btn-sm btn-success" onclick="toast('视频流已打开', 'success')">观看</button></td></tr>
-                            <tr><td>IPC-C01</td><td>大华 DH-IPC-HFW54</td><td>C区</td><td>劳动车间</td><td><span class="badge badge-green badge-dot">在线</span></td><td>27</td><td>刚刚</td><td><button class="btn btn-sm btn-success" onclick="toast('视频流已打开', 'success')">观看</button></td></tr>
-                            <tr><td>IPC-D01</td><td>宇视 IPC2145</td><td>D区</td><td>食堂入口</td><td><span class="badge badge-green badge-dot">在线</span></td><td>29</td><td>刚刚</td><td><button class="btn btn-sm btn-success" onclick="toast('视频流已打开', 'success')">观看</button></td></tr>
+                            <tr><td>CAM-001</td><td>USB Camera</td><td>监控区域</td><td>主摄像头</td><td><span class="badge badge-green badge-dot">在线</span></td><td id="camTableFps">--</td><td>实时</td><td><button class="btn btn-sm btn-success">观看</button></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1431,10 +1334,10 @@
                 </div>
             </div>
             <div class="stat-row">
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📊</div></div><div class="stat-value">342</div><div class="stat-label">告警总数(本月)</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon orange">⏳</div></div><div class="stat-value">3</div><div class="stat-label">待处理</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">✅</div></div><div class="stat-value">336</div><div class="stat-label">已处理</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon red">🔄</div></div><div class="stat-value">6</div><div class="stat-label">处理中</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📊</div></div><div class="stat-value" id="alertTotal">0</div><div class="stat-label">告警总数</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon orange">⏳</div></div><div class="stat-value" id="alertPending">0</div><div class="stat-label">待处理</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">📊</div></div><div class="stat-value" id="alertFall">0</div><div class="stat-label">跌倒</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon red">📊</div></div><div class="stat-value" id="alertFight">0</div><div class="stat-label">打架</div></div>
             </div>
             <div class="card">
                 <div class="card-header">
@@ -1447,7 +1350,7 @@
                 <div class="table-wrap">
                     <table>
                         <thead>
-                            <tr><th>时间</th><th>类型</th><th>摄像头</th><th>位置</th><th>置信度</th><th>处置人</th><th>状态</th><th>操作</th></tr>
+                            <tr><th>时间</th><th>类型</th><th>位置</th><th>人数</th><th>FPS</th><th>状态</th><th>操作</th></tr>
                         </thead>
                         <tbody id="alertTableBody">
                         </tbody>
@@ -1470,17 +1373,17 @@
                 </div>
             </div>
             <div class="stat-row">
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📋</div></div><div class="stat-value">12.8<span style="font-size:14px">万</span></div><div class="stat-label">日志总量</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">📅</div></div><div class="stat-value">8,432</div><div class="stat-label">本月新增</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon purple">📦</div></div><div class="stat-value">1.2<span style="font-size:14px">GB</span></div><div class="stat-label">存储占用</div></div>
-                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon cyan">🛡</div></div><div class="stat-value">180<span style="font-size:14px">天</span></div><div class="stat-label">合规留存</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon blue">📋</div></div><div class="stat-value" id="logTotal">0</div><div class="stat-label">检测记录总数</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon green">📅</div></div><div class="stat-value" id="logImages">0</div><div class="stat-label">截图文件数</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon purple">📦</div></div><div class="stat-value" id="logStorage">N/A</div><div class="stat-label">存储占用</div></div>
+                <div class="stat-card"><div class="stat-card-top"><div class="stat-icon cyan">🛡</div></div><div class="stat-value">N/A</div><div class="stat-label">合规留存</div></div>
             </div>
             <div class="card">
                 <div class="card-header"><div class="card-title">📋 日志记录</div></div>
                 <div class="table-wrap">
                     <table>
                         <thead>
-                            <tr><th>时间</th><th>类型</th><th>用户</th><th>IP地址</th><th>事件描述</th><th>结果</th></tr>
+                            <tr><th>时间</th><th>类型</th><th>来源</th><th>位置</th><th>事件描述</th><th>结果</th></tr>
                         </thead>
                         <tbody id="logTableBody">
                         </tbody>
@@ -1559,6 +1462,8 @@ function switchNav(el) {
     document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
     const target = document.getElementById('page-' + page);
     if (target) target.style.display = 'block';
+    if (page === 'record' && window._latestStatsData) updateRecordTable(window._latestStatsData);
+    if (page === 'alert' && window._latestStatsData) updateAlertTable(window._latestStatsData);
 }
 
 /* ===== TOAST ===== */
@@ -1710,36 +1615,33 @@ const pieChart = new Chart(pieCtx, {
 });
 
 /* ===== BEHAVIOR CHARTS ===== */
+let regionChart = null, weekTrendChart = null;
+
 function initBehaviorCharts() {
     if (document.getElementById('regionChart')) {
         const regionCtx = document.getElementById('regionChart').getContext('2d');
-        new Chart(regionCtx, {
+        regionChart = new Chart(regionCtx, {
             type: 'bar',
             data: {
-                labels: ['A区-监舍','B区-放风场','C区-劳动车间','D区-食堂'],
-                datasets: [
-                    { label:'跌倒', data:[28,42,18,12], backgroundColor:'rgba(191,135,0,0.8)', borderRadius:4 },
-                    { label:'打架', data:[12,8,5,3], backgroundColor:'rgba(207,34,46,0.8)', borderRadius:4 },
-                    { label:'离岗', data:[56,38,72,24], backgroundColor:'rgba(9,105,218,0.8)', borderRadius:4 },
-                    { label:'疲劳', data:[34,22,48,16], backgroundColor:'rgba(130,80,223,0.8)', borderRadius:4 }
-                ]
+                labels: ['跌倒','打架','离岗','疲劳','人员聚集'],
+                datasets: [{ label:'检测次数', data:[0,0,0,0,0], backgroundColor:['rgba(191,135,0,0.8)','rgba(207,34,46,0.8)','rgba(9,105,218,0.8)','rgba(130,80,223,0.8)','rgba(26,127,55,0.8)'], borderRadius:4 }]
             },
             options: {
                 responsive:true, maintainAspectRatio:false,
-                plugins:{ legend:{ position:'top', labels:{color:'#656d76',font:{size:10},boxWidth:10,padding:10} }, tooltip:{backgroundColor:'#fff',titleColor:'#1a1d21',bodyColor:'#656d76',borderColor:'#e4e6eb',borderWidth:1,cornerRadius:8,padding:10} },
+                plugins:{ legend:{ display:false }, tooltip:{backgroundColor:'#fff',titleColor:'#1a1d21',bodyColor:'#656d76',borderColor:'#e4e6eb',borderWidth:1,cornerRadius:8,padding:10} },
                 scales:{ x:{ ticks:{color:'#a5acb4',font:{size:10}},grid:{color:'rgba(0,0,0,0.04)'} }, y:{ ticks:{color:'#a5acb4',font:{size:10}},grid:{color:'rgba(0,0,0,0.04)'},beginAtZero:true } }
             }
         });
     }
     if (document.getElementById('weekTrendChart')) {
         const weekCtx = document.getElementById('weekTrendChart').getContext('2d');
-        new Chart(weekCtx, {
+        weekTrendChart = new Chart(weekCtx, {
             type: 'line',
             data: {
-                labels: ['周一','周二','周三','周四','周五','周六','周日'],
+                labels: [],
                 datasets: [
-                    { label:'总检测', data:[1180,980,1420,1050,1580,760,820], borderColor:'#0969da',backgroundColor:'rgba(9,105,218,0.06)',fill:true,tension:0.4,borderWidth:2,pointRadius:3 },
-                    { label:'告警', data:[15,22,31,18,28,12,10], borderColor:'#cf222e',backgroundColor:'rgba(207,34,46,0.06)',fill:true,tension:0.4,borderWidth:2,pointRadius:3 }
+                    { label:'总检测', data:[], borderColor:'#0969da',backgroundColor:'rgba(9,105,218,0.06)',fill:true,tension:0.4,borderWidth:2,pointRadius:3 },
+                    { label:'告警', data:[], borderColor:'#cf222e',backgroundColor:'rgba(207,34,46,0.06)',fill:true,tension:0.4,borderWidth:2,pointRadius:3 }
                 ]
             },
             options: {
@@ -1751,24 +1653,54 @@ function initBehaviorCharts() {
     }
 }
 
+function updateBehaviorCharts(data) {
+    if (!data) return;
+    const bc = data.behaviorCounts || {};
+
+    // Region chart: real behavior counts
+    if (regionChart) {
+        regionChart.data.datasets[0].data = [bc['跌倒']||0, bc['打架']||0, bc['离岗']||0, bc['疲劳']||0, bc['人员聚集']||0];
+        regionChart.update('none');
+    }
+
+    // Week trend chart: group allDetections by day
+    if (weekTrendChart) {
+        const ad = data.allDetections || [];
+        const dayNames = ['周日','周一','周二','周三','周四','周五','周六'];
+        const totalByDay = {};
+        const alertByDay = {};
+        dayNames.forEach(d => { totalByDay[d] = 0; alertByDay[d] = 0; });
+        ad.forEach(d => {
+            if (!d.timestamp) return;
+            try {
+                const dt = new Date(d.timestamp.replace(/-/g,'/'));
+                const dayName = dayNames[dt.getDay()];
+                totalByDay[dayName]++;
+                if (d.actions && d.actions.length > 0) alertByDay[dayName]++;
+            } catch(e) {}
+        });
+        // Reorder to Mon-Sun
+        const orderedDays = ['周一','周二','周三','周四','周五','周六','周日'];
+        weekTrendChart.data.labels = orderedDays;
+        weekTrendChart.data.datasets[0].data = orderedDays.map(d => totalByDay[d]);
+        weekTrendChart.data.datasets[1].data = orderedDays.map(d => alertByDay[d]);
+        weekTrendChart.update('none');
+    }
+}
+
 /* ===== DETECTION TABLE ===== */
 function buildDetRow(det, isFull) {
     const typeObj = TYPES.find(t => t.name === det.type) || TYPES[0];
-    const statuses = ['待处理','处理中','已处理','已忽略'];
-    const statusObj = { '待处理':'badge-orange','处理中':'badge-blue','已处理':'badge-green','已忽略':'badge-gray' };
-    const status = statuses[Math.floor(Math.random()*2)]; // mostly "待处理" or "处理中"
-    const handlers = ['张伟 J-001','李娜 J-002','王强 J-003','刘洋 J-004'];
-    const handler = handlers[Math.floor(Math.random()*handlers.length)];
+    const statusObj = { '已检测':'badge-blue','常规':'badge-green' };
+    const status = det.type && det.type !== '—' ? '已检测' : '常规';
     return `<tr>
         <td style="font-family:monospace;font-size:11px">${det.timeStr || det.timestamp || '--'}</td>
         <td><span class="badge ${typeObj.cls}">${det.type}</span></td>
-        <td>${det.cam || 'IPC-A01'}</td>
-        <td>${CAMS[Math.floor(Math.random()*CAMS.length)]}</td>
-        <td>${det.people || '1'} 人</td>
-        <td>${det.conf || (Math.random()*14+85).toFixed(1)}%</td>
-        ${isFull ? `<td>${det.handler || handler}</td>` : ''}
+        <td>监控区域</td>
+        <td>${det.people || 0} 人</td>
+        <td>${det.fps || '--'}</td>
         <td><span class="badge ${statusObj[status]}">${status}</span></td>
-        <td><button class="btn btn-sm" onclick="viewImage('${det.imageFilename || ''}','${det.type}','${det.timeStr || ''}','${det.conf || 90}')">📷 查看</button></td>
+        <td><button class="btn btn-sm" onclick="viewImage('${det.imageFilename || ''}','${det.type}','${det.timeStr || ''}','${det.fps || '--'}')">📷 查看</button></td>
     </tr>`;
 }
 
@@ -1779,8 +1711,7 @@ function updateDetTable(data) {
         type: d.actions?.[0] || '—',
         timeStr: d.timestamp,
         people: d.person_count ?? d.personCount ?? 0,
-        cam: 'IPC-A01',
-        conf: '85.0',
+        fps: d.fps ? d.fps.toFixed(1) : '--',
         imageFilename: d.image_filename || d.imageFilename || ''
     })) : [];
 
@@ -1788,64 +1719,70 @@ function updateDetTable(data) {
 }
 
 /* ===== RECORD TABLE ===== */
-function updateRecordTable() {
+function updateRecordTable(data) {
     const tbody = document.getElementById('recordTableBody');
     if (!tbody) return;
-    // 使用 API 真实数据（复用 fetchData 已加载的最新50条）
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px">请查看「实时监控」页面的最近检测记录</td></tr>';
-    const cnt = document.getElementById('recordCount');
-    tbody.innerHTML = dets.map(d => buildDetRow(d, true)).join('');
+    const dets = (data?.allDetections || []).slice(0, 50).map(d => ({
+        type: d.actions?.[0] || '检测',
+        timeStr: d.timestamp,
+        people: d.person_count ?? d.personCount ?? 0,
+        fps: d.fps ? d.fps.toFixed(1) : '--',
+        imageFilename: d.image_filename || d.imageFilename || ''
+    }));
+    tbody.innerHTML = dets.map(d => buildDetRow(d)).join('');
     const cnt = document.getElementById('recordCount');
     if (cnt) cnt.textContent = '共 ' + dets.length + ' 条记录';
 }
 
 /* ===== ALERT TABLE ===== */
-function updateAlertTable() {
+function updateAlertTable(data) {
     const tbody = document.getElementById('alertTableBody');
     if (!tbody) return;
-    const now = Date.now();
-    const pad = v => String(v).padStart(2,'0');
-    const rows = [
-        { time: new Date(now-300000), type:'跌倒', cam:'IPC-A01', loc:'A区-监舍走廊', conf:'92.3', handler:'张伟 J-001', status:'处理中' },
-        { time: new Date(now-540000), type:'打架', cam:'IPC-B02', loc:'B区-放风场', conf:'87.6', handler:'李娜 J-002', status:'待处理' },
-        { time: new Date(now-1200000), type:'离岗', cam:'IPC-C01', loc:'C区-劳动车间', conf:'95.1', handler:'王强 J-003', status:'已处理' },
-        { time: new Date(now-2100000), type:'疲劳', cam:'IPC-A02', loc:'A区-监舍走廊', conf:'88.9', handler:'张伟 J-001', status:'已处理' },
-        { time: new Date(now-3600000), type:'设备离线', cam:'IPC-B01', loc:'B区-放风场', conf:'—', handler:'刘洋 J-004', status:'告警' },
-        { time: new Date(now-7200000), type:'跌倒', cam:'IPC-D01', loc:'D区-食堂', conf:'90.4', handler:'李娜 J-002', status:'已处理' },
-    ];
-    const typeCls = { '跌倒':'badge-orange','打架':'badge-red','离岗':'badge-blue','疲劳':'badge-purple','设备离线':'badge-gray' };
-    const statusCls = { '待处理':'badge-orange','处理中':'badge-blue','已处理':'badge-green','告警':'badge-red' };
-    tbody.innerHTML = rows.map(r => `<tr>
-        <td style="font-family:monospace;font-size:11px">${pad(r.time.getHours())}:${pad(r.time.getMinutes())}:${pad(r.time.getSeconds())}</td>
-        <td><span class="badge ${typeCls[r.type]}">${r.type}</span></td>
-        <td>${r.cam}</td><td>${r.loc}</td><td>${r.conf}</td>
-        <td>${r.handler}</td>
-        <td><span class="badge ${statusCls[r.status]}">${r.status}</span></td>
-        <td><button class="btn btn-sm btn-success">处理</button></td>
-    </tr>`).join('');
+    const detections = data?.allDetections || [];
+    const alertDets = detections.filter(d => d.actions && d.actions.length > 0).slice(0, 20);
+    const typeCls = { '跌倒':'badge-orange','打架':'badge-red','离岗':'badge-blue','疲劳':'badge-purple','人员聚集':'badge-green' };
+    if (alertDets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">暂无告警记录</td></tr>';
+        return;
+    }
+    tbody.innerHTML = alertDets.map(d => {
+        const action = d.actions[0] || '未知';
+        const cls = typeCls[action] || 'badge-gray';
+        return `<tr>
+            <td style="font-family:monospace;font-size:11px">${d.timestamp || '--'}</td>
+            <td><span class="badge ${cls}">${action}</span></td>
+            <td>监控区域</td>
+            <td>${d.person_count ?? d.personCount ?? 0} 人</td>
+            <td>${d.fps ? d.fps.toFixed(1) : '--'}</td>
+            <td><span class="badge badge-orange">待处理</span></td>
+            <td><button class="btn btn-sm btn-success">处理</button></td>
+        </tr>`;
+    }).join('');
 }
 
 /* ===== LOG TABLE ===== */
-function updateLogTable() {
+function updateLogTable(data) {
     const tbody = document.getElementById('logTableBody');
     if (!tbody) return;
-    const now = Date.now();
-    const pad = v => String(v).padStart(2,'0');
-    const rows = [
-        { t:new Date(now-300000), type:'告警', cls:'badge-red', user:'系统', ip:'—', desc:'检测到跌倒行为 [IPC-A01] A区-监舍', result:'已处理' },
-        { t:new Date(now-540000), type:'登录', cls:'badge-blue', user:'张伟 J-001', ip:'192.168.1.10', desc:'登录系统', result:'成功' },
-        { t:new Date(now-1200000), type:'告警', cls:'badge-red', user:'系统', ip:'—', desc:'检测到打架行为 [IPC-B02] B区-放风场', result:'处理中' },
-        { t:new Date(now-2100000), type:'配置', cls:'badge-purple', user:'陈明 J-005', ip:'192.168.1.14', desc:'修改预警阈值 [离岗延迟: 60s→90s]', result:'成功' },
-        { t:new Date(now-3600000), type:'设备', cls:'badge-orange', user:'系统', ip:'—', desc:'摄像头 IPC-B01 离线', result:'告警' },
-        { t:new Date(now-7200000), type:'登录', cls:'badge-blue', user:'李娜 J-002', ip:'192.168.1.11', desc:'登录系统', result:'成功' },
-    ];
-    tbody.innerHTML = rows.map(r => `<tr>
-        <td style="font-family:monospace;font-size:11px">${pad(r.t.getHours())}:${pad(r.t.getMinutes())}:${pad(r.t.getSeconds())}</td>
-        <td><span class="badge ${r.cls}">${r.type}</span></td>
-        <td>${r.user}</td><td>${r.ip}</td>
-        <td style="font-size:11px">${r.desc}</td>
-        <td><span class="badge ${r.result==='成功'?'badge-green':r.result==='告警'?'badge-red':r.result==='处理中'?'badge-blue':'badge-gray'}">${r.result}</span></td>
-    </tr>`).join('');
+    const detections = data?.allDetections || [];
+    if (detections.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">暂无操作日志</td></tr>';
+        return;
+    }
+    const recent = detections.slice(0, 10);
+    const typeCls = { '跌倒':'badge-red','打架':'badge-red','疲劳':'badge-orange','离岗':'badge-blue','人员聚集':'badge-purple' };
+    tbody.innerHTML = recent.map(d => {
+        const action = d.actions?.[0];
+        const cls = action ? (typeCls[action] || 'badge-gray') : 'badge-green';
+        const desc = action ? `检测到${action}行为 · ${d.person_count||0}人` : `常规检测 · ${d.person_count||0}人`;
+        return `<tr>
+            <td style="font-family:monospace;font-size:11px">${d.timestamp || '--'}</td>
+            <td><span class="badge ${cls}">${action || '检测'}</span></td>
+            <td>系统</td><td>--</td>
+            <td style="font-size:11px">${desc}</td>
+            <td><span class="badge badge-green">已记录</span></td>
+        </tr>`;
+    }).join('');
 }
 
 /* ===== IMAGE VIEWER ===== */
@@ -1861,6 +1798,85 @@ function viewImage(filename, type, time, conf) {
     document.getElementById('imageViewer').classList.add('show');
 }
 document.getElementById('imageViewer').addEventListener('click', e => { if(e.target===document.getElementById('imageViewer')) document.getElementById('imageViewer').classList.remove('show'); });
+
+/* ===== MODEL INFO + AI STATUS ===== */
+async function fetchModelInfo() {
+    try {
+        const [modelRes, aiRes, sysRes] = await Promise.allSettled([
+            authFetch(API_BASE + '/api/model_info'),
+            authFetch(API_BASE + '/api/ai/status'),
+            authFetch(API_BASE + '/api/system_info')
+        ]);
+
+        // Model info
+        if (modelRes.status === 'fulfilled' && modelRes.value.ok) {
+            const m = await modelRes.value.json();
+            const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            setTxt('modelPrecision', m.precision || 'N/A');
+            setTxt('modelDevice', m.device || 'N/A');
+            setTxt('modelGpu', m.gpu_available ? '可用' : '不可用');
+            const statusEl = document.getElementById('modelStatus');
+            if (statusEl) {
+                const online = m.status === 'online';
+                statusEl.textContent = online ? '● 正常' : '● 离线';
+                statusEl.className = 'info-val ' + (online ? 'green' : 'red');
+            }
+            // Update YOLOv8 service status
+            const yoloMeta = document.getElementById('yoloServiceMeta');
+            if (yoloMeta) yoloMeta.textContent = `Python · ${m.device || 'CPU'} · ${m.precision || 'FP32'}`;
+            const yoloStatus = document.getElementById('yoloServiceStatus');
+            if (yoloStatus) {
+                const online = m.status === 'online';
+                yoloStatus.textContent = online ? '运行中' : '离线';
+                yoloStatus.className = 'badge ' + (online ? 'badge-green' : 'badge-red') + ' badge-dot';
+            }
+        }
+
+        // QwenVL AI status
+        if (aiRes.status === 'fulfilled' && aiRes.value.ok) {
+            const a = await aiRes.value.json();
+            const qwenMeta = document.getElementById('qwenServiceMeta');
+            const qwenStatus = document.getElementById('qwenServiceStatus');
+            const online = a.status === 'online';
+            if (qwenMeta) qwenMeta.textContent = online ? '已加载 · 可用' : '未启动';
+            if (qwenStatus) {
+                qwenStatus.textContent = online ? '在线' : '离线';
+                qwenStatus.className = 'badge ' + (online ? 'badge-green' : 'badge-gray') + ' badge-dot';
+            }
+        }
+
+        // System info
+        if (sysRes.status === 'fulfilled' && sysRes.value.ok) {
+            const s = await sysRes.value.json();
+            if (s.status === 'success') {
+                const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+                setTxt('logStorage', s.dataDirSizeMb + ' MB');
+            }
+        }
+    } catch(e) {
+        console.warn('fetchModelInfo error:', e);
+    }
+}
+
+/* ===== ACTIVITY FEED ===== */
+function updateActivityFeed(detections) {
+    const list = document.getElementById('activityList');
+    if (!list || !detections?.length) return;
+    const recent = detections.slice(0, 5);
+    const colorMap = { '跌倒':'var(--red)', '打架':'var(--red)', '疲劳':'var(--orange)', '离岗':'var(--accent)', '人员聚集':'var(--green)' };
+    list.innerHTML = recent.map(d => {
+        const action = d.actions?.[0];
+        const time = d.timestamp || '--';
+        const people = d.person_count ?? d.personCount ?? 0;
+        const color = action ? (colorMap[action] || 'var(--accent)') : 'var(--green)';
+        const text = action ? `检测到<strong>${action}</strong>行为 · ${people}人` : `常规检测 · ${people}人`;
+        return `<div class="activity-item">
+            <div class="activity-dot" style="background:${color}"></div>
+            <div class="activity-text">${text}</div>
+            <div class="activity-time">${time}</div>
+        </div>`;
+    }).join('');
+}
 
 /* ===== FETCH DATA ===== */
 async function fetchData() {
@@ -1890,6 +1906,25 @@ async function fetchData() {
         setEl('sFatigue', S.fatigue, 'sFatigueBar', 'sFatiguePct');
         setEl('sLeave', S.leave, 'sLeaveBar', 'sLeavePct');
         setEl('sGather', S.gather, 'sGatherBar', 'sGatherPct');
+
+        // Update sub-page stat cards
+        const totalAlerts = S.fall + S.fight + S.fatigue + S.leave + S.gather;
+        const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        setTxt('bhvTotal', S.total.toLocaleString());
+        setTxt('bhvAlerts', totalAlerts);
+        setTxt('bhvFall', S.fall);
+        setTxt('bhvFight', S.fight);
+        setTxt('alertTotal', totalAlerts);
+        setTxt('alertPending', totalAlerts);
+        setTxt('alertFall', S.fall);
+        setTxt('alertFight', S.fight);
+        setTxt('logTotal', S.total.toLocaleString());
+        setTxt('logImages', S.images);
+        setTxt('areaTotal', S.total.toLocaleString());
+        setTxt('areaFall', S.fall);
+        setTxt('areaFight', S.fight);
+        setTxt('areaLeave', S.leave);
+        setTxt('areaFatigue', S.fatigue);
 
         // Update pie chart — only show types that have > 0
         const pieData = [];
@@ -1947,6 +1982,28 @@ async function fetchData() {
         lineChart.update('none');
 
         updateDetTable(data);
+        updateRecordTable(data);
+        updateAlertTable(data);
+        updateLogTable(data);
+        updateActivityFeed(data.allDetections);
+        updateBehaviorCharts(data);
+        window._latestStatsData = data;
+
+        // Update inference speed from real FPS data
+        const ad2 = data.allDetections || [];
+        const fpsVals = ad2.filter(d => d.fps > 0).slice(0, 10).map(d => d.fps);
+        if (fpsVals.length > 0) {
+            const avgFps = fpsVals.reduce((a,b) => a+b, 0) / fpsVals.length;
+            const infMs = Math.round(1000 / avgFps);
+            const infEl = document.getElementById('sInference');
+            if (infEl) infEl.innerHTML = infMs + '<span style="font-size:14px;color:var(--text-muted)">ms</span>';
+            const modelInfEl = document.getElementById('modelInference');
+            if (modelInfEl) modelInfEl.textContent = infMs + ' ms/帧';
+            const camFpsMeta = document.getElementById('camFpsMeta');
+            if (camFpsMeta) camFpsMeta.textContent = 'FPS: ' + avgFps.toFixed(1);
+            const camTableFps = document.getElementById('camTableFps');
+            if (camTableFps) camTableFps.textContent = avgFps.toFixed(1);
+        }
 
     } catch(e) {
         console.warn('fetchData error:', e);
@@ -1967,38 +2024,17 @@ videoFeed.addEventListener('load', () => {
     }
 });
 
-/* ===== RESOURCE UPDATE ===== */
+/* ===== RESOURCE UPDATE (disabled - no system monitoring API) ===== */
 function updateResources() {
-    const cpu = Math.floor(Math.random()*20+18);
-    const mem = Math.floor(Math.random()*15+55);
-    const gpu = Math.floor(Math.random()*20+50);
-    const disk = Math.floor(Math.random()*10+62);
-    const net = Math.floor(Math.random()*20+5);
-
-    const set = (id, val, barId) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = val + '%';
-        const bar = document.getElementById(barId);
-        if (bar) bar.style.width = val + '%';
-    };
-
-    set('resCpuPct', cpu, 'resCpuBar');
-    set('resMemPct', mem, 'resMemBar');
-    set('resGpuPct', gpu, 'resGpuBar');
-    set('resDiskPct', disk, 'resDiskBar');
-    set('resNetPct', net, 'resNetBar');
-
-    // Inference speed mock
-    const infEl = document.getElementById('sInference');
-    if (infEl) infEl.innerHTML = Math.floor(Math.random()*20+20)+'<span style="font-size:14px;color:var(--text-muted)">ms</span>';
+    // No-op: system resource monitoring not implemented
 }
 
 /* ===== INIT ===== */
 fetchData();
+fetchModelInfo();
 setInterval(fetchData, 2000);
+setInterval(fetchModelInfo, 30000);
 setInterval(updateResources, 5000);
-updateAlertTable();
-updateLogTable();
 initBehaviorCharts();
 
 // Init today date

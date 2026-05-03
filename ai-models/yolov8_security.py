@@ -1042,7 +1042,35 @@ class SecurityMonitor:
             # 发送失败不报错，静默处理
             print(f"发送失败: {str(e)}")
             return False
-    
+
+    def report_model_info(self):
+        """向 Java 后端报告模型信息"""
+        if not HAS_REQUESTS:
+            return
+        try:
+            model_size = 0
+            try:
+                model_size = os.path.getsize(self.config.MODEL_PATH) / 1024 / 1024
+            except OSError:
+                pass
+            info = {
+                "precision": "FP16" if torch.cuda.is_available() else "FP32",
+                "device": "cuda" if torch.cuda.is_available() else "cpu",
+                "model_size_mb": round(model_size, 1),
+                "total_layers": 0,
+                "conv_layers": 0,
+                "quantized_layers": 0,
+                "gpu_available": torch.cuda.is_available(),
+                "half_precision": torch.cuda.is_available()
+            }
+            requests.post(
+                f"{WEB_SERVER_URL}/api/model_info",
+                json=info,
+                timeout=2
+            )
+        except Exception:
+            pass  # 静默失败
+
     def run(self):
         """主运行循环"""
         print("系统启动...按Enter退出")
@@ -1051,6 +1079,11 @@ class SecurityMonitor:
 
         start_time = time.time()
         frame_count = 0
+        last_model_info_time = 0
+
+        # 启动时报告模型信息
+        self.report_model_info()
+        last_model_info_time = time.time()
 
         # 初始化变量
         prev_centers = []
@@ -1120,6 +1153,11 @@ class SecurityMonitor:
             # 10. 计算FPS
             current_time = time.time()
             fps = frame_count / (current_time - start_time)
+
+            # 10.5 每60秒报告一次模型信息
+            if current_time - last_model_info_time > 60:
+                self.report_model_info()
+                last_model_info_time = current_time
 
             # 11. 绘制UI
             is_alarm = "跌倒" in actions or "打架" in actions
