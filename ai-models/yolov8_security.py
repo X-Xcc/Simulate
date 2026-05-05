@@ -1136,8 +1136,8 @@ class SecurityMonitor:
 
         # 为每个摄像头启动独立线程
         self._threads = []
-        for cam_id in sources:
-            t = threading.Thread(target=self._run_camera_thread, args=(cam_id,), daemon=True)
+        for cam_config in sources:
+            t = threading.Thread(target=self._run_camera_thread, args=(cam_config,), daemon=True)
             t.start()
             self._threads.append(t)
 
@@ -1170,17 +1170,18 @@ class SecurityMonitor:
             print(f"读取视频帧时出错: {e}")
             return test_image.copy(), True
 
-    def _run_camera_thread(self, cam_id):
+    def _run_camera_thread(self, cam_config):
         """单个摄像头的检测循环（在线程中运行）"""
-        source = int(cam_id)
-        cam_str = str(cam_id)
-        print(f"[摄像头 {cam_str}] 线程启动，视频源: {source}")
+        cam_str = cam_config["id"]
+        source = cam_config["address"]
+        cam_name = cam_config["name"]
+        print(f"[{cam_name}] 线程启动，类型: {cam_config['type']}，地址: {source}")
 
         # 初始化视频源
         use_static, cap, frame_width, frame_height = self._init_video_source(source)
         if use_static:
             test_image = np.zeros((720, 1280, 3), dtype=np.uint8)
-            cv2.putText(test_image, f"Camera {cam_str}", (400, 360), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
+            cv2.putText(test_image, f"{cam_name}", (400, 360), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
         else:
             test_image = np.zeros((720, 1280, 3), dtype=np.uint8)
 
