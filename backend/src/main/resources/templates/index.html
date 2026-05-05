@@ -12,87 +12,11 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>window.Chart||document.write('<script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"><\/script>')</script>
+    <link rel="stylesheet" href="/yolov8-security/static/css/common.css">
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-    :root{
-        --bg:#f0f2f5;--sidebar-bg:#fff;--sidebar-w:200px;--topbar-h:52px;
-        --card-bg:#fff;--border:#e4e6eb;--border-light:#f0f1f3;
-        --text-primary:#1a1d21;--text-secondary:#656d76;--text-muted:#a5acb4;
-        --accent:#0969da;--accent-bg:rgba(9,105,218,.08);--accent-hover:rgba(9,105,218,.05);
-        --green:#1a7f37;--green-bg:rgba(26,127,55,.1);
-        --red:#cf222e;--red-bg:rgba(207,34,46,.1);
-        --orange:#bf8700;--orange-bg:rgba(191,135,0,.1);
-        --purple:#8250df;--purple-bg:rgba(130,80,223,.1);
-        --cyan:#0550ae;--cyan-bg:rgba(5,80,174,.08);
-        --shadow-sm:0 1px 2px rgba(0,0,0,.06);
-        --shadow:0 1px 3px rgba(0,0,0,.08),0 0 0 1px rgba(0,0,0,.04);
-        --shadow-md:0 4px 12px rgba(0,0,0,.1),0 0 0 1px rgba(0,0,0,.04);
-        --radius:8px;--radius-sm:6px;--radius-lg:10px;
-    }
-    [data-theme="dark"]{
-        --bg:#0d1117;--sidebar-bg:#161b22;--card-bg:#161b22;
-        --border:#21262d;--border-light:#1c2128;
-        --text-primary:#e6edf3;--text-secondary:#8b949e;--text-muted:#484f58;
-        --accent:#58a6ff;--accent-bg:rgba(88,166,255,.12);--accent-hover:rgba(88,166,255,.06);
-        --green:#3fb950;--green-bg:rgba(63,185,80,.12);
-        --red:#f85149;--red-bg:rgba(248,81,73,.12);
-        --orange:#d29922;--orange-bg:rgba(210,153,34,.12);
-        --purple:#bc8cff;--purple-bg:rgba(188,140,255,.12);
-        --cyan:#58a6ff;--cyan-bg:rgba(88,166,255,.08);
-        --shadow-sm:0 1px 2px rgba(0,0,0,.3);
-        --shadow:0 1px 3px rgba(0,0,0,.4),0 0 0 1px rgba(0,0,0,.2);
-        --shadow-md:0 4px 12px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.2);
-    }
-    [data-theme="dark"] .toast.success{background:#0d1f0d;border-color:rgba(63,185,80,.3);color:#3fb950}
-    [data-theme="dark"] .toast.error{background:#1f0d0d;border-color:rgba(248,81,73,.3);color:#f85149}
-    [data-theme="dark"] .toast.info{background:#0d1520;border-color:rgba(88,166,255,.2);color:#58a6ff}
-    body{font-family:'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text-primary);min-height:100vh;font-size:13px;-webkit-font-smoothing:antialiased}
-
-    /* LAYOUT */
-    .layout{display:flex;min-height:100vh}
-    .sidebar{width:var(--sidebar-w);background:var(--sidebar-bg);border-right:1px solid var(--border);position:fixed;top:0;left:0;bottom:0;z-index:100;display:flex;flex-direction:column;overflow-y:auto}
-    .sidebar::-webkit-scrollbar{width:0}
-    .sidebar-logo{height:var(--topbar-h);padding:0 14px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--border);flex-shrink:0}
-    .sidebar-logo-icon{width:30px;height:30px;background:linear-gradient(135deg,var(--accent),#8250df);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
-    .sidebar-logo-text{font-size:12px;font-weight:700;color:var(--text-primary);line-height:1.3}
-    .sidebar-logo-sub{font-size:9px;color:var(--text-muted);font-weight:400}
-    .sidebar-section{padding:6px 6px 4px}
-    .sidebar-section-label{font-size:9px;font-weight:600;color:var(--text-muted);letter-spacing:.8px;text-transform:uppercase;padding:4px 8px 5px}
-    .sidebar-item{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--radius-sm);font-size:12px;font-weight:500;color:var(--text-secondary);cursor:pointer;transition:all .15s;user-select:none;text-decoration:none;margin-bottom:1px;position:relative}
-    .sidebar-item:hover{background:var(--accent-hover);color:var(--accent)}
-    .sidebar-item.active{background:var(--accent-bg);color:var(--accent);font-weight:600}
-    .sidebar-item .icon{width:24px;height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;background:rgba(0,0,0,.04);transition:all .15s}
-    .sidebar-item.active .icon{background:rgba(9,105,218,.15)}
-    .sidebar-item::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:0;background:var(--accent);border-radius:0 2px 2px 0;transition:height .2s}
-    .sidebar-item.active::before{height:18px}
-    .sidebar-footer{margin-top:auto;padding:10px 6px;border-top:1px solid var(--border);flex-shrink:0}
-    .sidebar-user{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s}
-    .sidebar-user:hover{background:var(--accent-hover)}
-    .sidebar-avatar{width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0}
-    .sidebar-user-name{font-size:11px;font-weight:600;color:var(--text-primary);line-height:1.2}
-    .sidebar-user-role{font-size:9px;color:var(--text-muted)}
-
-    /* MAIN */
-    .main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh}
-    .topbar{height:var(--topbar-h);background:var(--sidebar-bg);border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;backdrop-filter:blur(8px);background:rgba(255,255,255,.85)}
-    [data-theme="dark"] .topbar{background:rgba(22,27,34,.85)}
-    .topbar-left{display:flex;align-items:center;gap:16px}
-    .topbar-breadcrumb{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted)}
-    .topbar-breadcrumb .current{color:var(--text-primary);font-weight:600}
-    .topbar-right{display:flex;align-items:center;gap:6px}
-    .topbar-btn{width:30px;height:30px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);color:var(--text-secondary);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;font-size:13px}
-    .topbar-btn:hover{background:var(--accent-hover);color:var(--accent);border-color:var(--accent)}
-    .topbar-time{font-size:11px;color:var(--text-muted);font-family:'Inter',monospace;letter-spacing:.5px;background:var(--bg);padding:3px 9px;border-radius:var(--radius-sm);border:1px solid var(--border)}
-    .topbar-sep{width:1px;height:18px;background:var(--border)}
-    .page{padding:18px 22px;flex:1}
-    .page-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;position:relative;padding-left:11px}
-    .page-title-row::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--accent);border-radius:2px}
-    .page-title{font-size:15px;font-weight:700;color:var(--text-primary)}
-    .page-desc{font-size:11px;color:var(--text-muted);margin-top:2px}
 
     /* STAT CARDS */
-    .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+    .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:16px}
     .stat-card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow-sm);transition:all .15s;position:relative;overflow:hidden}
     .stat-card:hover{box-shadow:var(--shadow-md);border-color:#d0d4da}
     .stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:transparent;transition:background .2s}
@@ -105,74 +29,42 @@
     .stat-icon.orange{background:var(--orange-bg);color:var(--orange)}
     .stat-icon.purple{background:var(--purple-bg);color:var(--purple)}
     .stat-icon.cyan{background:var(--cyan-bg);color:var(--cyan)}
-    .stat-trend{font-size:10px;font-weight:600;padding:2px 6px;border-radius:20px}
+    .stat-trend{font-size:11px;font-weight:600;padding:2px 6px;border-radius:20px}
     .stat-trend.up{background:var(--green-bg);color:var(--green)}
     .stat-trend.down{background:var(--red-bg);color:var(--red)}
     .stat-trend.neutral{background:var(--bg);color:var(--text-muted)}
     .stat-value{font-size:22px;font-weight:800;color:var(--text-primary);line-height:1;margin-bottom:2px;letter-spacing:-.5px}
-    .stat-label{font-size:11px;color:var(--text-muted);font-weight:500}
+    .stat-label{font-size:12px;color:var(--text-muted);font-weight:500}
     .stat-bar-row{display:flex;align-items:center;gap:7px;margin-top:7px}
     .stat-bar{flex:1;height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
     .stat-bar-fill{height:100%;border-radius:2px;transition:width 1s ease}
-    .stat-bar-pct{font-size:9px;font-weight:600;color:var(--text-muted);min-width:28px;text-align:right}
+    .stat-bar-pct{font-size:10px;font-weight:600;color:var(--text-muted);min-width:28px;text-align:right}
 
     /* GRID */
     .grid-row{display:grid;gap:14px;margin-bottom:16px}
     .grid-2{grid-template-columns:1fr 1fr;gap:14px}
 
-    /* CARD */
-    .card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden;transition:all .2s}
-    .card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
-    .card-header{padding:11px 15px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between}
-    .card-title{font-size:12px;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:6px}
-    .card-body{padding:15px}
-
-    /* BUTTONS */
-    .btn{padding:4px 11px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--card-bg);color:var(--text-secondary);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
-    .btn:hover{background:var(--bg);color:var(--text-primary);border-color:#b0b5bd}
-    .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
-    .btn-primary:hover{background:#0860ca}
-    .btn-success{background:var(--green-bg);border-color:rgba(26,127,55,.2);color:var(--green)}
-    .btn-danger{background:var(--red-bg);border-color:rgba(207,34,46,.2);color:var(--red)}
-    .btn-sm{padding:2px 7px;font-size:10px}
-    .btn-group{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
-
-    /* BADGE */
-    .badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;transition:all .2s}
-    .badge-blue{background:var(--accent-bg);color:var(--accent)}
-    .badge-green{background:var(--green-bg);color:var(--green)}
-    .badge-red{background:var(--red-bg);color:var(--red)}
-    .badge-orange{background:var(--orange-bg);color:var(--orange)}
-    .badge-purple{background:var(--purple-bg);color:var(--purple)}
-    .badge-gray{background:var(--bg);color:var(--text-muted)}
-    .badge-dot::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
-
-    /* TABLE */
-    .table-wrap{overflow-x:auto}
-    table{width:100%;border-collapse:collapse}
-    th{padding:7px 11px;text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase;background:var(--bg);border-bottom:1px solid var(--border)}
-    td{padding:8px 11px;font-size:11px;color:var(--text-secondary);border-bottom:1px solid var(--border-light)}
-    tr:last-child td{border-bottom:none}
-    tr{transition:background .15s}
-    tr:hover td{background:var(--accent-hover)}
 
     /* VIDEO */
     .video-section{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
     .cam-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg)}
-    .cam-tab{padding:8px 16px;font-size:11px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .15s;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+    .cam-tab{padding:8px 16px;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .15s;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
     .cam-tab:hover{color:var(--text-primary);background:var(--accent-hover)}
     .cam-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--card-bg)}
     .cam-tab .cam-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
     .cam-tab .cam-dot.offline{background:var(--red)}
     .video-main-wrap{background:#0a0a0a;position:relative;aspect-ratio:16/9}
     .video-main-wrap img{width:100%;height:100%;object-fit:cover}
+    .video-error{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:rgba(255,255,255,.5);font-size:13px;background:#0a0a0a}
+    .video-error.show{display:flex}
+    .video-error-icon{font-size:32px;opacity:.4}
     .video-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.8));padding:18px 12px 8px;display:flex;align-items:flex-end;justify-content:space-between}
-    .video-label{font-size:11px;color:#fff;font-weight:600;display:flex;align-items:center;gap:5px}
+    .video-label{font-size:12px;color:#fff;font-weight:600;display:flex;align-items:center;gap:5px}
     .video-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 1.5s infinite}
     @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-    .video-fps{font-size:10px;color:rgba(255,255,255,.6);font-family:monospace}
+    .video-fps{font-size:11px;color:rgba(255,255,255,.6);font-family:monospace}
     .video-actions{padding:8px 11px;display:flex;gap:5px;border-top:1px solid var(--border-light)}
-    .v-btn{padding:4px 10px;border-radius:var(--radius-sm);font-size:10px;font-weight:600;border:1px solid var(--border);background:var(--card-bg);color:var(--text-secondary);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px}
+    .v-btn{padding:5px 11px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--card-bg);color:var(--text-secondary);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px}
     .v-btn:hover{background:var(--accent-hover);color:var(--accent);border-color:var(--accent)}
 
     /* CHART */
@@ -181,8 +73,8 @@
     /* INFO GRID */
     .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
     .info-item{padding:9px 11px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light)}
-    .info-label{font-size:9px;color:var(--text-muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px}
-    .info-val{font-size:12px;font-weight:700;color:var(--text-primary)}
+    .info-label{font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px}
+    .info-val{font-size:13px;font-weight:700;color:var(--text-primary)}
     .info-val.green{color:var(--green)}
     .info-val.red{color:var(--red)}
 
@@ -191,29 +83,10 @@
     .server-item{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);transition:all .15s}
     .server-item:hover{border-color:#d0d4da}
     .server-icon{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
-    .server-name{font-size:11px;font-weight:600;color:var(--text-primary)}
-    .server-meta{font-size:9px;color:var(--text-muted);margin-top:1px}
+    .server-name{font-size:12px;font-weight:600;color:var(--text-primary)}
+    .server-meta{font-size:10px;color:var(--text-muted);margin-top:1px}
     .server-info{flex:1}
 
-    /* TOAST */
-    .toast-container{position:fixed;top:64px;right:14px;z-index:1000;display:flex;flex-direction:column;gap:5px}
-    .toast{padding:8px 13px;border-radius:var(--radius);background:var(--card-bg);border:1px solid var(--border);font-size:11px;font-weight:500;color:var(--text-primary);box-shadow:var(--shadow-md);animation:toastIn .25s ease;display:flex;align-items:center;gap:7px;min-width:220px}
-    .toast.success{border-color:rgba(26,127,55,.3);background:#f6fff8}
-    .toast.error{border-color:rgba(207,34,46,.3);background:#fff5f5}
-    .toast.info{border-color:rgba(9,105,218,.2);background:#f6faff}
-    @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
-
-    /* MODAL */
-    .modal-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center}
-    .modal-overlay.show{display:flex}
-    .modal{background:var(--card-bg);border-radius:var(--radius-lg);width:440px;max-width:90vw;box-shadow:var(--shadow-md);animation:modalIn .2s ease}
-    .modal-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-    .modal-title{font-size:13px;font-weight:700}
-    .modal-close{width:26px;height:26px;border-radius:5px;border:none;background:var(--bg);color:var(--text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-    .modal-close:hover{background:var(--red-bg);color:var(--red)}
-    .modal-body{padding:16px}
-    .modal-footer{padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:7px}
-    @keyframes modalIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
 
     /* IMAGE VIEWER */
     .image-viewer{position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;flex-direction:column}
@@ -232,20 +105,14 @@
     .alert-ticker-close{margin-left:auto;background:rgba(255,255,255,.2);border:none;color:#fff;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}
 
     /* ALERT FLASH */
-    @keyframes alertFlash{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 12px 2px var(--red)}}
-    .stat-card.alert-active{animation:alertFlash .8s ease 3}
+    @keyframes alertFlash{0%,100%{border-color:var(--border);background:var(--card-bg)}50%{border-color:var(--red);background:var(--red-bg)}}
+    .stat-card.alert-active{animation:alertFlash 1.2s ease 2}
 
-    /* FORM */
-    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:11px}
-    .form-group{margin-bottom:11px}
-    .form-label{font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:4px;display:block;letter-spacing:.3px}
-    .form-input,.form-select{width:100%;padding:6px 9px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);color:var(--text-primary);font-size:11px;outline:none;transition:all .15s}
-    .form-input:focus,.form-select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
 
     /* EMPTY STATE */
     .empty-state{text-align:center;padding:28px 14px;color:var(--text-muted)}
     .empty-state-icon{font-size:24px;margin-bottom:6px;opacity:.5}
-    .empty-state-text{font-size:11px}
+    .empty-state-text{font-size:12px}
 
     /* ANIMATIONS */
     @keyframes slideUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -259,16 +126,15 @@
     .stat-value.updated{animation:valueFlash .6s ease}
     @keyframes valueFlash{0%{color:var(--accent);transform:scale(1.05)}100%{color:var(--text-primary);transform:scale(1)}}
 
-    /* SCROLLBAR */
-    ::-webkit-scrollbar{width:5px;height:5px}
-    ::-webkit-scrollbar-track{background:transparent}
-    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-    ::-webkit-scrollbar-thumb:hover{background:var(--text-muted)}
+    /* LOADING STATE */
+    @keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+    .loading-shimmer{background:linear-gradient(90deg,var(--bg) 25%,var(--border-light) 50%,var(--bg) 75%);background-size:400px 100%;animation:shimmer 1.5s infinite;border-radius:4px;color:transparent!important}
+    .stat-value.loading{font-size:14px;color:var(--text-muted)}
+    .data-status{text-align:center;padding:12px;font-size:12px;color:var(--text-muted)}
+    .data-status.error{color:var(--red)}
+    .data-status .retry-link{color:var(--accent);cursor:pointer;text-decoration:underline;margin-left:6px}
 
-    /* RESPONSIVE */
-    @media(max-width:1400px){.stat-row{grid-template-columns:repeat(3,1fr)}}
-    @media(max-width:1100px){.stat-row{grid-template-columns:repeat(2,1fr)}.grid-2{grid-template-columns:1fr}}
-    @media(max-width:800px){:root{--sidebar-w:0px}.sidebar{width:0;overflow:hidden}.main{margin-left:0}}
+    @media(max-width:1100px){.grid-2{grid-template-columns:1fr}}
     </style>
 </head>
 <body>
@@ -296,6 +162,9 @@
         </a>
         <a class="sidebar-item" href="#status">
             <div class="icon">🖥</div><span>系统状态</span>
+        </a>
+        <a class="sidebar-item" href="#cameraConfig">
+            <div class="icon">📷</div><span>摄像头配置</span>
         </a>
     </div>
     <div class="sidebar-section">
@@ -357,6 +226,11 @@
             </div>
             <div class="video-main-wrap" id="videoWrap">
                 <img id="videoFeed" src="/yolov8-security/video_feed?cam=0" alt="实时监控">
+                <div class="video-error" id="videoError">
+                    <div class="video-error-icon">📹</div>
+                    <div>视频流连接失败</div>
+                    <button class="v-btn" onclick="retryVideoFeed()" style="margin-top:4px">重新连接</button>
+                </div>
                 <div class="video-overlay">
                     <div class="video-label"><span class="video-dot"></span><span id="camLabel">A区-主监控</span></div>
                     <div class="video-fps" id="fpsDisplay">FPS: --</div>
@@ -371,13 +245,13 @@
         </div>
 
         <!-- STATS -->
-        <div class="stat-row" style="grid-template-columns:repeat(6,1fr)">
+        <div class="stat-row">
             <div class="stat-card" id="cardTotal">
                 <div class="stat-card-top">
                     <div class="stat-icon blue">👥</div>
                     <span class="stat-trend neutral">实时</span>
                 </div>
-                <div class="stat-value" id="sTotal">0</div>
+                <div class="stat-value loading" id="sTotal">加载中...</div>
                 <div class="stat-label">今日检测</div>
                 <div class="stat-bar-row">
                     <div class="stat-bar"><div class="stat-bar-fill" id="sTotalBar" style="width:0%;background:var(--accent)"></div></div>
@@ -389,7 +263,7 @@
                     <div class="stat-icon red">🚨</div>
                     <span class="stat-trend neutral">今日</span>
                 </div>
-                <div class="stat-value" id="sFall">0</div>
+                <div class="stat-value loading" id="sFall">--</div>
                 <div class="stat-label">跌倒</div>
                 <div class="stat-bar-row">
                     <div class="stat-bar"><div class="stat-bar-fill" id="sFallBar" style="width:0%;background:var(--red)"></div></div>
@@ -401,7 +275,7 @@
                     <div class="stat-icon orange">⚔</div>
                     <span class="stat-trend neutral">今日</span>
                 </div>
-                <div class="stat-value" id="sFight">0</div>
+                <div class="stat-value loading" id="sFight">--</div>
                 <div class="stat-label">打架</div>
                 <div class="stat-bar-row">
                     <div class="stat-bar"><div class="stat-bar-fill" id="sFightBar" style="width:0%;background:var(--orange)"></div></div>
@@ -413,7 +287,7 @@
                     <div class="stat-icon purple">😴</div>
                     <span class="stat-trend neutral">警戒</span>
                 </div>
-                <div class="stat-value" id="sFatigue">0</div>
+                <div class="stat-value loading" id="sFatigue">--</div>
                 <div class="stat-label">疲劳</div>
                 <div class="stat-bar-row">
                     <div class="stat-bar"><div class="stat-bar-fill" id="sFatigueBar" style="width:0%;background:var(--purple)"></div></div>
@@ -425,7 +299,7 @@
                     <div class="stat-icon cyan">🚶</div>
                     <span class="stat-trend neutral">监控中</span>
                 </div>
-                <div class="stat-value" id="sLeave">0</div>
+                <div class="stat-value loading" id="sLeave">--</div>
                 <div class="stat-label">离岗</div>
                 <div class="stat-bar-row">
                     <div class="stat-bar"><div class="stat-bar-fill" id="sLeaveBar" style="width:0%;background:var(--cyan)"></div></div>
@@ -437,7 +311,7 @@
                     <div class="stat-icon green">👥</div>
                     <span class="stat-trend neutral">区域</span>
                 </div>
-                <div class="stat-value" id="sGather">0</div>
+                <div class="stat-value loading" id="sGather">--</div>
                 <div class="stat-label">人员聚集</div>
                 <div class="stat-bar-row">
                     <div class="stat-bar"><div class="stat-bar-fill" id="sGatherBar" style="width:0%;background:var(--green)"></div></div>
@@ -552,6 +426,32 @@
             </div>
         </div>
 
+        <!-- CAMERA CONFIG -->
+        <div class="card" style="margin-bottom:16px" id="cameraConfig">
+            <div class="card-header">
+                <div class="card-title">📷 摄像头配置</div>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-primary" onclick="showAddCameraModal()">+ 添加摄像头</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>类型</th>
+                            <th>地址</th>
+                            <th>名称</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cameraConfigTableBody">
+                        <tr><td colspan="5" class="data-status">正在加载...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div><!-- /page -->
 </div><!-- /main -->
 </div><!-- /layout -->
@@ -591,7 +491,7 @@ const TYPES = [
     {name:'离岗',cls:'badge-blue',color:'#0969da'},
     {name:'人员聚集',cls:'badge-green',color:'#1a7f37'}
 ];
-const CAM_NAMES = {'0':'A区-主监控','1':'B区-走廊','2':'C区-操场'};
+const CAM_DEFAULT_NAMES = {'0':'A区-主监控','1':'B区-走廊','2':'C区-操场'};
 const S = {total:0,images:0,fall:0,fight:0,fatigue:0,leave:0,gather:0};
 
 let currentCam = '0';
@@ -610,7 +510,7 @@ async function authFetch(url, opts={}) {
     const headers = {...(opts.headers||{})};
     if (token) headers['Authorization'] = 'Bearer ' + token;
     const res = await fetch(url, {...opts, headers});
-    if (res.status === 401) { sessionStorage.clear(); window.location.href = API_BASE + '/login'; }
+    if (res.status === 401) { sessionStorage.removeItem('auth_token'); localStorage.removeItem('auth_token'); window.location.href = API_BASE + '/login'; }
     return res;
 }
 
@@ -626,6 +526,7 @@ function toggleTheme() {
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
     updateThemeIcon(next);
+    updateChartTheme();
 }
 function updateThemeIcon(theme) {
     const btn = document.getElementById('themeToggle');
@@ -647,12 +548,30 @@ function tick() {
 tick(); setInterval(tick, 1000);
 
 /* ===== CAMERA SWITCHING ===== */
+let camNameMap = {...CAM_DEFAULT_NAMES};
 function switchCam(tab) {
     document.querySelectorAll('.cam-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     currentCam = tab.dataset.cam;
     document.getElementById('videoFeed').src = API_BASE + '/video_feed?cam=' + currentCam;
-    document.getElementById('camLabel').textContent = CAM_NAMES[currentCam] || '摄像头 ' + currentCam;
+    document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 ' + currentCam;
+}
+function buildCamTabs(camIds) {
+    const container = document.getElementById('camTabs');
+    if (!container || !camIds || camIds.length === 0) return;
+    const normalizedIds = camIds.map(id => String(id).replace('cam', ''));
+    container.innerHTML = normalizedIds.map((id, i) => {
+        const name = camNameMap[id] || '摄像头 ' + (i + 1);
+        const active = i === 0 ? ' active' : '';
+        return `<div class="cam-tab${active}" data-cam="${id}" onclick="switchCam(this)">
+            <span class="cam-dot"></span>${name}
+        </div>`;
+    }).join('');
+    if (normalizedIds.length > 0) {
+        currentCam = normalizedIds[0];
+        document.getElementById('videoFeed').src = API_BASE + '/video_feed?cam=' + currentCam;
+        document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 1';
+    }
 }
 
 /* ===== TOAST ===== */
@@ -694,25 +613,30 @@ function showUserInfo() {
                 <div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">登录IP</div><div style="font-size:12px;font-weight:600;margin-top:2px">192.168.1.14</div></div>
             </div>
         </div>
-    `, `<button class="btn" onclick="closeModal()">关闭</button><button class="btn btn-danger" onclick="sessionStorage.clear();window.location.href=API_BASE+'/login'">退出登录</button>`);
+    `, `<button class="btn" onclick="closeModal()">关闭</button><button class="btn btn-danger" onclick="sessionStorage.removeItem('auth_token');localStorage.removeItem('auth_token');window.location.href=API_BASE+'/login'">退出登录</button>`);
 }
 
 /* ===== VIDEO ===== */
-function fullscreen() { const el=document.getElementById('videoWrap'); if(el.requestFullscreen)el.requestFullscreen(); }
+function fullscreen() { const el=document.getElementById('videoWrap'); if(!el)return; (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen).call(el); }
 function captureScreenshot() {
     const video = document.getElementById('videoFeed');
     if (!video) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.naturalWidth||video.width;
-    canvas.height = video.naturalHeight||video.height;
-    canvas.getContext('2d').drawImage(video,0,0);
-    canvas.toBlob(blob=>{
-        const link=document.createElement('a');
-        link.href=URL.createObjectURL(blob);
-        link.download='截图_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';
-        link.click();URL.revokeObjectURL(link.href);
-        toast('截图已保存','success');
-    },'image/jpeg',0.9);
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.naturalWidth||video.width;
+        canvas.height = video.naturalHeight||video.height;
+        canvas.getContext('2d').drawImage(video,0,0);
+        canvas.toBlob(blob=>{
+            if(!blob){toast('截图失败：视频流不支持截图','error');return}
+            const link=document.createElement('a');
+            link.href=URL.createObjectURL(blob);
+            link.download='截图_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';
+            link.click();URL.revokeObjectURL(link.href);
+            toast('截图已保存','success');
+        },'image/jpeg',0.9);
+    } catch(e) {
+        toast('截图失败：浏览器安全限制，MJPEG流不支持截图','error');
+    }
 }
 
 /* ===== ALERT SYSTEM ===== */
@@ -851,13 +775,13 @@ async function clearAllData() {
 }
 
 /* ===== DETECTION TABLE ===== */
-function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function escAttr(s){return String(s).replace(/\\/g,'&#92;').replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function buildDetRow(det) {
     const typeObj=TYPES.find(t=>t.name===det.type)||TYPES[0];
     const status=det.type&&det.type!=='—'?'已检测':'常规';
     const statusCls={'已检测':'badge-blue','常规':'badge-green'};
     return `<tr>
-        <td style="font-family:monospace;font-size:10px">${det.timeStr||det.timestamp||'--'}</td>
+        <td style="font-family:monospace;font-size:11px">${det.timeStr||det.timestamp||'--'}</td>
         <td><span class="badge ${typeObj.cls}">${det.type}</span></td>
         <td>${det.people||0}人</td>
         <td>${det.fps||'--'}</td>
@@ -875,6 +799,14 @@ function renderDetTable(dets) {
         tbody.innerHTML=dets.map(d=>buildDetRow(d)).join('');
     }
 }
+// Show initial loading state for tables
+(function(){
+    const detBody=document.getElementById('detTableBody');
+    const alertBody=document.getElementById('alertTableBody');
+    const loadingRow='<tr><td colspan="6" class="data-status">正在加载数据...</td></tr>';
+    if(detBody)detBody.innerHTML=loadingRow;
+    if(alertBody)alertBody.innerHTML='<tr><td colspan="5" class="data-status">正在加载数据...</td></tr>';
+})();
 
 function updateDetTable(data) {
     const dets=data?.allDetections?.length>0?data.allDetections.slice(0,50).map(d=>({
@@ -907,7 +839,7 @@ function updateAlertTable(data) {
             ? `<button class="btn btn-sm" onclick="toggleAlertStatus('${d.timestamp}')">撤回</button>`
             : `<button class="btn btn-sm btn-success" onclick="toggleAlertStatus('${d.timestamp}')">处理</button>`;
         return `<tr style="${handled?'opacity:.6':''}">
-            <td style="font-family:monospace;font-size:10px">${d.timestamp||'--'}</td>
+            <td style="font-family:monospace;font-size:11px">${d.timestamp||'--'}</td>
             <td><span class="badge ${cls}">${action}</span></td>
             <td>${d.person_count??d.personCount??0}人</td>
             <td>${statusBadge}</td>
@@ -931,6 +863,20 @@ document.getElementById('imageViewer').addEventListener('click',e=>{if(e.target=
 
 /* ===== CHARTS ===== */
 const _hasChart = typeof Chart !== 'undefined';
+function getChartTooltipOpts(){
+    const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+    return{
+        backgroundColor:isDark?'#1c2128':'#fff',
+        titleColor:isDark?'#e6edf3':'#1a1d21',
+        bodyColor:isDark?'#8b949e':'#656d76',
+        borderColor:isDark?'#30363d':'#e4e6eb',
+        borderWidth:1,cornerRadius:8,padding:10,
+        titleFont:{size:12,weight:'700'},bodyFont:{size:11}
+    };
+}
+function getChartGridColor(){return document.documentElement.getAttribute('data-theme')==='dark'?'rgba(255,255,255,.06)':'rgba(0,0,0,.04)'}
+function getChartTickColor(){return document.documentElement.getAttribute('data-theme')==='dark'?'#8b949e':'#a5acb4'}
+
 const lineCtx=_hasChart?document.getElementById('lineChart').getContext('2d'):null;
 const lineChart=_hasChart?new Chart(lineCtx,{
     type:'line',
@@ -938,8 +884,8 @@ const lineChart=_hasChart?new Chart(lineCtx,{
     options:{
         responsive:true,maintainAspectRatio:false,
         interaction:{intersect:false,mode:'index'},
-        plugins:{legend:{display:false},tooltip:{backgroundColor:'#fff',titleColor:'#1a1d21',bodyColor:'#656d76',borderColor:'#e4e6eb',borderWidth:1,cornerRadius:8,padding:10,titleFont:{size:11,weight:'700'},bodyFont:{size:10}}},
-        scales:{x:{ticks:{color:'#a5acb4',font:{size:9},maxRotation:45},grid:{color:'rgba(0,0,0,.04)'}},y:{min:0,ticks:{color:'#a5acb4',font:{size:9}},grid:{color:'rgba(0,0,0,.04)'}}}
+        plugins:{legend:{display:false},tooltip:getChartTooltipOpts()},
+        scales:{x:{ticks:{color:getChartTickColor(),font:{size:10},maxRotation:45},grid:{color:getChartGridColor()}},y:{min:0,ticks:{color:getChartTickColor(),font:{size:10}},grid:{color:getChartGridColor()}}}
     }
 }):null;
 
@@ -949,9 +895,22 @@ const pieChart=_hasChart?new Chart(pieCtx,{
     data:{labels:['暂无数据'],datasets:[{data:[1],backgroundColor:['#e4e6eb'],borderWidth:0,hoverOffset:4}]},
     options:{
         responsive:true,maintainAspectRatio:false,cutout:'62%',
-        plugins:{legend:{position:'right',labels:{color:'#656d76',font:{size:10},boxWidth:9,padding:10}},tooltip:{backgroundColor:'#fff',titleColor:'#1a1d21',bodyColor:'#656d76',borderColor:'#e4e6eb',borderWidth:1,cornerRadius:8,padding:10}}
+        plugins:{legend:{position:'right',labels:{color:getChartTickColor(),font:{size:11},boxWidth:9,padding:10}},tooltip:getChartTooltipOpts()}
     }
 }):null;
+
+function updateChartTheme(){
+    if(!_hasChart)return;
+    const ttp=getChartTooltipOpts();const gc=getChartGridColor();const tc=getChartTickColor();
+    [lineChart,pieChart].forEach(c=>{
+        if(!c)return;
+        c.options.plugins.tooltip=ttp;
+        if(c.options.scales?.x){c.options.scales.x.ticks.color=tc;c.options.scales.x.grid.color=gc}
+        if(c.options.scales?.y){c.options.scales.y.ticks.color=tc;c.options.scales.y.grid.color=gc}
+        if(c.options.plugins?.legend?.labels)c.options.plugins.legend.labels.color=tc;
+        c.update('none');
+    });
+}
 
 function setChartRange(range,btn){
     document.querySelectorAll('[id^=chartBtn]').forEach(b=>b.classList.remove('active'));
@@ -1040,21 +999,27 @@ async function fetchData(){
         }
         previousDetectionCount = newTotal;
 
-        const setEl=(id,val,barId)=>{
+        const setEl=(id,val,barId,pct)=>{
             const el=document.getElementById(id);
-            if(el){const old=el.textContent;el.textContent=val;if(old!==String(val)&&val!==0){el.classList.add('updated');setTimeout(()=>el.classList.remove('updated'),600)}}
+            if(el){el.classList.remove('loading');const old=el.textContent;el.textContent=val;if(old!==String(val)&&val!==0){el.classList.add('updated');setTimeout(()=>el.classList.remove('updated'),600)}}
             const bar=document.getElementById(barId);
-            if(bar){const maxVal=Math.max(S.fall,S.fight,S.fatigue,S.leave,S.gather,1);bar.style.width=Math.min(val/maxVal*100,100)+'%'}
+            if(bar){bar.style.width=Math.min(pct,100)+'%'}
+            const pctEl=document.getElementById(barId.replace('Bar','Pct'));
+            if(pctEl){pctEl.textContent=Math.round(pct)+'%'}
         };
         const totalEl=document.getElementById('sTotal');
-        if(totalEl){const old=totalEl.textContent;const v=S.total.toLocaleString();totalEl.textContent=v;if(old!==v&&S.total!==0){totalEl.classList.add('updated');setTimeout(()=>totalEl.classList.remove('updated'),600)}}
+        if(totalEl){totalEl.classList.remove('loading');const old=totalEl.textContent;const v=S.total.toLocaleString();totalEl.textContent=v;if(old!==v&&S.total!==0){totalEl.classList.add('updated');setTimeout(()=>totalEl.classList.remove('updated'),600)}}
+        const totalBehaviors=S.fall+S.fight+S.fatigue+S.leave+S.gather;
         const totalBar=document.getElementById('sTotalBar');
-        if(totalBar){const totalBehaviors=S.fall+S.fight+S.fatigue+S.leave+S.gather;totalBar.style.width=S.total>0?Math.min(totalBehaviors/S.total*100,100)+'%':'0%'}
-        setEl('sFall',S.fall,'sFallBar');
-        setEl('sFight',S.fight,'sFightBar');
-        setEl('sFatigue',S.fatigue,'sFatigueBar');
-        setEl('sLeave',S.leave,'sLeaveBar');
-        setEl('sGather',S.gather,'sGatherBar');
+        if(totalBar){totalBar.style.width=S.total>0?Math.min(totalBehaviors/S.total*100,100)+'%':'0%'}
+        const totalPctEl=document.getElementById('sTotalPct');
+        if(totalPctEl){totalPctEl.textContent=S.total>0?Math.round(totalBehaviors/S.total*100)+'%':'0%'}
+        const t=S.total||1;
+        setEl('sFall',S.fall,'sFallBar',S.fall/t*100);
+        setEl('sFight',S.fight,'sFightBar',S.fight/t*100);
+        setEl('sFatigue',S.fatigue,'sFatigueBar',S.fatigue/t*100);
+        setEl('sLeave',S.leave,'sLeaveBar',S.leave/t*100);
+        setEl('sGather',S.gather,'sGatherBar',S.gather/t*100);
 
         // Pie chart
         if(pieChart){
@@ -1065,8 +1030,8 @@ async function fetchData(){
         }
 
         // Line chart
+        const ad=data.allDetections||[];
         if(lineChart){
-            const ad=data.allDetections||[];
             const now=new Date();const labels=[],values=[];
             const activeBtn=document.querySelector('[id^=chartBtn].active');
             const range=activeBtn?.id==='chartBtnHour'?'hour':activeBtn?.id==='chartBtnDay'?'day':'min';
@@ -1094,16 +1059,21 @@ async function fetchData(){
             const infEl=document.getElementById('sInference');
             if(infEl)infEl.innerHTML=infMs+'<span style="font-size:12px;color:var(--text-muted)">ms</span>';
         }
-    }catch(e){console.warn('fetchData error:',e);updateDetTable(null)}
+    }catch(e){console.warn('fetchData error:',e);updateDetTable(null);toast('数据加载失败，请检查服务状态','error')}
 }
 
 /* ===== CAMERA STATUS ===== */
+let camTabsBuilt = false;
 async function fetchCameraStatus() {
     try {
         const res = await authFetch(API_BASE + '/api/cameras');
         if (res.ok) {
             const data = await res.json();
-            const activeCams = data.cameras || [];
+            const activeCams = Array.from(data.cameras || []);
+            if (!camTabsBuilt && activeCams.length > 0) {
+                buildCamTabs(activeCams);
+                camTabsBuilt = true;
+            }
             document.querySelectorAll('.cam-tab').forEach(tab => {
                 const camId = tab.dataset.cam;
                 const dot = tab.querySelector('.cam-dot');
@@ -1116,13 +1086,234 @@ async function fetchCameraStatus() {
     } catch(e) {}
 }
 
+/* ===== CAMERA CONFIG ===== */
+let _cameraConfigData = [];
+
+async function fetchCameraConfig() {
+    try {
+        const res = await authFetch(API_BASE + '/api/camera_config');
+        if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'success') {
+                _cameraConfigData = data.data || [];
+                renderCameraTable(_cameraConfigData);
+            }
+        }
+    } catch(e) { console.warn('fetchCameraConfig error:', e); }
+}
+
+function renderCameraTable(cameras) {
+    const tbody = document.getElementById('cameraConfigTableBody');
+    if (!cameras.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="data-status">暂无摄像头配置</td></tr>';
+        return;
+    }
+    const typeMap = {usb: ['USB', 'badge-green'], rtsp: ['RTSP', 'badge-blue'], http_snapshot: ['HTTP', 'badge-purple']};
+    tbody.innerHTML = cameras.map(c => {
+        const [typeLabel, badgeClass] = typeMap[c.type] || [c.type, 'badge'];
+        const addr = typeof c.address === 'number' ? c.address : c.address;
+        const addrStr = String(addr);
+        const addrDisplay = addrStr.length > 40 ? addrStr.substring(0, 37) + '...' : addrStr;
+        return `<tr>
+            <td><code>${c.id}</code></td>
+            <td><span class="badge ${badgeClass}">${typeLabel}</span></td>
+            <td title="${addrStr}" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${addrDisplay}</td>
+            <td>${c.name || ''}</td>
+            <td>
+                <div class="btn-group">
+                    <button class="btn btn-sm" onclick="showEditCameraModal('${c.id}')">编辑</button>
+                    <button class="btn btn-sm btn-danger" onclick="confirmDeleteCamera('${c.id}')">删除</button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function showAddCameraModal() {
+    openModal('添加摄像头', `
+        <div class="form-group">
+            <label class="form-label">摄像头类型</label>
+            <select class="form-select" id="camType" onchange="onCameraTypeChange()">
+                <option value="usb">USB 摄像头</option>
+                <option value="rtsp">RTSP 网络流</option>
+                <option value="http_snapshot">HTTP 快照</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">地址</label>
+            <input class="form-input" id="camAddress" type="number" placeholder="设备编号，如 0">
+        </div>
+        <div class="form-group">
+            <label class="form-label">名称</label>
+            <input class="form-input" id="camName" placeholder="如：主摄像头">
+        </div>
+        <div id="camAuthFields" style="display:none">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">用户名</label>
+                    <input class="form-input" id="camUser" placeholder="admin">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">密码</label>
+                    <input class="form-input" id="camPassword" type="password" placeholder="可留空">
+                </div>
+            </div>
+        </div>
+    `, `<button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="addCamera()">添加</button>`);
+}
+
+function showEditCameraModal(id) {
+    const cam = _cameraConfigData.find(c => c.id === id);
+    if (!cam) return;
+    const isUsb = cam.type === 'usb';
+    const isHttp = cam.type === 'http_snapshot';
+    openModal('编辑摄像头', `
+        <div class="form-group">
+            <label class="form-label">摄像头类型</label>
+            <select class="form-select" id="camType" onchange="onCameraTypeChange()">
+                <option value="usb" ${isUsb ? 'selected' : ''}>USB 摄像头</option>
+                <option value="rtsp" ${cam.type === 'rtsp' ? 'selected' : ''}>RTSP 网络流</option>
+                <option value="http_snapshot" ${isHttp ? 'selected' : ''}>HTTP 快照</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">地址</label>
+            <input class="form-input" id="camAddress" type="${isUsb ? 'number' : 'text'}" value="${cam.address}" placeholder="${isUsb ? '设备编号' : 'URL地址'}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">名称</label>
+            <input class="form-input" id="camName" value="${cam.name || ''}">
+        </div>
+        <div id="camAuthFields" style="display:${isHttp ? '' : 'none'}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">用户名</label>
+                    <input class="form-input" id="camUser" value="${cam.user || ''}" placeholder="admin">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">密码</label>
+                    <input class="form-input" id="camPassword" type="password" value="${cam.password || ''}" placeholder="可留空">
+                </div>
+            </div>
+        </div>
+    `, `<button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveCameraEdit('${id}')">保存</button>`);
+}
+
+function onCameraTypeChange() {
+    const type = document.getElementById('camType').value;
+    const addrInput = document.getElementById('camAddress');
+    const authFields = document.getElementById('camAuthFields');
+    if (type === 'usb') {
+        addrInput.placeholder = '设备编号，如 0';
+        addrInput.type = 'number';
+        authFields.style.display = 'none';
+    } else if (type === 'rtsp') {
+        addrInput.placeholder = 'rtsp://192.168.1.100:554/stream1';
+        addrInput.type = 'text';
+        authFields.style.display = 'none';
+    } else {
+        addrInput.placeholder = 'http://192.168.1.100/snapshot.jpg';
+        addrInput.type = 'text';
+        authFields.style.display = '';
+    }
+}
+
+async function addCamera() {
+    const type = document.getElementById('camType').value;
+    const addrVal = document.getElementById('camAddress').value;
+    const address = type === 'usb' ? parseInt(addrVal) : addrVal;
+    const name = document.getElementById('camName').value;
+    if (!addrVal || !name) { toast('请填写地址和名称', 'error'); return; }
+    const body = { type, address, name };
+    if (type === 'http_snapshot') {
+        body.user = document.getElementById('camUser')?.value || '';
+        body.password = document.getElementById('camPassword')?.value || '';
+    }
+    try {
+        const res = await authFetch(API_BASE + '/api/camera_config', {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            toast('摄像头已添加', 'success');
+            closeModal();
+            fetchCameraConfig();
+        } else {
+            toast('添加失败: ' + (data.message || '未知错误'), 'error');
+        }
+    } catch(e) { toast('添加失败: 网络错误', 'error'); }
+}
+
+async function saveCameraEdit(id) {
+    const type = document.getElementById('camType').value;
+    const addrVal = document.getElementById('camAddress').value;
+    const address = type === 'usb' ? parseInt(addrVal) : addrVal;
+    const name = document.getElementById('camName').value;
+    if (!addrVal || !name) { toast('请填写地址和名称', 'error'); return; }
+    const body = { type, address, name };
+    if (type === 'http_snapshot') {
+        body.user = document.getElementById('camUser')?.value || '';
+        body.password = document.getElementById('camPassword')?.value || '';
+    }
+    try {
+        const res = await authFetch(API_BASE + '/api/camera_config/' + id, {
+            method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            toast('摄像头已更新', 'success');
+            closeModal();
+            fetchCameraConfig();
+        } else {
+            toast('更新失败: ' + (data.message || '未知错误'), 'error');
+        }
+    } catch(e) { toast('更新失败: 网络错误', 'error'); }
+}
+
+function confirmDeleteCamera(id) {
+    openModal('确认删除',
+        '<div style="text-align:center;padding:8px 0"><div style="font-size:32px;margin-bottom:10px">⚠</div>' +
+        '<div style="font-size:13px;font-weight:600">确定要删除此摄像头配置吗？</div>' +
+        '<div style="font-size:11px;color:var(--text-muted)">删除后需重启Python脚本生效</div></div>',
+        '<button class="btn" onclick="closeModal()">取消</button>' +
+        '<button class="btn btn-danger" onclick="deleteCamera(\'' + id + '\')">确认删除</button>'
+    );
+}
+
+async function deleteCamera(id) {
+    try {
+        const res = await authFetch(API_BASE + '/api/camera_config/' + id, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.status === 'success') {
+            toast('摄像头已删除', 'success');
+            closeModal();
+            fetchCameraConfig();
+        } else {
+            toast('删除失败: ' + (data.message || '未知错误'), 'error');
+        }
+    } catch(e) { toast('删除失败: 网络错误', 'error'); }
+}
+
 /* ===== FPS COUNTER ===== */
 const videoFeed=document.getElementById('videoFeed');
-let frameCount=0,lastFpsTime=Date.now();
+let frameCount=0,lastFpsTime=Date.now(),videoErrorTimeout=null;
 videoFeed.addEventListener('load',()=>{
+    document.getElementById('videoError').classList.remove('show');
+    clearTimeout(videoErrorTimeout);
     frameCount++;const now=Date.now();
     if(now-lastFpsTime>=1000){const el=document.getElementById('fpsDisplay');if(el)el.textContent='FPS: '+frameCount;frameCount=0;lastFpsTime=now}
 });
+videoFeed.addEventListener('error',()=>{
+    videoErrorTimeout=setTimeout(()=>{
+        document.getElementById('videoError').classList.add('show');
+    },3000);
+});
+function retryVideoFeed(){
+    document.getElementById('videoError').classList.remove('show');
+    videoFeed.src=API_BASE+'/video_feed?cam='+currentCam+'&t='+Date.now();
+}
 
 /* ===== SIDEBAR SMOOTH SCROLL ===== */
 document.querySelectorAll('.sidebar-item[href^="#"]').forEach(item => {
@@ -1136,10 +1327,11 @@ document.querySelectorAll('.sidebar-item[href^="#"]').forEach(item => {
 });
 
 /* ===== INIT ===== */
-fetchData();fetchModelInfo();fetchCameraStatus();
+fetchData();fetchModelInfo();fetchCameraStatus();fetchCameraConfig();
 setInterval(fetchSummary, 2000); // lightweight poll
 setInterval(fetchModelInfo, 30000);
 setInterval(fetchCameraStatus, 10000);
+setInterval(fetchCameraConfig, 30000);
 
 // Init sound button state
 const soundBtn = document.getElementById('soundBtn');
@@ -1149,5 +1341,6 @@ document.addEventListener('keydown',e=>{
     if(e.key==='Escape'){closeModal();document.getElementById('imageViewer').classList.remove('show')}
 });
 </script>
+<script src="/yolov8-security/static/js/common.js"></script>
 </body>
 </html>
