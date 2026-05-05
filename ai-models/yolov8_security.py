@@ -136,6 +136,42 @@ def detect_cameras(max_index=5):
     return available
 
 
+def load_cameras_config(config_path=None):
+    """从 cameras.json 加载摄像头配置。
+
+    Returns:
+        list[dict]: 摄像头列表，每个元素包含 id, type, address, name。
+                    如果文件不存在或解析失败，返回空列表。
+    """
+    if config_path is None:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cameras.json")
+
+    if not os.path.exists(config_path):
+        return []
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"警告: 读取 cameras.json 失败: {e}")
+        return []
+
+    cameras = data.get("cameras", [])
+    valid = []
+    for cam in cameras:
+        if not isinstance(cam, dict):
+            continue
+        if "type" not in cam or "address" not in cam:
+            print(f"警告: 跳过无效摄像头配置（缺少 type 或 address）: {cam}")
+            continue
+        # 确保有 id 和 name 默认值
+        cam.setdefault("id", f"cam{len(valid)}")
+        cam.setdefault("name", str(cam["address"]))
+        valid.append(cam)
+
+    return valid
+
+
 # ===================== 工具函数 =====================
 class Utils:
     """工具函数类"""

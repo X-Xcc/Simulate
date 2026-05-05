@@ -8,6 +8,8 @@ Bottlenecks validated:
 """
 import sys
 import os
+import json
+import tempfile
 
 # Add the project root to path so we can import the module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ai-models"))
@@ -287,3 +289,83 @@ class TestUtils:
             [0.2, 0.2, 0.8, 0.8], [0.2, 0.2, 0.8, 0.8], (720, 1280, 3)
         )
         assert abs(iou - 1.0) < 1e-6
+
+
+class TestLoadCamerasConfig:
+    """Tests for load_cameras_config() — loads camera sources from cameras.json."""
+
+    def test_load_usb_camera(self, tmp_path):
+        """Parses a USB camera entry correctly."""
+        config_file = tmp_path / "cameras.json"
+        config_file.write_text(json.dumps({
+            "cameras": [{"id": "cam0", "type": "usb", "address": 0, "name": "主摄像头"}]
+        }))
+        from yolov8_security import load_cameras_config
+        result = load_cameras_config(str(config_file))
+        assert len(result) == 1
+        assert result[0]["id"] == "cam0"
+        assert result[0]["type"] == "usb"
+        assert result[0]["address"] == 0
+
+    def test_load_rtsp_camera(self, tmp_path):
+        """Parses an RTSP camera entry correctly."""
+        config_file = tmp_path / "cameras.json"
+        config_file.write_text(json.dumps({
+            "cameras": [{"id": "cam1", "type": "rtsp", "address": "rtsp://192.168.1.100:554/stream1", "name": "走廊"}]
+        }))
+        from yolov8_security import load_cameras_config
+        result = load_cameras_config(str(config_file))
+        assert len(result) == 1
+        assert result[0]["type"] == "rtsp"
+        assert result[0]["address"] == "rtsp://192.168.1.100:554/stream1"
+
+    def test_load_mixed_cameras(self, tmp_path):
+        """Parses mixed USB and RTSP entries."""
+        config_file = tmp_path / "cameras.json"
+        config_file.write_text(json.dumps({
+            "cameras": [
+                {"id": "cam0", "type": "usb", "address": 0, "name": "USB"},
+                {"id": "cam1", "type": "rtsp", "address": "rtsp://10.0.0.1:554/s1", "name": "RTSP"}
+            ]
+        }))
+        from yolov8_security import load_cameras_config
+        result = load_cameras_config(str(config_file))
+        assert len(result) == 2
+        assert result[0]["type"] == "usb"
+        assert result[1]["type"] == "rtsp"
+
+    def test_missing_file_returns_empty(self):
+        """Returns empty list when config file doesn't exist."""
+        from yolov8_security import load_cameras_config
+        result = load_cameras_config("/nonexistent/path/cameras.json")
+        assert result == []
+
+    def test_empty_cameras_list(self, tmp_path):
+        """Returns empty list when cameras array is empty."""
+        config_file = tmp_path / "cameras.json"
+        config_file.write_text(json.dumps({"cameras": []}))
+        from yolov8_security import load_cameras_config
+        result = load_cameras_config(str(config_file))
+        assert result == []
+
+    def test_invalid_json_returns_empty(self, tmp_path):
+        """Returns empty list when JSON is malformed."""
+        config_file = tmp_path / "cameras.json"
+        config_file.write_text("not valid json{{{")
+        from yolov8_security import load_cameras_config
+        result = load_cameras_config(str(config_file))
+        assert result == []
+
+    def test_missing_required_fields_skips_entry(self, tmp_path):
+        """Skips entries missing 'type' or 'address'."""
+        config_file = tmp_path / "cameras.json"
+        config_file.write_text(json.dumps({
+            "cameras": [
+                {"id": "bad"},  # missing type and address
+                {"id": "good", "type": "usb", "address": 0, "name": "ok"}
+            ]
+        }))
+        from yolov8_security import load_cameras_config
+        result = load_cameras_config(str(config_file))
+        assert len(result) == 1
+        assert result[0]["id"] == "good"
