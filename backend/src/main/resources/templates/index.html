@@ -481,866 +481,774 @@
     <div class="image-viewer-info" id="viewerInfo"></div>
 </div>
 
+<script src="/yolov8-security/static/js/common.js"></script>
+<script src="/yolov8-security/static/js/chart-module.js"></script>
+<script src="/yolov8-security/static/js/detection-module.js"></script>
+<script src="/yolov8-security/static/js/alert-module.js"></script>
 <script>
-/* ===== CONSTANTS ===== */
-const API_BASE = '/yolov8-security';
-const TYPES = [
-    {name:'跌倒',cls:'badge-orange',color:'#bf8700'},
-    {name:'打架',cls:'badge-red',color:'#cf222e'},
-    {name:'疲劳',cls:'badge-purple',color:'#8250df'},
-    {name:'离岗',cls:'badge-blue',color:'#0969da'},
-    {name:'人员聚集',cls:'badge-green',color:'#1a7f37'}
-];
-const CAM_DEFAULT_NAMES = {'0':'A区-主监控','1':'B区-走廊','2':'C区-操场'};
-const S = {total:0,images:0,fall:0,fight:0,fatigue:0,leave:0,gather:0};
+/* ===== Page initialization — delegates to modules ===== */
+(function() {
+    'use strict';
 
-let currentCam = '0';
-let alertSoundEnabled = localStorage.getItem('alertSound') !== 'off';
-let previousDetectionCount = 0;
-let lastKnownTotal = -1; // track totalDetections for change detection
+    var Common = window.Common;
+    var ChartModule = window.ChartModule;
+    var DetectionModule = window.DetectionModule;
+    var AlertModule = window.AlertModule;
+    var API_BASE = Common.API_BASE;
 
-/* ===== UTILITIES ===== */
-function setTxt(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val;
-}
+    /* ===== STATE ===== */
+    var CAM_DEFAULT_NAMES = { '0': 'A区-主监控', '1': 'B区-走廊', '2': 'C区-操场' };
+    var S = { total: 0, images: 0, fall: 0, fight: 0, fatigue: 0, leave: 0, gather: 0 };
+    var currentCam = '0';
+    var previousDetectionCount = 0;
+    var lastKnownTotal = -1;
 
-async function authFetch(url, opts={}) {
-    const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
-    const headers = {...(opts.headers||{})};
-    if (token) headers['Authorization'] = 'Bearer ' + token;
-    const res = await fetch(url, {...opts, headers});
-    if (res.status === 401) { sessionStorage.removeItem('auth_token'); localStorage.removeItem('auth_token'); window.location.href = API_BASE + '/login'; }
-    return res;
-}
+    /* ===== THEME (delegates to Common) ===== */
+    function initTheme() {
+        var saved = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', saved);
+        updateThemeIcon(saved);
+    }
+    function toggleTheme() {
+        var current = document.documentElement.getAttribute('data-theme') || 'light';
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        updateThemeIcon(next);
+        ChartModule.updateChartTheme();
+    }
+    function updateThemeIcon(theme) {
+        var btn = document.getElementById('themeToggle');
+        if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\uD83C\uDF19';
+    }
+    initTheme();
 
-/* ===== THEME ===== */
-function initTheme() {
-    const saved = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', saved);
-    updateThemeIcon(saved);
-}
-function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme') || 'light';
-    const next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    updateThemeIcon(next);
-    updateChartTheme();
-}
-function updateThemeIcon(theme) {
-    const btn = document.getElementById('themeToggle');
-    if (btn) btn.textContent = theme === 'dark' ? '☀' : '🌙';
-}
-initTheme();
+    /* ===== CLOCK ===== */
+    var _startTime = Date.now();
+    function tick() {
+        var n = new Date();
+        var p = function(v) { return String(v).padStart(2, '0'); };
+        var el = document.getElementById('topbarTime');
+        if (el) el.textContent = n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate()) + ' ' + p(n.getHours()) + ':' + p(n.getMinutes()) + ':' + p(n.getSeconds());
+        var elapsed = Math.floor((Date.now() - _startTime) / 1000);
+        var h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
+        Common.setTxt('sUptime', (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's');
+    }
+    tick();
+    setInterval(tick, 1000);
 
-/* ===== CLOCK ===== */
-const _startTime = Date.now();
-function tick() {
-    const n = new Date();
-    const p = v => String(v).padStart(2,'0');
-    const el = document.getElementById('topbarTime');
-    if (el) el.textContent = n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate())+' '+p(n.getHours())+':'+p(n.getMinutes())+':'+p(n.getSeconds());
-    const elapsed = Math.floor((Date.now()-_startTime)/1000);
-    const h = Math.floor(elapsed/3600), m = Math.floor((elapsed%3600)/60), s = elapsed%60;
-    setTxt('sUptime', (h>0?h+'h ':'')+m+'m '+s+'s');
-}
-tick(); setInterval(tick, 1000);
+    /* ===== CAMERA SWITCHING ===== */
+    var camNameMap = {};
+    Object.keys(CAM_DEFAULT_NAMES).forEach(function(k) { camNameMap[k] = CAM_DEFAULT_NAMES[k]; });
 
-/* ===== CAMERA SWITCHING ===== */
-let camNameMap = {...CAM_DEFAULT_NAMES};
-function switchCam(tab) {
-    document.querySelectorAll('.cam-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    currentCam = tab.dataset.cam;
-    document.getElementById('videoFeed').src = API_BASE + '/video_feed?cam=' + currentCam;
-    document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 ' + currentCam;
-}
-function buildCamTabs(camIds) {
-    const container = document.getElementById('camTabs');
-    if (!container || !camIds || camIds.length === 0) return;
-    const normalizedIds = camIds.map(id => String(id).replace('cam', ''));
-    container.innerHTML = normalizedIds.map((id, i) => {
-        const name = camNameMap[id] || '摄像头 ' + (i + 1);
-        const active = i === 0 ? ' active' : '';
-        return `<div class="cam-tab${active}" data-cam="${id}" onclick="switchCam(this)">
-            <span class="cam-dot"></span>${name}
-        </div>`;
-    }).join('');
-    if (normalizedIds.length > 0) {
-        currentCam = normalizedIds[0];
+    function switchCam(tab) {
+        document.querySelectorAll('.cam-tab').forEach(function(t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        currentCam = tab.dataset.cam;
         document.getElementById('videoFeed').src = API_BASE + '/video_feed?cam=' + currentCam;
-        document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 1';
+        document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 ' + currentCam;
     }
-}
+    // Expose for onclick in static HTML
+    window.switchCam = switchCam;
 
-/* ===== TOAST ===== */
-function toast(msg, type='info') {
-    const c = document.getElementById('toastContainer');
-    const t = document.createElement('div');
-    const icons = {success:'✅',error:'❌',info:'ℹ️',warning:'⚠'};
-    t.className = 'toast '+(type||'info');
-    t.innerHTML = (icons[type]||'ℹ️')+' '+msg;
-    c.appendChild(t);
-    setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300)},3500);
-}
-
-/* ===== MODAL ===== */
-function openModal(title, body, footer) {
-    document.getElementById('modalTitle').textContent = title;
-    document.getElementById('modalBody').innerHTML = body;
-    document.getElementById('modalFooter').innerHTML = footer||'';
-    document.getElementById('modalOverlay').classList.add('show');
-}
-function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
-document.getElementById('modalOverlay').addEventListener('click', e=>{if(e.target===document.getElementById('modalOverlay'))closeModal()});
-
-/* ===== USER INFO ===== */
-function showUserInfo() {
-    const now = new Date();
-    const p = v => String(v).padStart(2,'0');
-    const timeStr = now.getFullYear()+'-'+p(now.getMonth()+1)+'-'+p(now.getDate())+' '+p(now.getHours())+':'+p(now.getMinutes())+':'+p(now.getSeconds());
-    openModal('当前用户', `
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-            <div style="width:44px;height:44px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff">陈</div>
-            <div><div style="font-size:14px;font-weight:700">陈明</div><div style="font-size:11px;color:var(--text-muted)">工号 J-005 · 超级管理员</div></div>
-        </div>
-        <div style="border-top:1px solid var(--border);padding-top:10px">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                <div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">岗位</div><div style="font-size:12px;font-weight:600;margin-top:2px">监区长</div></div>
-                <div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">状态</div><div style="font-size:12px;font-weight:600;color:var(--green);margin-top:2px">● 在线</div></div>
-                <div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">最后登录</div><div style="font-size:12px;font-weight:600;margin-top:2px">${timeStr}</div></div>
-                <div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">登录IP</div><div style="font-size:12px;font-weight:600;margin-top:2px">192.168.1.14</div></div>
-            </div>
-        </div>
-    `, `<button class="btn" onclick="closeModal()">关闭</button><button class="btn btn-danger" onclick="sessionStorage.removeItem('auth_token');localStorage.removeItem('auth_token');window.location.href=API_BASE+'/login'">退出登录</button>`);
-}
-
-/* ===== VIDEO ===== */
-function fullscreen() { const el=document.getElementById('videoWrap'); if(!el)return; (el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen).call(el); }
-function captureScreenshot() {
-    const video = document.getElementById('videoFeed');
-    if (!video) return;
-    try {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.naturalWidth||video.width;
-        canvas.height = video.naturalHeight||video.height;
-        canvas.getContext('2d').drawImage(video,0,0);
-        canvas.toBlob(blob=>{
-            if(!blob){toast('截图失败：视频流不支持截图','error');return}
-            const link=document.createElement('a');
-            link.href=URL.createObjectURL(blob);
-            link.download='截图_'+new Date().toISOString().replace(/[:.]/g,'-')+'.jpg';
-            link.click();URL.revokeObjectURL(link.href);
-            toast('截图已保存','success');
-        },'image/jpeg',0.9);
-    } catch(e) {
-        toast('截图失败：浏览器安全限制，MJPEG流不支持截图','error');
+    function buildCamTabs(camIds) {
+        var container = document.getElementById('camTabs');
+        if (!container || !camIds || camIds.length === 0) return;
+        var normalizedIds = camIds.map(function(id) { return String(id).replace('cam', ''); });
+        container.innerHTML = '';
+        normalizedIds.forEach(function(id, i) {
+            var name = camNameMap[id] || '摄像头 ' + (i + 1);
+            var div = document.createElement('div');
+            div.className = 'cam-tab' + (i === 0 ? ' active' : '');
+            div.dataset.cam = id;
+            var dot = document.createElement('span');
+            dot.className = 'cam-dot';
+            div.appendChild(dot);
+            div.appendChild(document.createTextNode(name));
+            div.addEventListener('click', function() { switchCam(div); });
+            container.appendChild(div);
+        });
+        if (normalizedIds.length > 0) {
+            currentCam = normalizedIds[0];
+            document.getElementById('videoFeed').src = API_BASE + '/video_feed?cam=' + currentCam;
+            document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 1';
+        }
     }
-}
 
-/* ===== ALERT SYSTEM ===== */
-function toggleAlertSound() {
-    alertSoundEnabled = !alertSoundEnabled;
-    localStorage.setItem('alertSound', alertSoundEnabled ? 'on' : 'off');
-    const btn = document.getElementById('soundBtn');
-    btn.textContent = alertSoundEnabled ? '🔊 告警声音' : '🔇 告警静音';
-    toast(alertSoundEnabled ? '告警声音已开启' : '告警声音已关闭', 'info');
-}
-
-let _audioCtx = null;
-function playAlertSound() {
-    if (!alertSoundEnabled) return;
-    try {
-        if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (_audioCtx.state === 'suspended') _audioCtx.resume();
-        const osc = _audioCtx.createOscillator();
-        const gain = _audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(_audioCtx.destination);
-        osc.frequency.value = 800;
-        osc.type = 'square';
-        gain.gain.value = 0.15;
-        osc.start();
-        gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.5);
-        osc.stop(_audioCtx.currentTime + 0.5);
-    } catch(e) {}
-}
-
-function showTickerAlert(msg) {
-    document.getElementById('alertTickerText').textContent = msg;
-    document.getElementById('alertTicker').classList.add('show');
-}
-
-function dismissTicker() {
-    document.getElementById('alertTicker').classList.remove('show');
-}
-
-function flashStatCard(cardId) {
-    const card = document.getElementById(cardId);
-    if (card) {
-        card.classList.remove('alert-active');
-        void card.offsetWidth; // force reflow
-        card.classList.add('alert-active');
-        setTimeout(() => card.classList.remove('alert-active'), 2500);
-    }
-}
-
-function testAlert() {
-    const msgs=['检测到危险行为：跌倒事件！','检测到打架斗殴！','检测到离岗行为！','检测到疲劳作业！'];
-    const msg = msgs[Math.floor(Math.random()*msgs.length)];
-    showTickerAlert(msg);
-    playAlertSound();
-    flashStatCard('cardFall');
-    toast('告警测试已触发','warning');
-}
-
-/* ===== ALERT STATUS MANAGEMENT ===== */
-function getAlertStatuses() {
-    try { return JSON.parse(localStorage.getItem('alertStatuses') || '{}'); } catch(e) { return {}; }
-}
-
-function setAlertHandled(timestamp, handled) {
-    const statuses = getAlertStatuses();
-    if (handled) {
-        statuses[timestamp] = {handled: true, time: new Date().toISOString()};
-    } else {
-        delete statuses[timestamp];
-    }
-    localStorage.setItem('alertStatuses', JSON.stringify(statuses));
-}
-
-function isAlertHandled(timestamp) {
-    const statuses = getAlertStatuses();
-    return !!statuses[timestamp];
-}
-
-function toggleAlertStatus(timestamp) {
-    const handled = isAlertHandled(timestamp);
-    setAlertHandled(timestamp, !handled);
-    fetchData(); // refresh tables
-    toast(handled ? '已标记为未处理' : '已标记为已处理', 'success');
-}
-
-/* ===== EXPORT ===== */
-function exportCSV(data, filename) {
-    if(!data||data.length===0){toast('暂无数据可导出','warning');return}
-    const BOM='\uFEFF';
-    const headers=Object.keys(data[0]);
-    const csv=BOM+headers.join(',')+'\n'+data.map(row=>headers.map(h=>'"'+String(row[h]??'').replace(/"/g,'""')+'"').join(',')).join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const link=document.createElement('a');
-    link.href=URL.createObjectURL(blob);link.download=filename;link.click();
-    URL.revokeObjectURL(link.href);toast('导出成功: '+filename,'success');
-}
-function exportDetections() {
-    const dets=window._latestStatsData?.allDetections||[];
-    if(dets.length===0){toast('暂无检测数据','warning');return}
-    const rows=dets.map(d=>({'时间':d.timestamp||'','类型':d.actions?.[0]||'常规检测','人数':d.person_count??d.personCount??0,'FPS':d.fps?d.fps.toFixed(1):'','图片':d.image_filename||d.imageFilename||''}));
-    exportCSV(rows,'检测记录_'+new Date().toISOString().slice(0,10)+'.csv');
-}
-
-/* ===== FILTER ===== */
-function showFilterModal() {
-    const types=['全部','跌倒','打架','离岗','疲劳','人员聚集'];
-    const optionsHtml=types.map(t=>`<option value="${t}">${t}</option>`).join('');
-    openModal('筛选条件',`
-        <div class="form-row">
-            <div class="form-group"><label class="form-label">行为类型</label><select class="form-select" id="filterType">${optionsHtml}</select></div>
-            <div class="form-group"><label class="form-label">时间范围</label><select class="form-select" id="filterTime"><option value="all">全部</option><option value="1h">最近1小时</option><option value="6h">最近6小时</option><option value="24h">最近24小时</option></select></div>
-        </div>
-    `,`<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="applyFilter()">应用</button>`);
-}
-function applyFilter() {
-    const type=document.getElementById('filterType').value;
-    const time=document.getElementById('filterTime').value;
-    const dets=window._latestStatsData?.allDetections||[];
-    let filtered=[...dets];
-    if(type!=='全部') filtered=filtered.filter(d=>d.actions?.[0]===type);
-    if(time!=='all'){
-        const hours={'1h':1,'6h':6,'24h':24}[time];
-        const cutoff=Date.now()-hours*3600000;
-        filtered=filtered.filter(d=>{try{return new Date(d.timestamp.replace(/-/g,'/')).getTime()>=cutoff}catch(e){return true}});
-    }
-    renderDetTable(filtered.slice(0,50));
-    closeModal();toast(`筛选完成: ${filtered.length}条记录`,'success');
-}
-
-/* ===== CLEAR ===== */
-function showClearConfirm() {
-    openModal('确认清空',`<div style="text-align:center;padding:8px 0"><div style="font-size:32px;margin-bottom:10px">⚠</div><div style="font-size:13px;font-weight:600;margin-bottom:6px">确定要清空所有检测数据吗？</div><div style="font-size:11px;color:var(--text-muted)">此操作不可恢复</div></div>`,`<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-danger" onclick="clearAllData()">确认清空</button>`);
-}
-async function clearAllData() {
-    try{const res=await authFetch(API_BASE+'/api/delete_all_images',{method:'DELETE'});if(res.ok){toast('数据已清空','success');closeModal();fetchData()}else{toast('清空失败: '+res.status,'error')}}catch(e){toast('清空失败: 网络错误','error')}
-}
-
-/* ===== DETECTION TABLE ===== */
-function escAttr(s){return String(s).replace(/\\/g,'&#92;').replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function buildDetRow(det) {
-    const typeObj=TYPES.find(t=>t.name===det.type)||TYPES[0];
-    const status=det.type&&det.type!=='—'?'已检测':'常规';
-    const statusCls={'已检测':'badge-blue','常规':'badge-green'};
-    return `<tr>
-        <td style="font-family:monospace;font-size:11px">${det.timeStr||det.timestamp||'--'}</td>
-        <td><span class="badge ${typeObj.cls}">${det.type}</span></td>
-        <td>${det.people||0}人</td>
-        <td>${det.fps||'--'}</td>
-        <td><span class="badge ${statusCls[status]}">${status}</span></td>
-        <td><button class="btn btn-sm" onclick="viewImage('${escAttr(det.imageFilename||'')}','${escAttr(det.type)}','${escAttr(det.timeStr||'')}','${escAttr(det.fps||'--')}')">📷</button></td>
-    </tr>`;
-}
-
-function renderDetTable(dets) {
-    const tbody=document.getElementById('detTableBody');
-    if(!tbody)return;
-    if(dets.length===0){
-        tbody.innerHTML='<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">暂无检测记录，等待AI引擎产生数据...</div></div></td></tr>';
-    }else{
-        tbody.innerHTML=dets.map(d=>buildDetRow(d)).join('');
-    }
-}
-// Show initial loading state for tables
-(function(){
-    const detBody=document.getElementById('detTableBody');
-    const alertBody=document.getElementById('alertTableBody');
-    const loadingRow='<tr><td colspan="6" class="data-status">正在加载数据...</td></tr>';
-    if(detBody)detBody.innerHTML=loadingRow;
-    if(alertBody)alertBody.innerHTML='<tr><td colspan="5" class="data-status">正在加载数据...</td></tr>';
-})();
-
-function updateDetTable(data) {
-    const dets=data?.allDetections?.length>0?data.allDetections.slice(0,50).map(d=>({
-        type:d.actions?.[0]||'—',timeStr:d.timestamp,
-        people:d.person_count??d.personCount??0,
-        fps:d.fps?d.fps.toFixed(1):'--',
-        imageFilename:d.image_filename||d.imageFilename||''
-    })):[];
-    renderDetTable(dets);
-}
-
-/* ===== ALERT TABLE ===== */
-function updateAlertTable(data) {
-    const tbody=document.getElementById('alertTableBody');
-    if(!tbody)return;
-    const dets=(data?.allDetections||[]).filter(d=>d.actions&&d.actions.length>0).slice(0,30);
-    const typeCls={'跌倒':'badge-orange','打架':'badge-red','离岗':'badge-blue','疲劳':'badge-purple','人员聚集':'badge-green'};
-    if(dets.length===0){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px">暂无告警记录</td></tr>';return}
-
-    let pendingCount = 0;
-    tbody.innerHTML=dets.map(d=>{
-        const action=d.actions[0]||'未知';
-        const cls=typeCls[action]||'badge-gray';
-        const handled = isAlertHandled(d.timestamp);
-        if (!handled) pendingCount++;
-        const statusBadge = handled
-            ? '<span class="badge badge-green">已处理</span>'
-            : '<span class="badge badge-orange">待处理</span>';
-        const actionBtn = handled
-            ? `<button class="btn btn-sm" onclick="toggleAlertStatus('${d.timestamp}')">撤回</button>`
-            : `<button class="btn btn-sm btn-success" onclick="toggleAlertStatus('${d.timestamp}')">处理</button>`;
-        return `<tr style="${handled?'opacity:.6':''}">
-            <td style="font-family:monospace;font-size:11px">${d.timestamp||'--'}</td>
-            <td><span class="badge ${cls}">${action}</span></td>
-            <td>${d.person_count??d.personCount??0}人</td>
-            <td>${statusBadge}</td>
-            <td>${actionBtn}</td>
-        </tr>`;
-    }).join('');
-
-    setTxt('pendingAlertCount', pendingCount + ' 待处理');
-}
-
-/* ===== IMAGE VIEWER ===== */
-function viewImage(filename, type, time, conf) {
-    document.getElementById('viewerTitle').textContent='检测截图 · '+type;
-    const img=document.getElementById('viewerImg');
-    if(filename){img.src=API_BASE+'/api/images/'+encodeURIComponent(filename)}
-    else{img.src='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect fill="#1e293b" width="100%" height="100%"/><text x="50%" y="50%" fill="#94a3b8" font-family="system-ui" font-size="16" text-anchor="middle">暂无截图文件</text></svg>')}
-    document.getElementById('viewerInfo').innerHTML=`<span>🕐 ${time}</span><span>🏷 ${type}</span><span>🎯 FPS ${conf}</span>`;
-    document.getElementById('imageViewer').classList.add('show');
-}
-document.getElementById('imageViewer').addEventListener('click',e=>{if(e.target===document.getElementById('imageViewer'))document.getElementById('imageViewer').classList.remove('show')});
-
-/* ===== CHARTS ===== */
-const _hasChart = typeof Chart !== 'undefined';
-function getChartTooltipOpts(){
-    const isDark=document.documentElement.getAttribute('data-theme')==='dark';
-    return{
-        backgroundColor:isDark?'#1c2128':'#fff',
-        titleColor:isDark?'#e6edf3':'#1a1d21',
-        bodyColor:isDark?'#8b949e':'#656d76',
-        borderColor:isDark?'#30363d':'#e4e6eb',
-        borderWidth:1,cornerRadius:8,padding:10,
-        titleFont:{size:12,weight:'700'},bodyFont:{size:11}
-    };
-}
-function getChartGridColor(){return document.documentElement.getAttribute('data-theme')==='dark'?'rgba(255,255,255,.06)':'rgba(0,0,0,.04)'}
-function getChartTickColor(){return document.documentElement.getAttribute('data-theme')==='dark'?'#8b949e':'#a5acb4'}
-
-const lineCtx=_hasChart?document.getElementById('lineChart').getContext('2d'):null;
-const lineChart=_hasChart?new Chart(lineCtx,{
-    type:'line',
-    data:{labels:[],datasets:[{data:[],borderColor:'#0969da',backgroundColor:'rgba(9,105,218,.08)',fill:true,tension:.4,pointRadius:2,pointHoverRadius:5,pointBackgroundColor:'#0969da',borderWidth:2}]},
-    options:{
-        responsive:true,maintainAspectRatio:false,
-        interaction:{intersect:false,mode:'index'},
-        plugins:{legend:{display:false},tooltip:getChartTooltipOpts()},
-        scales:{x:{ticks:{color:getChartTickColor(),font:{size:10},maxRotation:45},grid:{color:getChartGridColor()}},y:{min:0,ticks:{color:getChartTickColor(),font:{size:10}},grid:{color:getChartGridColor()}}}
-    }
-}):null;
-
-const pieCtx=_hasChart?document.getElementById('pieChart').getContext('2d'):null;
-const pieChart=_hasChart?new Chart(pieCtx,{
-    type:'doughnut',
-    data:{labels:['暂无数据'],datasets:[{data:[1],backgroundColor:['#e4e6eb'],borderWidth:0,hoverOffset:4}]},
-    options:{
-        responsive:true,maintainAspectRatio:false,cutout:'62%',
-        plugins:{legend:{position:'right',labels:{color:getChartTickColor(),font:{size:11},boxWidth:9,padding:10}},tooltip:getChartTooltipOpts()}
-    }
-}):null;
-
-function updateChartTheme(){
-    if(!_hasChart)return;
-    const ttp=getChartTooltipOpts();const gc=getChartGridColor();const tc=getChartTickColor();
-    [lineChart,pieChart].forEach(c=>{
-        if(!c)return;
-        c.options.plugins.tooltip=ttp;
-        if(c.options.scales?.x){c.options.scales.x.ticks.color=tc;c.options.scales.x.grid.color=gc}
-        if(c.options.scales?.y){c.options.scales.y.ticks.color=tc;c.options.scales.y.grid.color=gc}
-        if(c.options.plugins?.legend?.labels)c.options.plugins.legend.labels.color=tc;
-        c.update('none');
+    /* ===== MODAL close listener ===== */
+    document.getElementById('modalOverlay').addEventListener('click', function(e) {
+        if (e.target === document.getElementById('modalOverlay')) Common.closeModal();
     });
-}
 
-function setChartRange(range,btn){
-    document.querySelectorAll('[id^=chartBtn]').forEach(b=>b.classList.remove('active'));
-    if(btn)btn.classList.add('active');
-    fetchData();
-}
+    /* ===== USER INFO ===== */
+    function showUserInfo() {
+        var now = new Date();
+        var p = function(v) { return String(v).padStart(2, '0'); };
+        var timeStr = now.getFullYear() + '-' + p(now.getMonth() + 1) + '-' + p(now.getDate()) + ' ' + p(now.getHours()) + ':' + p(now.getMinutes()) + ':' + p(now.getSeconds());
 
-/* ===== MODEL INFO ===== */
-async function fetchModelInfo(){
-    try{
-        const[modelRes,aiRes,sysRes]=await Promise.allSettled([
-            authFetch(API_BASE+'/api/model_info'),
-            authFetch(API_BASE+'/api/ai/status'),
-            authFetch(API_BASE+'/api/system_info')
-        ]);
-        if(modelRes.status==='fulfilled'&&modelRes.value.ok){
-            const m=await modelRes.value.json();
-            setTxt('modelPrecision',m.precision||'N/A');
-            setTxt('modelDevice',m.device||'N/A');
-            setTxt('modelGpu',m.gpu_available?'可用':'不可用');
-            const yoloMeta=document.getElementById('yoloServiceMeta');
-            if(yoloMeta)yoloMeta.textContent=`Python · ${m.device||'CPU'} · ${m.precision||'FP32'}`;
-            const yoloStatus=document.getElementById('yoloServiceStatus');
-            if(yoloStatus){const online=m.status==='online';yoloStatus.textContent=online?'运行中':'离线';yoloStatus.className='badge '+(online?'badge-green':'badge-red')+' badge-dot'}
+        var body = document.createElement('div');
+        body.innerHTML =
+            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">' +
+                '<div style="width:44px;height:44px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff">\u9648</div>' +
+                '<div><div style="font-size:14px;font-weight:700">\u9648\u660E</div><div style="font-size:11px;color:var(--text-muted)">\u5DE5\u53F7 J-005 \u00B7 \u8D85\u7EA7\u7BA1\u7406\u5458</div></div>' +
+            '</div>' +
+            '<div style="border-top:1px solid var(--border);padding-top:10px">' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u5C97\u4F4D</div><div style="font-size:12px;font-weight:600;margin-top:2px">\u76D1\u533A\u957F</div></div>' +
+                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u72B6\u6001</div><div style="font-size:12px;font-weight:600;color:var(--green);margin-top:2px">\u25CF \u5728\u7EBF</div></div>' +
+                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u6700\u540E\u767B\u5F55</div><div style="font-size:12px;font-weight:600;margin-top:2px">' + Common.escHtml(timeStr) + '</div></div>' +
+                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u767B\u5F55IP</div><div style="font-size:12px;font-weight:600;margin-top:2px">192.168.1.14</div></div>' +
+                '</div>' +
+            '</div>';
+
+        var footer = document.createElement('div');
+        var closeBtn = document.createElement('button');
+        closeBtn.className = 'btn';
+        closeBtn.textContent = '\u5173\u95ED';
+        closeBtn.addEventListener('click', Common.closeModal);
+        footer.appendChild(closeBtn);
+        var logoutBtn = document.createElement('button');
+        logoutBtn.className = 'btn btn-danger';
+        logoutBtn.textContent = '\u9000\u51FA\u767B\u5F55';
+        logoutBtn.addEventListener('click', function() {
+            sessionStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_token');
+            window.location.href = API_BASE + '/login';
+        });
+        footer.appendChild(logoutBtn);
+
+        Common.openModal('\u5F53\u524D\u7528\u6237', body, footer);
+    }
+    window.showUserInfo = showUserInfo;
+
+    /* ===== VIDEO ===== */
+    function fullscreen() {
+        var el = document.getElementById('videoWrap');
+        if (!el) return;
+        (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen).call(el);
+    }
+    window.fullscreen = fullscreen;
+
+    function captureScreenshot() {
+        var video = document.getElementById('videoFeed');
+        if (!video) return;
+        try {
+            var canvas = document.createElement('canvas');
+            canvas.width = video.naturalWidth || video.width;
+            canvas.height = video.naturalHeight || video.height;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            canvas.toBlob(function(blob) {
+                if (!blob) { Common.toast('\u622A\u56FE\u5931\u8D25\uFF1A\u89C6\u9891\u6D41\u4E0D\u652F\u6301\u622A\u56FE', 'error'); return; }
+                var link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = '\u622A\u56FE_' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
+                link.click();
+                URL.revokeObjectURL(link.href);
+                Common.toast('\u622A\u56FE\u5DF2\u4FDD\u5B58', 'success');
+            }, 'image/jpeg', 0.9);
+        } catch (e) {
+            Common.toast('\u622A\u56FE\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B89\u5168\u9650\u5236', 'error');
         }
-        if(aiRes.status==='fulfilled'&&aiRes.value.ok){
-            const a=await aiRes.value.json();
-            const qwenMeta=document.getElementById('qwenServiceMeta');
-            const qwenStatus=document.getElementById('qwenServiceStatus');
-            const online=a.status==='online';
-            if(qwenMeta)qwenMeta.textContent=online?'已加载 · 可用':'未启动';
-            if(qwenStatus){qwenStatus.textContent=online?'在线':'离线';qwenStatus.className='badge '+(online?'badge-green':'badge-gray')+' badge-dot'}
-        }
-        if(sysRes.status==='fulfilled'&&sysRes.value.ok){
-            const s=await sysRes.value.json();
-            if(s.status==='success'){setTxt('logStorage',s.dataDirSizeMb+' MB')}
-        }
-    }catch(e){console.warn('fetchModelInfo error:',e)}
-}
+    }
+    window.captureScreenshot = captureScreenshot;
 
-/* ===== FETCH SUMMARY (lightweight, polled every 2s) ===== */
-async function fetchSummary(){
-    try{
-        const res=await authFetch(API_BASE+'/api/stats/summary');
-        if(!res.ok)return;
-        const data=await res.json();
-        const total=data.totalDetections||0;
-        // Only fetch full data when detection count changes
-        if(total!==lastKnownTotal){
-            lastKnownTotal=total;
-            fetchData();
-        }
-    }catch(e){/* silent */}
-}
-
-/* ===== FETCH DATA (full, only when summary changes) ===== */
-async function fetchData(){
-    try{
-        const res=await authFetch(API_BASE+'/api/stats');
-        if(!res.ok){updateDetTable(null);return}
-        const data=await res.json();
-        const bc=data.behaviorCounts||{};
-        S.total=data.totalDetections||0;S.images=data.totalImages||0;
-        S.fall=bc['跌倒']||0;S.fight=bc['打架']||0;S.fatigue=bc['疲劳']||0;S.leave=bc['离岗']||0;S.gather=bc['人员聚集']||0;
-
-        // Detect new alerts for sound/flash
-        const newTotal = S.fall + S.fight + S.fatigue + S.leave + S.gather;
-        if (previousDetectionCount > 0 && newTotal > previousDetectionCount) {
-            const diff = newTotal - previousDetectionCount;
-            if (diff > 0) {
-                playAlertSound();
-                // Flash the relevant card
-                if (S.fall > 0) flashStatCard('cardFall');
-                if (S.fight > 0) flashStatCard('cardFight');
-                if (S.fatigue > 0) flashStatCard('cardFatigue');
-                if (S.leave > 0) flashStatCard('cardLeave');
-                if (S.gather > 0) flashStatCard('cardGather');
-                // Show ticker for dangerous behaviors
-                const ad = data.allDetections || [];
-                const recent = ad.slice(0, diff);
-                const dangerous = recent.find(d => d.actions?.[0] === '跌倒' || d.actions?.[0] === '打架');
-                if (dangerous) {
-                    showTickerAlert('检测到危险行为：' + dangerous.actions[0] + '！');
+    /* ===== MODEL INFO ===== */
+    async function fetchModelInfo() {
+        try {
+            var results = await Promise.allSettled([
+                Common.authFetch(API_BASE + '/api/model_info'),
+                Common.authFetch(API_BASE + '/api/ai/status'),
+                Common.authFetch(API_BASE + '/api/system_info')
+            ]);
+            var modelRes = results[0], aiRes = results[1], sysRes = results[2];
+            if (modelRes.status === 'fulfilled') {
+                var m = modelRes.value;
+                Common.setTxt('modelPrecision', m.precision || 'N/A');
+                Common.setTxt('modelDevice', m.device || 'N/A');
+                Common.setTxt('modelGpu', m.gpu_available ? '\u53EF\u7528' : '\u4E0D\u53EF\u7528');
+                var yoloMeta = document.getElementById('yoloServiceMeta');
+                if (yoloMeta) yoloMeta.textContent = 'Python \u00B7 ' + (m.device || 'CPU') + ' \u00B7 ' + (m.precision || 'FP32');
+                var yoloStatus = document.getElementById('yoloServiceStatus');
+                if (yoloStatus) {
+                    var online = m.status === 'online';
+                    yoloStatus.textContent = online ? '\u8FD0\u884C\u4E2D' : '\u7EBF\u7EBF';
+                    yoloStatus.className = 'badge ' + (online ? 'badge-green' : 'badge-red') + ' badge-dot';
                 }
             }
+            if (aiRes.status === 'fulfilled') {
+                var a = aiRes.value;
+                var qwenMeta = document.getElementById('qwenServiceMeta');
+                var qwenStatus = document.getElementById('qwenServiceStatus');
+                var aOnline = a.status === 'online';
+                if (qwenMeta) qwenMeta.textContent = aOnline ? '\u5DF2\u52A0\u8F7D \u00B7 \u53EF\u7528' : '\u672A\u542F\u52A8';
+                if (qwenStatus) {
+                    qwenStatus.textContent = aOnline ? '\u5728\u7EBF' : '\u7EBF\u7EBF';
+                    qwenStatus.className = 'badge ' + (aOnline ? 'badge-green' : 'badge-gray') + ' badge-dot';
+                }
+            }
+            if (sysRes.status === 'fulfilled') {
+                var s = sysRes.value;
+                if (s.status === 'success') Common.setTxt('logStorage', s.dataDirSizeMb + ' MB');
+            }
+        } catch (e) { console.warn('fetchModelInfo error:', e); }
+    }
+
+    /* ===== FETCH SUMMARY ===== */
+    async function fetchSummary() {
+        try {
+            var data = await Common.authFetch(API_BASE + '/api/stats/summary');
+            var total = data.totalDetections || 0;
+            if (total !== lastKnownTotal) {
+                lastKnownTotal = total;
+                fetchData();
+            }
+        } catch (e) { /* silent */ }
+    }
+
+    /* ===== FETCH DATA ===== */
+    async function fetchData() {
+        try {
+            var data = await Common.authFetch(API_BASE + '/api/stats');
+            var bc = data.behaviorCounts || {};
+            S.total = data.totalDetections || 0;
+            S.images = data.totalImages || 0;
+            S.fall = bc['\u8DCC\u5012'] || 0;
+            S.fight = bc['\u6253\u67B6'] || 0;
+            S.fatigue = bc['\u7592\u52B3'] || 0;
+            S.leave = bc['\u79BB\u5C97'] || 0;
+            S.gather = bc['\u4EBA\u5458\u805A\u96C6'] || 0;
+
+            // Detect new alerts
+            var newTotal = S.fall + S.fight + S.fatigue + S.leave + S.gather;
+            if (previousDetectionCount > 0 && newTotal > previousDetectionCount) {
+                var diff = newTotal - previousDetectionCount;
+                if (diff > 0) {
+                    AlertModule.playAlertSound();
+                    if (S.fall > 0) AlertModule.flashStatCard('cardFall');
+                    if (S.fight > 0) AlertModule.flashStatCard('cardFight');
+                    if (S.fatigue > 0) AlertModule.flashStatCard('cardFatigue');
+                    if (S.leave > 0) AlertModule.flashStatCard('cardLeave');
+                    if (S.gather > 0) AlertModule.flashStatCard('cardGather');
+                    var ad = data.allDetections || [];
+                    var recent = ad.slice(0, diff);
+                    var dangerous = recent.find(function(d) { return d.actions && (d.actions[0] === '\u8DCC\u5012' || d.actions[0] === '\u6253\u67B6'); });
+                    if (dangerous) {
+                        AlertModule.showTickerAlert('\u68C0\u6D4B\u5230\u5371\u9669\u884C\u4E3A\uFF1A' + dangerous.actions[0] + '\uFF01');
+                    }
+                }
+            }
+            previousDetectionCount = newTotal;
+
+            // Update stat cards
+            var setEl = function(id, val, barId, pct) {
+                var el = document.getElementById(id);
+                if (el) {
+                    el.classList.remove('loading');
+                    var old = el.textContent;
+                    el.textContent = val;
+                    if (old !== String(val) && val !== 0) {
+                        el.classList.add('updated');
+                        setTimeout(function() { el.classList.remove('updated'); }, 600);
+                    }
+                }
+                var bar = document.getElementById(barId);
+                if (bar) bar.style.width = Math.min(pct, 100) + '%';
+                var pctEl = document.getElementById(barId.replace('Bar', 'Pct'));
+                if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+            };
+            var totalEl = document.getElementById('sTotal');
+            if (totalEl) {
+                totalEl.classList.remove('loading');
+                var oldT = totalEl.textContent;
+                var v = S.total.toLocaleString();
+                totalEl.textContent = v;
+                if (oldT !== v && S.total !== 0) {
+                    totalEl.classList.add('updated');
+                    setTimeout(function() { totalEl.classList.remove('updated'); }, 600);
+                }
+            }
+            var totalBehaviors = S.fall + S.fight + S.fatigue + S.leave + S.gather;
+            var totalBar = document.getElementById('sTotalBar');
+            if (totalBar) totalBar.style.width = S.total > 0 ? Math.min(totalBehaviors / S.total * 100, 100) + '%' : '0%';
+            var totalPctEl = document.getElementById('sTotalPct');
+            if (totalPctEl) totalPctEl.textContent = S.total > 0 ? Math.round(totalBehaviors / S.total * 100) + '%' : '0%';
+            var t = S.total || 1;
+            setEl('sFall', S.fall, 'sFallBar', S.fall / t * 100);
+            setEl('sFight', S.fight, 'sFightBar', S.fight / t * 100);
+            setEl('sFatigue', S.fatigue, 'sFatigueBar', S.fatigue / t * 100);
+            setEl('sLeave', S.leave, 'sLeaveBar', S.leave / t * 100);
+            setEl('sGather', S.gather, 'sGatherBar', S.gather / t * 100);
+
+            // Pie chart
+            var pieChart = ChartModule.pieChart;
+            if (pieChart) {
+                var pieData = [], pieLabels = [], pieColors = [];
+                [
+                    { l: '\u8DCC\u5012', v: S.fall, c: '#bf8700' },
+                    { l: '\u6253\u67B6', v: S.fight, c: '#cf222e' },
+                    { l: '\u79BB\u5C97', v: S.leave, c: '#0969da' },
+                    { l: '\u7592\u52B3', v: S.fatigue, c: '#8250df' },
+                    { l: '\u4EBA\u5458\u805A\u96C6', v: S.gather, c: '#1a7f37' }
+                ].forEach(function(e) { if (e.v > 0) { pieLabels.push(e.l); pieData.push(e.v); pieColors.push(e.c); } });
+                if (pieData.length === 0) { pieLabels.push('\u65E0\u6570\u636E'); pieData.push(1); pieColors.push('#e4e6eb'); }
+                pieChart.data.labels = pieLabels;
+                pieChart.data.datasets[0].data = pieData;
+                pieChart.data.datasets[0].backgroundColor = pieColors;
+                pieChart.update('none');
+            }
+
+            // Line chart
+            var allDets = data.allDetections || [];
+            var lineChart = ChartModule.lineChart;
+            if (lineChart) {
+                var now = new Date(), labels = [], values = [];
+                var activeBtn = document.querySelector('[id^=chartBtn].active');
+                var range = activeBtn && activeBtn.id === 'chartBtnHour' ? 'hour' : (activeBtn && activeBtn.id === 'chartBtnDay' ? 'day' : 'min');
+                var count, step, timeKeyFmt;
+                if (range === 'hour') { count = 24; step = 3600000; timeKeyFmt = function(t) { return String(t.getHours()).padStart(2, '0') + ':00'; }; }
+                else if (range === 'day') { count = 7; step = 86400000; timeKeyFmt = function(t) { return (t.getMonth() + 1) + '/' + t.getDate(); }; }
+                else { count = 20; step = 60000; timeKeyFmt = function(t) { return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); }; }
+                var buckets = {};
+                for (var i = count - 1; i >= 0; i--) { var bt = new Date(now - i * step); var key = timeKeyFmt(bt); labels.push(key); buckets[key] = 0; }
+                var rangeMs = count * step;
+                allDets.forEach(function(d) {
+                    if (!d.timestamp) return;
+                    try {
+                        var dt = new Date(d.timestamp.replace(/-/g, '/'));
+                        if (now - dt >= 0 && now - dt < rangeMs) { var k = timeKeyFmt(dt); if (buckets[k] !== undefined) buckets[k]++; }
+                    } catch (e) {}
+                });
+                labels.forEach(function(k) { values.push(buckets[k] || 0); });
+                lineChart.data.labels = labels;
+                lineChart.data.datasets[0].data = values;
+                lineChart.update('none');
+            }
+
+            DetectionModule.updateDetTable(data);
+            AlertModule.updateAlertTable(data);
+            window._latestStatsData = data;
+
+            // Inference speed
+            var fpsVals = allDets.filter(function(d) { return d.fps > 0; }).slice(0, 10).map(function(d) { return d.fps; });
+            if (fpsVals.length > 0) {
+                var avgFps = fpsVals.reduce(function(a, b) { return a + b; }, 0) / fpsVals.length;
+                var infMs = Math.round(1000 / avgFps);
+                var infEl = document.getElementById('sInference');
+                if (infEl) infEl.innerHTML = infMs + '<span style="font-size:12px;color:var(--text-muted)">ms</span>';
+            }
+        } catch (e) {
+            console.warn('fetchData error:', e);
+            DetectionModule.updateDetTable(null);
+            Common.toast('\u6570\u636E\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u670D\u52A1\u72B6\u6001', 'error');
         }
-        previousDetectionCount = newTotal;
+    }
+    // Expose for modules to call
+    window.fetchData = fetchData;
 
-        const setEl=(id,val,barId,pct)=>{
-            const el=document.getElementById(id);
-            if(el){el.classList.remove('loading');const old=el.textContent;el.textContent=val;if(old!==String(val)&&val!==0){el.classList.add('updated');setTimeout(()=>el.classList.remove('updated'),600)}}
-            const bar=document.getElementById(barId);
-            if(bar){bar.style.width=Math.min(pct,100)+'%'}
-            const pctEl=document.getElementById(barId.replace('Bar','Pct'));
-            if(pctEl){pctEl.textContent=Math.round(pct)+'%'}
-        };
-        const totalEl=document.getElementById('sTotal');
-        if(totalEl){totalEl.classList.remove('loading');const old=totalEl.textContent;const v=S.total.toLocaleString();totalEl.textContent=v;if(old!==v&&S.total!==0){totalEl.classList.add('updated');setTimeout(()=>totalEl.classList.remove('updated'),600)}}
-        const totalBehaviors=S.fall+S.fight+S.fatigue+S.leave+S.gather;
-        const totalBar=document.getElementById('sTotalBar');
-        if(totalBar){totalBar.style.width=S.total>0?Math.min(totalBehaviors/S.total*100,100)+'%':'0%'}
-        const totalPctEl=document.getElementById('sTotalPct');
-        if(totalPctEl){totalPctEl.textContent=S.total>0?Math.round(totalBehaviors/S.total*100)+'%':'0%'}
-        const t=S.total||1;
-        setEl('sFall',S.fall,'sFallBar',S.fall/t*100);
-        setEl('sFight',S.fight,'sFightBar',S.fight/t*100);
-        setEl('sFatigue',S.fatigue,'sFatigueBar',S.fatigue/t*100);
-        setEl('sLeave',S.leave,'sLeaveBar',S.leave/t*100);
-        setEl('sGather',S.gather,'sGatherBar',S.gather/t*100);
-
-        // Pie chart
-        if(pieChart){
-            const pieData=[],pieLabels=[],pieColors=[];
-            [{l:'跌倒',v:S.fall,c:'#bf8700'},{l:'打架',v:S.fight,c:'#cf222e'},{l:'离岗',v:S.leave,c:'#0969da'},{l:'疲劳',v:S.fatigue,c:'#8250df'},{l:'人员聚集',v:S.gather,c:'#1a7f37'}].forEach(e=>{if(e.v>0){pieLabels.push(e.l);pieData.push(e.v);pieColors.push(e.c)}});
-            if(pieData.length===0){pieLabels.push('无数据');pieData.push(1);pieColors.push('#e4e6eb')}
-            pieChart.data.labels=pieLabels;pieChart.data.datasets[0].data=pieData;pieChart.data.datasets[0].backgroundColor=pieColors;pieChart.update('none');
-        }
-
-        // Line chart
-        const ad=data.allDetections||[];
-        if(lineChart){
-            const now=new Date();const labels=[],values=[];
-            const activeBtn=document.querySelector('[id^=chartBtn].active');
-            const range=activeBtn?.id==='chartBtnHour'?'hour':activeBtn?.id==='chartBtnDay'?'day':'min';
-            let count,step,timeKeyFmt;
-            if(range==='hour'){count=24;step=3600000;timeKeyFmt=t=>String(t.getHours()).padStart(2,'0')+':00'}
-            else if(range==='day'){count=7;step=86400000;timeKeyFmt=t=>(t.getMonth()+1)+'/'+t.getDate()}
-            else{count=20;step=60000;timeKeyFmt=t=>String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0')}
-            const buckets={};
-            for(let i=count-1;i>=0;i--){const t=new Date(now-i*step);const key=timeKeyFmt(t);labels.push(key);buckets[key]=0}
-            const rangeMs=count*step;
-            ad.forEach(d=>{if(!d.timestamp)return;try{const dt=new Date(d.timestamp.replace(/-/g,'/'));if(now-dt>=0&&now-dt<rangeMs){const key=timeKeyFmt(dt);if(buckets[key]!==undefined)buckets[key]++}}catch(e){}});
-            labels.forEach(k=>values.push(buckets[k]||0));
-            lineChart.data.labels=labels;lineChart.data.datasets[0].data=values;lineChart.update('none');
-        }
-
-        updateDetTable(data);
-        updateAlertTable(data);
-        window._latestStatsData=data;
-
-        // Inference speed
-        const fpsVals=ad.filter(d=>d.fps>0).slice(0,10).map(d=>d.fps);
-        if(fpsVals.length>0){
-            const avgFps=fpsVals.reduce((a,b)=>a+b,0)/fpsVals.length;
-            const infMs=Math.round(1000/avgFps);
-            const infEl=document.getElementById('sInference');
-            if(infEl)infEl.innerHTML=infMs+'<span style="font-size:12px;color:var(--text-muted)">ms</span>';
-        }
-    }catch(e){console.warn('fetchData error:',e);updateDetTable(null);toast('数据加载失败，请检查服务状态','error')}
-}
-
-/* ===== CAMERA STATUS ===== */
-let camTabsBuilt = false;
-async function fetchCameraStatus() {
-    try {
-        const res = await authFetch(API_BASE + '/api/cameras');
-        if (res.ok) {
-            const data = await res.json();
-            const activeCams = Array.from(data.cameras || []);
+    /* ===== CAMERA STATUS ===== */
+    var camTabsBuilt = false;
+    async function fetchCameraStatus() {
+        try {
+            var data = await Common.authFetch(API_BASE + '/api/cameras');
+            var activeCams = Array.from(data.cameras || []);
             if (!camTabsBuilt && activeCams.length > 0) {
                 buildCamTabs(activeCams);
                 camTabsBuilt = true;
             }
-            document.querySelectorAll('.cam-tab').forEach(tab => {
-                const camId = tab.dataset.cam;
-                const dot = tab.querySelector('.cam-dot');
-                if (dot) {
-                    dot.classList.toggle('offline', !activeCams.includes(camId));
-                }
+            document.querySelectorAll('.cam-tab').forEach(function(tab) {
+                var camId = tab.dataset.cam;
+                var dot = tab.querySelector('.cam-dot');
+                if (dot) dot.classList.toggle('offline', activeCams.indexOf(camId) === -1);
             });
-            setTxt('camOnlineCount', activeCams.length);
-        }
-    } catch(e) {}
-}
+            Common.setTxt('camOnlineCount', activeCams.length);
+        } catch (e) {}
+    }
 
-/* ===== CAMERA CONFIG ===== */
-let _cameraConfigData = [];
+    /* ===== CAMERA CONFIG ===== */
+    var _cameraConfigData = [];
 
-async function fetchCameraConfig() {
-    try {
-        const res = await authFetch(API_BASE + '/api/camera_config');
-        if (res.ok) {
-            const data = await res.json();
+    async function fetchCameraConfig() {
+        try {
+            var data = await Common.authFetch(API_BASE + '/api/camera_config');
             if (data.status === 'success') {
                 _cameraConfigData = data.data || [];
                 renderCameraTable(_cameraConfigData);
             }
+        } catch (e) { console.warn('fetchCameraConfig error:', e); }
+    }
+
+    function renderCameraTable(cameras) {
+        var tbody = document.getElementById('cameraConfigTableBody');
+        if (!cameras.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="data-status">\u6682\u65E0\u6444\u50CF\u5934\u914D\u7F6E</td></tr>';
+            return;
         }
-    } catch(e) { console.warn('fetchCameraConfig error:', e); }
-}
+        var typeMap = { usb: ['USB', 'badge-green'], rtsp: ['RTSP', 'badge-blue'], http_snapshot: ['HTTP', 'badge-purple'] };
+        tbody.innerHTML = '';
+        cameras.forEach(function(c) {
+            var tmap = typeMap[c.type] || [c.type, 'badge'];
+            var typeLabel = tmap[0], badgeClass = tmap[1];
+            var addrStr = String(c.address);
+            var addrDisplay = addrStr.length > 40 ? addrStr.substring(0, 37) + '...' : addrStr;
 
-function renderCameraTable(cameras) {
-    const tbody = document.getElementById('cameraConfigTableBody');
-    if (!cameras.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="data-status">暂无摄像头配置</td></tr>';
-        return;
-    }
-    const typeMap = {usb: ['USB', 'badge-green'], rtsp: ['RTSP', 'badge-blue'], http_snapshot: ['HTTP', 'badge-purple']};
-    tbody.innerHTML = cameras.map(c => {
-        const [typeLabel, badgeClass] = typeMap[c.type] || [c.type, 'badge'];
-        const addr = typeof c.address === 'number' ? c.address : c.address;
-        const addrStr = String(addr);
-        const addrDisplay = addrStr.length > 40 ? addrStr.substring(0, 37) + '...' : addrStr;
-        return `<tr>
-            <td><code>${c.id}</code></td>
-            <td><span class="badge ${badgeClass}">${typeLabel}</span></td>
-            <td title="${addrStr}" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${addrDisplay}</td>
-            <td>${c.name || ''}</td>
-            <td>
-                <div class="btn-group">
-                    <button class="btn btn-sm" onclick="showEditCameraModal('${c.id}')">编辑</button>
-                    <button class="btn btn-sm btn-danger" onclick="confirmDeleteCamera('${c.id}')">删除</button>
-                </div>
-            </td>
-        </tr>`;
-    }).join('');
-}
+            var tr = document.createElement('tr');
 
-function showAddCameraModal() {
-    openModal('添加摄像头', `
-        <div class="form-group">
-            <label class="form-label">摄像头类型</label>
-            <select class="form-select" id="camType" onchange="onCameraTypeChange()">
-                <option value="usb">USB 摄像头</option>
-                <option value="rtsp">RTSP 网络流</option>
-                <option value="http_snapshot">HTTP 快照</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="form-label">地址</label>
-            <input class="form-input" id="camAddress" type="number" placeholder="设备编号，如 0">
-        </div>
-        <div class="form-group">
-            <label class="form-label">名称</label>
-            <input class="form-input" id="camName" placeholder="如：主摄像头">
-        </div>
-        <div id="camAuthFields" style="display:none">
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">用户名</label>
-                    <input class="form-input" id="camUser" placeholder="admin">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">密码</label>
-                    <input class="form-input" id="camPassword" type="password" placeholder="可留空">
-                </div>
-            </div>
-        </div>
-    `, `<button class="btn" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="addCamera()">添加</button>`);
-}
+            var tdId = document.createElement('td');
+            var code = document.createElement('code');
+            code.textContent = c.id;
+            tdId.appendChild(code);
+            tr.appendChild(tdId);
 
-function showEditCameraModal(id) {
-    const cam = _cameraConfigData.find(c => c.id === id);
-    if (!cam) return;
-    const isUsb = cam.type === 'usb';
-    const isHttp = cam.type === 'http_snapshot';
-    openModal('编辑摄像头', `
-        <div class="form-group">
-            <label class="form-label">摄像头类型</label>
-            <select class="form-select" id="camType" onchange="onCameraTypeChange()">
-                <option value="usb" ${isUsb ? 'selected' : ''}>USB 摄像头</option>
-                <option value="rtsp" ${cam.type === 'rtsp' ? 'selected' : ''}>RTSP 网络流</option>
-                <option value="http_snapshot" ${isHttp ? 'selected' : ''}>HTTP 快照</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="form-label">地址</label>
-            <input class="form-input" id="camAddress" type="${isUsb ? 'number' : 'text'}" value="${cam.address}" placeholder="${isUsb ? '设备编号' : 'URL地址'}">
-        </div>
-        <div class="form-group">
-            <label class="form-label">名称</label>
-            <input class="form-input" id="camName" value="${cam.name || ''}">
-        </div>
-        <div id="camAuthFields" style="display:${isHttp ? '' : 'none'}">
-            <div class="form-row">
-                <div class="form-group">
-                    <label class="form-label">用户名</label>
-                    <input class="form-input" id="camUser" value="${cam.user || ''}" placeholder="admin">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">密码</label>
-                    <input class="form-input" id="camPassword" type="password" value="${cam.password || ''}" placeholder="可留空">
-                </div>
-            </div>
-        </div>
-    `, `<button class="btn" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="saveCameraEdit('${id}')">保存</button>`);
-}
+            var tdType = document.createElement('td');
+            var badge = document.createElement('span');
+            badge.className = 'badge ' + badgeClass;
+            badge.textContent = typeLabel;
+            tdType.appendChild(badge);
+            tr.appendChild(tdType);
 
-function onCameraTypeChange() {
-    const type = document.getElementById('camType').value;
-    const addrInput = document.getElementById('camAddress');
-    const authFields = document.getElementById('camAuthFields');
-    if (type === 'usb') {
-        addrInput.placeholder = '设备编号，如 0';
-        addrInput.type = 'number';
-        authFields.style.display = 'none';
-    } else if (type === 'rtsp') {
-        addrInput.placeholder = 'rtsp://192.168.1.100:554/stream1';
-        addrInput.type = 'text';
-        authFields.style.display = 'none';
-    } else {
-        addrInput.placeholder = 'http://192.168.1.100/snapshot.jpg';
-        addrInput.type = 'text';
-        authFields.style.display = '';
-    }
-}
+            var tdAddr = document.createElement('td');
+            tdAddr.title = addrStr;
+            tdAddr.style.cssText = 'max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+            tdAddr.textContent = addrDisplay;
+            tr.appendChild(tdAddr);
 
-async function addCamera() {
-    const type = document.getElementById('camType').value;
-    const addrVal = document.getElementById('camAddress').value;
-    const address = type === 'usb' ? parseInt(addrVal) : addrVal;
-    const name = document.getElementById('camName').value;
-    if (!addrVal || !name) { toast('请填写地址和名称', 'error'); return; }
-    const body = { type, address, name };
-    if (type === 'http_snapshot') {
-        body.user = document.getElementById('camUser')?.value || '';
-        body.password = document.getElementById('camPassword')?.value || '';
-    }
-    try {
-        const res = await authFetch(API_BASE + '/api/camera_config', {
-            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+            var tdName = document.createElement('td');
+            tdName.textContent = c.name || '';
+            tr.appendChild(tdName);
+
+            var tdOps = document.createElement('td');
+            var btnGroup = document.createElement('div');
+            btnGroup.className = 'btn-group';
+            var editBtn = document.createElement('button');
+            editBtn.className = 'btn btn-sm';
+            editBtn.textContent = '\u7F16\u8F91';
+            editBtn.addEventListener('click', function() { showEditCameraModal(c.id); });
+            btnGroup.appendChild(editBtn);
+            var delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-sm btn-danger';
+            delBtn.textContent = '\u5220\u9664';
+            delBtn.addEventListener('click', function() { confirmDeleteCamera(c.id); });
+            btnGroup.appendChild(delBtn);
+            tdOps.appendChild(btnGroup);
+            tr.appendChild(tdOps);
+
+            tbody.appendChild(tr);
         });
-        const data = await res.json();
-        if (data.status === 'success') {
-            toast('摄像头已添加', 'success');
-            closeModal();
-            fetchCameraConfig();
-        } else {
-            toast('添加失败: ' + (data.message || '未知错误'), 'error');
-        }
-    } catch(e) { toast('添加失败: 网络错误', 'error'); }
-}
-
-async function saveCameraEdit(id) {
-    const type = document.getElementById('camType').value;
-    const addrVal = document.getElementById('camAddress').value;
-    const address = type === 'usb' ? parseInt(addrVal) : addrVal;
-    const name = document.getElementById('camName').value;
-    if (!addrVal || !name) { toast('请填写地址和名称', 'error'); return; }
-    const body = { type, address, name };
-    if (type === 'http_snapshot') {
-        body.user = document.getElementById('camUser')?.value || '';
-        body.password = document.getElementById('camPassword')?.value || '';
     }
-    try {
-        const res = await authFetch(API_BASE + '/api/camera_config/' + id, {
-            method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            toast('摄像头已更新', 'success');
-            closeModal();
-            fetchCameraConfig();
+
+    function showAddCameraModal() {
+        var body = document.createElement('div');
+        body.innerHTML =
+            '<div class="form-group">' +
+                '<label class="form-label">\u6444\u50CF\u5934\u7C7B\u578B</label>' +
+                '<select class="form-select" id="camType">' +
+                    '<option value="usb">USB \u6444\u50CF\u5934</option>' +
+                    '<option value="rtsp">RTSP \u7F51\u7EDC\u6D41</option>' +
+                    '<option value="http_snapshot">HTTP \u5FEB\u7167</option>' +
+                '</select>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">\u5730\u5740</label>' +
+                '<input class="form-input" id="camAddress" type="number" placeholder="\u8BBE\u5907\u7F16\u53F7\uFF0C\u5982 0">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">\u540D\u79F0</label>' +
+                '<input class="form-input" id="camName" placeholder="\u5982\uFF1A\u4E3B\u6444\u50CF\u5934">' +
+            '</div>' +
+            '<div id="camAuthFields" style="display:none">' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">\u7528\u6237\u540D</label><input class="form-input" id="camUser" placeholder="admin"></div>' +
+                    '<div class="form-group"><label class="form-label">\u5BC6\u7801</label><input class="form-input" id="camPassword" type="password" placeholder="\u53EF\u7559\u7A7A"></div>' +
+                '</div>' +
+            '</div>';
+
+        var footer = document.createElement('div');
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn';
+        cancelBtn.textContent = '\u53D6\u6D88';
+        cancelBtn.addEventListener('click', Common.closeModal);
+        footer.appendChild(cancelBtn);
+        var addBtn = document.createElement('button');
+        addBtn.className = 'btn btn-primary';
+        addBtn.textContent = '\u6DFB\u52A0';
+        addBtn.addEventListener('click', addCamera);
+        footer.appendChild(addBtn);
+
+        Common.openModal('\u6DFB\u52A0\u6444\u50CF\u5934', body, footer);
+
+        // Wire up type change after modal is visible
+        setTimeout(function() {
+            var typeEl = document.getElementById('camType');
+            if (typeEl) typeEl.addEventListener('change', onCameraTypeChange);
+        }, 60);
+    }
+    window.showAddCameraModal = showAddCameraModal;
+
+    function showEditCameraModal(id) {
+        var cam = _cameraConfigData.find(function(c) { return c.id === id; });
+        if (!cam) return;
+        var isUsb = cam.type === 'usb';
+        var isHttp = cam.type === 'http_snapshot';
+
+        var body = document.createElement('div');
+        body.innerHTML =
+            '<div class="form-group">' +
+                '<label class="form-label">\u6444\u50CF\u5934\u7C7B\u578B</label>' +
+                '<select class="form-select" id="camType">' +
+                    '<option value="usb"' + (isUsb ? ' selected' : '') + '>USB \u6444\u50CF\u5934</option>' +
+                    '<option value="rtsp"' + (cam.type === 'rtsp' ? ' selected' : '') + '>RTSP \u7F51\u7EDC\u6D41</option>' +
+                    '<option value="http_snapshot"' + (isHttp ? ' selected' : '') + '>HTTP \u5FEB\u7167</option>' +
+                '</select>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">\u5730\u5740</label>' +
+                '<input class="form-input" id="camAddress" type="' + (isUsb ? 'number' : 'text') + '" value="' + Common.escAttr(String(cam.address)) + '" placeholder="' + (isUsb ? '\u8BBE\u5907\u7F16\u53F7' : 'URL\u5730\u5740') + '">' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="form-label">\u540D\u79F0</label>' +
+                '<input class="form-input" id="camName" value="' + Common.escAttr(cam.name || '') + '">' +
+            '</div>' +
+            '<div id="camAuthFields" style="display:' + (isHttp ? '' : 'none') + '">' +
+                '<div class="form-row">' +
+                    '<div class="form-group"><label class="form-label">\u7528\u6237\u540D</label><input class="form-input" id="camUser" value="' + Common.escAttr(cam.user || '') + '" placeholder="admin"></div>' +
+                    '<div class="form-group"><label class="form-label">\u5BC6\u7801</label><input class="form-input" id="camPassword" type="password" value="' + Common.escAttr(cam.password || '') + '" placeholder="\u53EF\u7559\u7A7A"></div>' +
+                '</div>' +
+            '</div>';
+
+        var footer = document.createElement('div');
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn';
+        cancelBtn.textContent = '\u53D6\u6D88';
+        cancelBtn.addEventListener('click', Common.closeModal);
+        footer.appendChild(cancelBtn);
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'btn btn-primary';
+        saveBtn.textContent = '\u4FDD\u5B58';
+        saveBtn.addEventListener('click', function() { saveCameraEdit(id); });
+        footer.appendChild(saveBtn);
+
+        Common.openModal('\u7F16\u8F91\u6444\u50CF\u5934', body, footer);
+
+        setTimeout(function() {
+            var typeEl = document.getElementById('camType');
+            if (typeEl) typeEl.addEventListener('change', onCameraTypeChange);
+        }, 60);
+    }
+
+    function onCameraTypeChange() {
+        var type = document.getElementById('camType').value;
+        var addrInput = document.getElementById('camAddress');
+        var authFields = document.getElementById('camAuthFields');
+        if (type === 'usb') {
+            addrInput.placeholder = '\u8BBE\u5907\u7F16\u53F7\uFF0C\u5982 0';
+            addrInput.type = 'number';
+            authFields.style.display = 'none';
+        } else if (type === 'rtsp') {
+            addrInput.placeholder = 'rtsp://192.168.1.100:554/stream1';
+            addrInput.type = 'text';
+            authFields.style.display = 'none';
         } else {
-            toast('更新失败: ' + (data.message || '未知错误'), 'error');
+            addrInput.placeholder = 'http://192.168.1.100/snapshot.jpg';
+            addrInput.type = 'text';
+            authFields.style.display = '';
         }
-    } catch(e) { toast('更新失败: 网络错误', 'error'); }
-}
+    }
 
-function confirmDeleteCamera(id) {
-    openModal('确认删除',
-        '<div style="text-align:center;padding:8px 0"><div style="font-size:32px;margin-bottom:10px">⚠</div>' +
-        '<div style="font-size:13px;font-weight:600">确定要删除此摄像头配置吗？</div>' +
-        '<div style="font-size:11px;color:var(--text-muted)">删除后需重启Python脚本生效</div></div>',
-        '<button class="btn" onclick="closeModal()">取消</button>' +
-        '<button class="btn btn-danger" onclick="deleteCamera(\'' + id + '\')">确认删除</button>'
-    );
-}
-
-async function deleteCamera(id) {
-    try {
-        const res = await authFetch(API_BASE + '/api/camera_config/' + id, { method: 'DELETE' });
-        const data = await res.json();
-        if (data.status === 'success') {
-            toast('摄像头已删除', 'success');
-            closeModal();
+    async function addCamera() {
+        var type = document.getElementById('camType').value;
+        var addrVal = document.getElementById('camAddress').value;
+        var address = type === 'usb' ? parseInt(addrVal) : addrVal;
+        var name = document.getElementById('camName').value;
+        if (!addrVal || !name) { Common.toast('\u8BF7\u586B\u5199\u5730\u5740\u548C\u540D\u79F0', 'error'); return; }
+        var body = { type: type, address: address, name: name };
+        if (type === 'http_snapshot') {
+            body.user = (document.getElementById('camUser') || {}).value || '';
+            body.password = (document.getElementById('camPassword') || {}).value || '';
+        }
+        try {
+            var result = await Common.authFetch(API_BASE + '/api/camera_config', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+            });
+            Common.toast('\u6444\u50CF\u5934\u5DF2\u6DFB\u52A0', 'success');
+            Common.closeModal();
             fetchCameraConfig();
-        } else {
-            toast('删除失败: ' + (data.message || '未知错误'), 'error');
+        } catch (e) { Common.toast('\u6DFB\u52A0\u5931\u8D25', 'error'); }
+    }
+
+    async function saveCameraEdit(id) {
+        var type = document.getElementById('camType').value;
+        var addrVal = document.getElementById('camAddress').value;
+        var address = type === 'usb' ? parseInt(addrVal) : addrVal;
+        var name = document.getElementById('camName').value;
+        if (!addrVal || !name) { Common.toast('\u8BF7\u586B\u5199\u5730\u5740\u548C\u540D\u79F0', 'error'); return; }
+        var body = { type: type, address: address, name: name };
+        if (type === 'http_snapshot') {
+            body.user = (document.getElementById('camUser') || {}).value || '';
+            body.password = (document.getElementById('camPassword') || {}).value || '';
         }
-    } catch(e) { toast('删除失败: 网络错误', 'error'); }
-}
+        try {
+            await Common.authFetch(API_BASE + '/api/camera_config/' + id, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+            });
+            Common.toast('\u6444\u50CF\u5934\u5DF2\u66F4\u65B0', 'success');
+            Common.closeModal();
+            fetchCameraConfig();
+        } catch (e) { Common.toast('\u66F4\u65B0\u5931\u8D25', 'error'); }
+    }
 
-/* ===== FPS COUNTER ===== */
-const videoFeed=document.getElementById('videoFeed');
-let frameCount=0,lastFpsTime=Date.now(),videoErrorTimeout=null;
-videoFeed.addEventListener('load',()=>{
-    document.getElementById('videoError').classList.remove('show');
-    clearTimeout(videoErrorTimeout);
-    frameCount++;const now=Date.now();
-    if(now-lastFpsTime>=1000){const el=document.getElementById('fpsDisplay');if(el)el.textContent='FPS: '+frameCount;frameCount=0;lastFpsTime=now}
-});
-videoFeed.addEventListener('error',()=>{
-    videoErrorTimeout=setTimeout(()=>{
-        document.getElementById('videoError').classList.add('show');
-    },3000);
-});
-function retryVideoFeed(){
-    document.getElementById('videoError').classList.remove('show');
-    videoFeed.src=API_BASE+'/video_feed?cam='+currentCam+'&t='+Date.now();
-}
+    function confirmDeleteCamera(id) {
+        var body = document.createElement('div');
+        body.style.cssText = 'text-align:center;padding:8px 0';
+        var icon = document.createElement('div');
+        icon.style.cssText = 'font-size:32px;margin-bottom:10px';
+        icon.textContent = '\u26A0';
+        body.appendChild(icon);
+        var title = document.createElement('div');
+        title.style.cssText = 'font-size:13px;font-weight:600';
+        title.textContent = '\u786E\u5B9A\u8981\u5220\u9664\u6B64\u6444\u50CF\u5934\u914D\u7F6E\u5417\uFF1F';
+        body.appendChild(title);
+        var desc = document.createElement('div');
+        desc.style.cssText = 'font-size:11px;color:var(--text-muted)';
+        desc.textContent = '\u5220\u9664\u540E\u9700\u91CD\u542FPython\u811A\u672C\u751F\u6548';
+        body.appendChild(desc);
 
-/* ===== SIDEBAR SMOOTH SCROLL ===== */
-document.querySelectorAll('.sidebar-item[href^="#"]').forEach(item => {
-    item.addEventListener('click', function(e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
-        document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-        this.classList.add('active');
+        var footer = document.createElement('div');
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn';
+        cancelBtn.textContent = '\u53D6\u6D88';
+        cancelBtn.addEventListener('click', Common.closeModal);
+        footer.appendChild(cancelBtn);
+        var delBtn = document.createElement('button');
+        delBtn.className = 'btn btn-danger';
+        delBtn.textContent = '\u786E\u8BA4\u5220\u9664';
+        delBtn.addEventListener('click', function() { deleteCamera(id); });
+        footer.appendChild(delBtn);
+
+        Common.openModal('\u786E\u8BA4\u5220\u9664', body, footer);
+    }
+
+    async function deleteCamera(id) {
+        try {
+            await Common.authFetch(API_BASE + '/api/camera_config/' + id, { method: 'DELETE' });
+            Common.toast('\u6444\u50CF\u5934\u5DF2\u5220\u9664', 'success');
+            Common.closeModal();
+            fetchCameraConfig();
+        } catch (e) { Common.toast('\u5220\u9664\u5931\u8D25', 'error'); }
+    }
+
+    /* ===== FPS COUNTER ===== */
+    var videoFeed = document.getElementById('videoFeed');
+    var frameCount = 0, lastFpsTime = Date.now(), videoErrorTimeout = null;
+    videoFeed.addEventListener('load', function() {
+        document.getElementById('videoError').classList.remove('show');
+        clearTimeout(videoErrorTimeout);
+        frameCount++;
+        var now = Date.now();
+        if (now - lastFpsTime >= 1000) {
+            var el = document.getElementById('fpsDisplay');
+            if (el) el.textContent = 'FPS: ' + frameCount;
+            frameCount = 0;
+            lastFpsTime = now;
+        }
     });
-});
+    videoFeed.addEventListener('error', function() {
+        videoErrorTimeout = setTimeout(function() {
+            document.getElementById('videoError').classList.add('show');
+        }, 3000);
+    });
 
-/* ===== INIT ===== */
-fetchData();fetchModelInfo();fetchCameraStatus();fetchCameraConfig();
-setInterval(fetchSummary, 2000); // lightweight poll
-setInterval(fetchModelInfo, 30000);
-setInterval(fetchCameraStatus, 10000);
-setInterval(fetchCameraConfig, 30000);
+    function retryVideoFeed() {
+        document.getElementById('videoError').classList.remove('show');
+        videoFeed.src = API_BASE + '/video_feed?cam=' + currentCam + '&t=' + Date.now();
+    }
+    window.retryVideoFeed = retryVideoFeed;
 
-// Init sound button state
-const soundBtn = document.getElementById('soundBtn');
-if (soundBtn) soundBtn.textContent = alertSoundEnabled ? '🔊 告警声音' : '🔇 告警静音';
+    /* ===== SIDEBAR SMOOTH SCROLL ===== */
+    document.querySelectorAll('.sidebar-item[href^="#"]').forEach(function(item) {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            var target = document.querySelector(this.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.querySelectorAll('.sidebar-item').forEach(function(i) { i.classList.remove('active'); });
+            this.classList.add('active');
+        });
+    });
 
-document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){closeModal();document.getElementById('imageViewer').classList.remove('show')}
-});
+    /* ===== CHART RANGE BUTTONS ===== */
+    document.getElementById('chartBtnMin').addEventListener('click', function() { ChartModule.setChartRange('min', this); });
+    document.getElementById('chartBtnHour').addEventListener('click', function() { ChartModule.setChartRange('hour', this); });
+    document.getElementById('chartBtnDay').addEventListener('click', function() { ChartModule.setChartRange('day', this); });
+
+    /* ===== STATIC HTML EVENT WIRING ===== */
+    // Image viewer close
+    document.getElementById('imageViewer').addEventListener('click', function(e) {
+        if (e.target === document.getElementById('imageViewer') || e.target.id === 'imageViewer') {
+            DetectionModule.closeImageViewer();
+        }
+    });
+    // Image viewer close button (in HTML)
+    document.querySelector('.image-viewer-close').addEventListener('click', DetectionModule.closeImageViewer);
+
+    // Topbar buttons
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    // Refresh button
+    document.querySelectorAll('.topbar-btn').forEach(function(btn) {
+        if (btn.title === '\u5237\u65B0\u6570\u636E') {
+            btn.addEventListener('click', function() { fetchData(); Common.toast('\u6570\u636E\u5DF2\u5237\u65B0', 'success'); });
+        }
+    });
+
+    // Sidebar admin link
+    document.querySelectorAll('.sidebar-item').forEach(function(item) {
+        if (item.textContent.indexOf('\u540E\u53F0\u7BA1\u7406') !== -1) {
+            item.addEventListener('click', function() { location.href = API_BASE + '/admin'; });
+        }
+    });
+
+    // Alert ticker close
+    document.querySelector('.alert-ticker-close').addEventListener('click', AlertModule.dismissTicker);
+
+    // Detection record buttons
+    document.querySelectorAll('#records .btn-group .btn').forEach(function(btn) {
+        if (btn.textContent.indexOf('\u7B5B\u9009') !== -1) btn.addEventListener('click', DetectionModule.showFilterModal);
+        if (btn.textContent.indexOf('\u5BFC\u51FA') !== -1) btn.addEventListener('click', DetectionModule.exportDetections);
+        if (btn.textContent.indexOf('\u6E05\u7A7A') !== -1) btn.addEventListener('click', DetectionModule.showClearConfirm);
+    });
+
+    // Video action buttons
+    document.querySelectorAll('.video-actions .v-btn').forEach(function(btn) {
+        if (btn.textContent.indexOf('\u622A\u56FE') !== -1) btn.addEventListener('click', captureScreenshot);
+        if (btn.textContent.indexOf('\u5168\u5C4F') !== -1) btn.addEventListener('click', fullscreen);
+        if (btn.textContent.indexOf('\u6D4B\u8BD5\u544A\u8B66') !== -1) btn.addEventListener('click', AlertModule.testAlert);
+        if (btn.id === 'soundBtn') btn.addEventListener('click', AlertModule.toggleAlertSound);
+    });
+
+    // Video retry button
+    document.querySelector('.video-error .v-btn').addEventListener('click', retryVideoFeed);
+
+    // Modal close button
+    document.querySelector('.modal-close').addEventListener('click', Common.closeModal);
+
+    // Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            Common.closeModal();
+            DetectionModule.closeImageViewer();
+        }
+    });
+
+    /* ===== INIT ===== */
+    DetectionModule.showTableLoading();
+    AlertModule.initSoundButton();
+    fetchData();
+    fetchModelInfo();
+    fetchCameraStatus();
+    fetchCameraConfig();
+    setInterval(fetchSummary, 2000);
+    setInterval(fetchModelInfo, 30000);
+    setInterval(fetchCameraStatus, 10000);
+    setInterval(fetchCameraConfig, 30000);
+})();
 </script>
-<script src="/yolov8-security/static/js/common.js"></script>
 </body>
 </html>
