@@ -989,8 +989,12 @@ class SecurityMonitor:
     def __init__(self):
         self.config = Config()
 
-        # 自动检测可用摄像头
-        self.config.SOURCES = detect_cameras(max_index=5)
+        # 从 cameras.json 加载摄像头配置，不存在时回退到 USB 自动检测
+        self.config.SOURCES = load_cameras_config()
+        if not self.config.SOURCES:
+            print("未找到 cameras.json 或配置为空，回退到 USB 摄像头自动检测...")
+            usb_cams = detect_cameras(max_index=5)
+            self.config.SOURCES = [{"id": f"cam{i}", "type": "usb", "address": i, "name": f"USB摄像头{i}"} for i in usb_cams]
 
         self.detection_module = DetectionModule(self.config)
         self.data_saver = DataSaver(self.config)
