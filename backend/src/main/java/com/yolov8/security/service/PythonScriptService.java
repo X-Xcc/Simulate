@@ -38,8 +38,16 @@ public class PythonScriptService {
 
             ProcessBuilder processBuilder = new ProcessBuilder();
             processBuilder.command(pythonExecutable, scriptPath);
+            // Sanitize args to prevent command injection
+            for (String arg : args) {
+                if (arg.contains(";") || arg.contains("|") || arg.contains("&") ||
+                    arg.contains("$") || arg.contains("`") || arg.contains("(")) {
+                    log.warn("Rejected potentially unsafe script argument: {}", arg);
+                    return CompletableFuture.completedFuture("{\"status\":\"error\",\"message\":\"Invalid argument\"}");
+                }
+            }
             processBuilder.command().addAll(java.util.Arrays.asList(args));
-            
+
             processBuilder.redirectErrorStream(true);
 
             log.info("Executing Python script: {} {}", scriptPath, String.join(" ", args));

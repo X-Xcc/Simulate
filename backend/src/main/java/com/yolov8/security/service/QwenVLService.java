@@ -12,6 +12,7 @@ import org.springframework.web.client.RestTemplate;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -151,6 +152,13 @@ public class QwenVLService {
     public String analyzeSecurityImage(String imagePath, List<String> actions) {
         try {
             File imageFile = new File(imagePath);
+            // Path traversal protection: resolve and verify the path is within the data directory
+            Path dataDir = Path.of(appConfig.getFile().getUploadDir()).toAbsolutePath().normalize();
+            Path resolved = imageFile.toPath().toAbsolutePath().normalize();
+            if (!resolved.startsWith(dataDir)) {
+                log.warn("Path traversal attempt blocked: {}", imagePath);
+                return "非法文件路径";
+            }
             if (!imageFile.exists()) {
                 return "图片文件不存在";
             }

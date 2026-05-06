@@ -18,8 +18,26 @@
     const API_BASE = '/yolov8-security/api';
     let failCount = 0;
 
-    /* ------- 已登录则跳转 ------- */
-    if (getToken()) { redirectToDash(); return; }
+    /* ------- 已登录则跳转（先验证 token 有效性）------- */
+    (async function checkExistingToken() {
+        const token = getToken();
+        if (!token) return;
+        try {
+            const res = await fetch('/yolov8-security/api/stats/summary', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (res.ok) {
+                redirectToDash();
+            } else {
+                sessionStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_token');
+            }
+        } catch (e) {
+            // Network error — clear token to be safe
+            sessionStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_token');
+        }
+    })();
 
     /* ------- 记住我 ------- */
     const saved = localStorage.getItem('remembered_user');

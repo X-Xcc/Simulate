@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,6 +30,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final int DELETE_MAX_REQUESTS = 3;
     private static final long DELETE_WINDOW_MS = 60_000L;
 
+    private static final int MAX_ENTRIES = 10_000;
+
     private static class Window {
         volatile long startMs;
         final AtomicInteger count = new AtomicInteger(0);
@@ -41,12 +44,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Window> apiWindows = new ConcurrentHashMap<>();
     private final Map<String, Window> videoWindows = new ConcurrentHashMap<>();
     private final Map<String, Window> deleteWindows = new ConcurrentHashMap<>();
+    private final AtomicInteger requestCount = new AtomicInteger(0);
 
     private static final String[] PUBLIC_PATHS = {"/", "/index", "/static", "/error", "/api/monitor_status"};
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
+        String cp = request.getContextPath();
+        if (cp != null && !cp.isEmpty() && uri.startsWith(cp)) {
+            uri = uri.substring(cp.length());
+        }
+        if (uri.isEmpty()) uri = "/";
         for (String p : PUBLIC_PATHS) {
             if (uri.startsWith(p)) return true;
         }
@@ -57,6 +66,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         String ip = request.getRemoteAddr();
+        // Use X-Forwarded-For when behind reverse proxy
+        String xff = request.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isEmpty()) {
+            ip = xff.split(",")[0].trim();
+        }
         String uri = request.getRequestURI();
         Map<String, Window> windows;
         int max;
@@ -76,22 +90,38 @@ public class RateLimitFilter extends OncePerRequestFilter {
             windowMs = DEFAULT_WINDOW_MS;
         }
 
+        // Only check eviction every 100 requests to reduce overhead
+        if (requestCount.incrementAndGet() % 100 == 0) {
+            evictIfFull(windows);
+        }
         Window w = windows.computeIfAbsent(ip, k -> new Window(System.currentTimeMillis()));
         long now = System.currentTimeMillis();
 
-        if (now - w.startMs > windowMs) {
-            w.startMs = now;
-            w.count.set(0);
-        }
-
-        if (w.count.incrementAndGet() > max) {
-            log.warn("Rate limit exceeded for {} on {}", ip, uri);
-            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().write("{\"status\":\"error\",\"message\":\"Rate limit exceeded\"}");
-            return;
+        synchronized (w) {
+            if (now - w.startMs > windowMs) {
+                w.startMs = now;
+                w.count.set(0);
+            }
+            if (w.count.incrementAndGet() > max) {
+                log.warn("Rate limit exceeded for {} on {}", ip, uri);
+                response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"status\":\"error\",\"message\":\"Rate limit exceeded\"}");
+                return;
+            }
         }
 
         chain.doFilter(request, response);
+    }
+
+    private void evictIfFull(Map<String, Window> windows) {
+        if (windows.size() > MAX_ENTRIES) {
+            Iterator<Map.Entry<String, Window>> it = windows.entrySet().iterator();
+            int toRemove = MAX_ENTRIES / 4;
+            while (it.hasNext() && toRemove-- > 0) {
+                it.next();
+                it.remove();
+            }
+        }
     }
 }

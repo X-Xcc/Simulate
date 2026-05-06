@@ -1,15 +1,12 @@
 package com.yolov8.security.service;
 
-import lombok.Data;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.util.Map;
 
-@Data
 @Service
 public class ModelInfoService {
-    
+
     private String status = "online";
     private String precision = "FP16";
     private String device = "GPU";
@@ -25,14 +22,20 @@ public class ModelInfoService {
     public void updateModelInfo(Map<String, Object> modelInfo) {
         if (modelInfo != null) {
             this.status = "online";
-            this.precision = (String) modelInfo.getOrDefault("precision", "FP32");
-            this.device = (String) modelInfo.getOrDefault("device", "CPU");
-            this.modelSizeMb = ((Number) modelInfo.getOrDefault("model_size_mb", 0)).doubleValue();
-            this.totalLayers = ((Number) modelInfo.getOrDefault("total_layers", 0)).intValue();
-            this.convLayers = ((Number) modelInfo.getOrDefault("conv_layers", 0)).intValue();
-            this.quantizedLayers = ((Number) modelInfo.getOrDefault("quantized_layers", 0)).intValue();
-            this.gpuAvailable = (Boolean) modelInfo.getOrDefault("gpu_available", false);
-            this.halfPrecision = (Boolean) modelInfo.getOrDefault("half_precision", false);
+            this.precision = String.valueOf(modelInfo.getOrDefault("precision", "FP32"));
+            this.device = String.valueOf(modelInfo.getOrDefault("device", "CPU"));
+            Object sizeMb = modelInfo.getOrDefault("model_size_mb", 0);
+            this.modelSizeMb = sizeMb instanceof Number ? ((Number) sizeMb).doubleValue() : 0;
+            Object total = modelInfo.getOrDefault("total_layers", 0);
+            this.totalLayers = total instanceof Number ? ((Number) total).intValue() : 0;
+            Object conv = modelInfo.getOrDefault("conv_layers", 0);
+            this.convLayers = conv instanceof Number ? ((Number) conv).intValue() : 0;
+            Object quant = modelInfo.getOrDefault("quantized_layers", 0);
+            this.quantizedLayers = quant instanceof Number ? ((Number) quant).intValue() : 0;
+            Object gpu = modelInfo.getOrDefault("gpu_available", false);
+            this.gpuAvailable = gpu instanceof Boolean ? (Boolean) gpu : false;
+            Object half = modelInfo.getOrDefault("half_precision", false);
+            this.halfPrecision = half instanceof Boolean ? (Boolean) half : false;
             this.lastUpdate = System.currentTimeMillis();
         }
     }
@@ -41,7 +44,7 @@ public class ModelInfoService {
         if (System.currentTimeMillis() - lastUpdate > TIMEOUT) {
             this.status = "offline";
         }
-        
+
         return Map.of(
             "status", status,
             "precision", precision,
@@ -55,4 +58,10 @@ public class ModelInfoService {
             "last_update", lastUpdate
         );
     }
+
+    public String getStatus() { return status; }
+    public String getPrecision() { return precision; }
+    public String getDevice() { return device; }
+    public double getModelSizeMb() { return modelSizeMb; }
+    public boolean isGpuAvailable() { return gpuAvailable; }
 }

@@ -7,7 +7,9 @@
 # 导入必要的库
 import os
 import threading
+from collections import deque
 from itertools import combinations
+from concurrent.futures import ThreadPoolExecutor
 
 # 直接导入，减少不必要的检查
 from ultralytics import YOLO
@@ -24,18 +26,34 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# ===================== GPU/CPU 检测 =====================
+# ===================== 设备检测 =====================
+_USE_GPU = os.environ.get("YOLOV8_DEVICE", "cpu").lower() == "cuda"
+
 print("\n" + "=" * 60)
 print("PyTorch 版本:", torch.__version__)
 print("CUDA 可用:", torch.cuda.is_available())
 
-if torch.cuda.is_available():
+if _USE_GPU and torch.cuda.is_available():
     print("使用设备: 👉 GPU -", torch.cuda.get_device_name(0))
-    print("GPU 显存:", torch.cuda.get_device_properties(0).total_memory / 1024 / 1024 / 1024, "GB")
+    print("GPU 显存:", round(torch.cuda.get_device_properties(0).total_memory / 1024 / 1024 / 1024, 1), "GB")
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.enabled = True
+    print("cuDNN benchmark: ✅ 已启用")
 else:
-    print("使用设备: 🖥 CPU")
-    print("警告: GPU 不可用，将使用 CPU（性能会降低）")
-print("=" * 60 + "\n") 
+    print("使用设备: 👉 CPU 模式")
+
+# OpenCV CUDA 检测
+HAS_CV2_CUDA = False
+try:
+    HAS_CV2_CUDA = cv2.cuda.getCudaEnabledDeviceCount() > 0
+except Exception:
+    pass
+
+if HAS_CV2_CUDA:
+    print("OpenCV CUDA: ✅ 可用")
+else:
+    print("OpenCV CUDA: ❌ 不可用 (resize 走 CPU)")
+print("=" * 60 + "\n")
 # =====================
 # ==================================
 
@@ -69,13 +87,18 @@ class Config:
     # 模型参数
     IMG_SIZE = 512
     CONF_THRESH = 0.5
-    # 强制使用GPU（如果可用）
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    # 设备选择: 通过环境变量 YOLOV8_DEVICE=cuda 启用 GPU，默认 CPU
+    DEVICE = "cuda" if os.environ.get("YOLOV8_DEVICE", "cpu").lower() == "cuda" else "cpu"
+    HALF = DEVICE == "cuda"  # CPU 不支持 FP16
+    # TensorRT 加速（首次运行会导出 engine 文件，后续直接加载，2-5x 加速）
+    USE_TENSORRT = False  # 设为 True 启用 TensorRT（需要安装 tensorrt）
 
     # 检测参数
     FATIGUE_THRESHOLD = 0.05  # 归一化坐标下的移动阈值
     FATIGUE_DURATION = 3
     FIGHTING_THRESHOLD = 0.3
+    # 推理跳帧 — 每N帧推理一次，中间帧复用结果（2=每2帧推理1次，推理开销减半）
+    INFERENCE_EVERY = 2
     # 眼疲劳参数
     EYE_AR_THRESHOLD = 0.2  # EAR阈值，低于此值认为是闭眼
     EYE_FATIGUE_FRAMES = 30  # 连续多少帧EAR过低判定为疲劳
@@ -234,23 +257,43 @@ class Utils:
                     Utils._FONT_CACHE[size] = ImageFont.load_default()
         return Utils._FONT_CACHE[size]
 
+    # 批量文字渲染缓冲区（线程安全）
+    _tls = threading.local()
+
+    @classmethod
+    def begin_text_batch(cls, img: np.ndarray) -> ImageDraw.Draw:
+        """开始批量文字渲染 — 只做一次 BGR→RGB→PIL 转换"""
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        cls._tls._pil_buffer = Image.fromarray(img_rgb)
+        return ImageDraw.Draw(cls._tls._pil_buffer)
+
+    @classmethod
+    def end_text_batch(cls, img: np.ndarray) -> np.ndarray:
+        """结束批量文字渲染 — 只做一次 PIL→RGB→BGR 转换"""
+        buf = getattr(cls._tls, '_pil_buffer', None)
+        if buf is None:
+            return img
+        result = cv2.cvtColor(np.array(buf), cv2.COLOR_RGB2BGR)
+        cls._tls._pil_buffer = None
+        return result
+
+    @staticmethod
+    def draw_text_cn_batch(draw: ImageDraw.Draw, text: str, pos: Tuple[int, int],
+                           size: int = 30, color: Tuple[int, int, int] = (255, 255, 255)) -> None:
+        """批量模式绘制文字 — 不做颜色转换，直接画在 PIL buffer 上"""
+        font = Utils._get_cached_font(size)
+        draw.text(pos, text, font=font, fill=color)
+
     @staticmethod
     def draw_text_cn(img: np.ndarray, text: str, pos: Tuple[int, int],
                      size: int = 30, color: Tuple[int, int, int] = (255, 255, 255)) -> np.ndarray:
-        """绘制中文文本，确保正确显示"""
+        """绘制中文文本（单次调用兼容模式）"""
         try:
-            # 转换BGR为RGB
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img_pil = Image.fromarray(img_rgb)
             draw = ImageDraw.Draw(img_pil)
-
-            # 使用缓存字体
             font = Utils._get_cached_font(size)
-
-            # 绘制文本
             draw.text(pos, text, font=font, fill=color)
-
-            # 转换回BGR
             img_bgr = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
             return img_bgr
         except (OSError, IOError, ValueError) as e:
@@ -320,14 +363,18 @@ class Utils:
         ms = int(time.time() * 1000) % 1000
         return f"{time.strftime('%Y%m%d_%H%M%S')}_{ms:03d}"
 
+    _scratch_img = None
+    _scratch_draw = None
+
     @staticmethod
     def measure_text_size(text: str, font_size: int) -> Tuple[int, int]:
         """测量文本尺寸，避免重复代码"""
         try:
-            temp_img = Image.new('RGB', (100, 100))
-            temp_draw = ImageDraw.Draw(temp_img)
+            if Utils._scratch_img is None:
+                Utils._scratch_img = Image.new('RGB', (100, 100))
+                Utils._scratch_draw = ImageDraw.Draw(Utils._scratch_img)
             font = Utils._get_cached_font(font_size)
-            text_bbox = temp_draw.textbbox((0, 0), text, font=font)
+            text_bbox = Utils._scratch_draw.textbbox((0, 0), text, font=font)
             return int(text_bbox[2] - text_bbox[0]), int(text_bbox[3] - text_bbox[1])
         except (OSError, IOError, AttributeError):
             return 80, 20
@@ -824,28 +871,18 @@ class UIManager:
     def __init__(self, config: Config):
         self.config = config
 
-    def draw_header(self, img: np.ndarray, is_alarm: bool) -> np.ndarray:
+    def draw_header(self, img: np.ndarray, is_alarm: bool, draw=None) -> np.ndarray:
         """绘制顶部标题栏"""
-        # 创建标题栏
         header_height = self.config.HEADER_HEIGHT
         header = np.full((header_height, img.shape[1], 3), self.config.COLORS['panel'], dtype=np.uint8)
 
         # 绘制左侧标题
         header = Utils.draw_text_cn(header, "AI SECURITY SYSTEM", (20, 15), 24, self.config.COLORS['text'])
 
-        # 绘制右侧状态灯和文字
-        live_text = "LIVE"
         live_color = self.config.COLORS['live_red'] if is_alarm else self.config.COLORS['live_green']
+        cv2.circle(header, (img.shape[1] - 120, 30), 8, live_color, -1)
+        header = Utils.draw_text_cn(header, "LIVE", (img.shape[1] - 100, 15), 20, self.config.COLORS['text'])
 
-        # 绘制状态圆点
-        circle_radius = 8
-        circle_center = (img.shape[1] - 120, 30)
-        cv2.circle(header, circle_center, circle_radius, live_color, -1)
-
-        # 绘制LIVE文字
-        header = Utils.draw_text_cn(header, live_text, (img.shape[1] - 100, 15), 20, self.config.COLORS['text'])
-
-        # 将标题栏添加到图像顶部
         return np.vstack((header, img))
 
     def draw_card(self, img: np.ndarray, title: str, content: List, pos: Tuple[int, int],
@@ -918,57 +955,81 @@ class UIManager:
         return img
 
     def draw_left_panel(self, img: np.ndarray, person_count: int, actions: List[str], logs: List[str], action_confidences: dict) -> np.ndarray:
-        """绘制左侧状态面板，显示行为置信度"""
+        """绘制左侧状态面板 — 批量文字渲染，只做一次 PIL 转换"""
         panel_width = self.config.PANEL_WIDTH
         panel_height = img.shape[0]
 
-        # 创建左侧面板
         panel = np.full((panel_height, panel_width, 3), self.config.COLORS['panel'], dtype=np.uint8)
 
-        # 绘制面板标题
-        panel = Utils.draw_text_cn(panel, "SYSTEM STATUS", (20, 20), 20, self.config.COLORS['text'])
+        # 先用 OpenCV 画所有矩形（快，不需要 PIL）
+        # 状态卡片背景
+        cv2.rectangle(panel, (10, 50), (panel_width - 10, 170), self.config.COLORS['card_bg'], -1)
+        cv2.rectangle(panel, (10, 50), (panel_width - 10, 170), self.config.COLORS['card_border'], 2)
+        # 行为标签卡片背景
+        cv2.rectangle(panel, (10, 180), (panel_width - 10, 330), self.config.COLORS['card_bg'], -1)
+        cv2.rectangle(panel, (10, 180), (panel_width - 10, 330), self.config.COLORS['card_border'], 2)
+        # 日志卡片背景
+        cv2.rectangle(panel, (10, 340), (panel_width - 10, 590), self.config.COLORS['card_bg'], -1)
+        cv2.rectangle(panel, (10, 340), (panel_width - 10, 590), self.config.COLORS['card_border'], 2)
 
-        # 1. 状态卡片
-        status_card_height = 120
+        # 行为标签矩形
+        behavior_x = 20
+        behavior_y = 230
+        for action in actions:
+            confidence = action_confidences.get(action, 0.0)
+            color = self.config.COLORS.get('normal', (0, 255, 0))
+            if action == "跌倒": color = self.config.COLORS['danger']
+            elif action == "打架": color = self.config.COLORS['warning']
+            elif action == "疲劳": color = self.config.COLORS['fatigue']
+            elif action == "离岗": color = self.config.COLORS['leave']
+            text = f"  {action} {confidence:.2f}  "
+            tw, _ = Utils.measure_text_size(text, 16)
+            cv2.rectangle(panel, (behavior_x, behavior_y), (behavior_x + tw + 10, behavior_y + 30), color, -1)
+            cv2.rectangle(panel, (behavior_x, behavior_y), (behavior_x + tw + 10, behavior_y + 30), (0, 0, 0), 1)
+            behavior_x += tw + 20
+            if behavior_x > panel_width - 120:
+                behavior_x = 20
+                behavior_y += 40
+
+        # === 批量文字渲染：一次 PIL 转换 ===
+        draw = Utils.begin_text_batch(panel)
+
+        # 面板标题
+        Utils.draw_text_cn_batch(draw, "SYSTEM STATUS", (20, 20), 20, self.config.COLORS['text'])
+
+        # 状态信息
         status = "正常"
         status_color = self.config.COLORS['normal']
         if "跌倒" in actions or "打架" in actions:
             status = "警告"
             status_color = self.config.COLORS['warning']
+        Utils.draw_text_cn_batch(draw, "状态信息", (20, 70), 18, self.config.COLORS['text'])
+        Utils.draw_text_cn_batch(draw, f"People: {person_count}", (25, 100), 14, self.config.COLORS['text'])
+        Utils.draw_text_cn_batch(draw, f"状态: {status}", (25, 130), 14, status_color)
 
-        status_content = [
-            (f"People: {person_count}", self.config.COLORS['text']),
-            (f"状态: {status}", status_color)
-        ]
-        panel = self.draw_card(panel, "状态信息", status_content, (10, 50), panel_width - 20, status_card_height)
-
-        # 2. 行为标签卡片
-        behavior_card_height = 150
-        panel = self.draw_card(panel, "行为检测", [], (10, 180), panel_width - 20, behavior_card_height)
-
-        # 绘制行为标签
-        behavior_start_y = 230
-        behavior_x = 20
+        # 行为标签文字
+        Utils.draw_text_cn_batch(draw, "行为检测", (20, 200), 18, self.config.COLORS['text'])
+        bx = 25
+        by = 235
         for action in actions:
             confidence = action_confidences.get(action, 0.0)
-            panel, text_width = self.draw_behavior_badge(panel, action, confidence, (behavior_x, behavior_start_y))
-            behavior_x += text_width
-            if behavior_x > panel_width - 120:
-                behavior_x = 20
-                behavior_start_y += 40
+            Utils.draw_text_cn_batch(draw, f"  {action} {confidence:.2f}  ", (bx + 5, by + 5), 16, self.config.COLORS['bg'])
+            tw, _ = Utils.measure_text_size(f"  {action} {confidence:.2f}  ", 16)
+            bx += tw + 20
+            if bx > panel_width - 120:
+                bx = 25
+                by += 40
 
-        # 3. 日志卡片
-        log_card_height = 250
-        panel = self.draw_card(panel, "最近日志", [], (10, 340), panel_width - 20, log_card_height)
+        # 日志文字
+        Utils.draw_text_cn_batch(draw, "最近日志", (20, 360), 18, self.config.COLORS['text'])
+        log_y = 390
+        for log in logs[-5:]:
+            Utils.draw_text_cn_batch(draw, log, (25, log_y - 5), 14, self.config.COLORS['text'])
+            log_y += 30
 
-        # 绘制日志内容
-        log_start_y = 390
-        log_x = 25
-        for log in logs[-5:]:  # 只显示最近5条
-            panel = Utils.draw_text_cn(panel, log, (log_x, log_start_y - 5), 14, self.config.COLORS['text'])
-            log_start_y += 30
+        # 一次转换回 OpenCV
+        panel = Utils.end_text_batch(panel)
 
-        # 将面板与主图像合并
         return np.hstack((panel, img))
 
     def draw_exit_hint(self, img: np.ndarray) -> np.ndarray:
@@ -1001,7 +1062,28 @@ class SecurityMonitor:
         self.alert_manager = AlertManager(self.config)
         self.ui_manager = UIManager(self.config)
 
-        self.model = YOLO(self.config.MODEL_PATH)
+        # 加载模型 — 强制 GPU
+        if self.config.USE_TENSORRT:
+            # TensorRT 导出（首次慢，后续 2-5x 加速）
+            engine_path = self.config.MODEL_PATH.replace('.pt', f'_trt_{self.config.IMG_SIZE}.engine')
+            if os.path.exists(engine_path):
+                print(f"加载 TensorRT engine: {engine_path}")
+                self.model = YOLO(engine_path)
+            else:
+                print("首次运行：导出 TensorRT engine（约需 1-2 分钟）...")
+                base_model = YOLO(self.config.MODEL_PATH)
+                base_model.export(format='engine', imgsz=self.config.IMG_SIZE, half=True, device=self.config.DEVICE)
+                self.model = YOLO(engine_path)
+                print("TensorRT 导出完成 ✅")
+        else:
+            self.model = YOLO(self.config.MODEL_PATH)
+
+        # GPU 预热 — 第一次推理最慢，提前跑掉
+        print("GPU 预热中...")
+        dummy = np.zeros((self.config.IMG_SIZE, self.config.IMG_SIZE, 3), dtype=np.uint8)
+        self.model(dummy, imgsz=self.config.IMG_SIZE, device=self.config.DEVICE,
+                   half=self.config.HALF, verbose=False)
+        print("GPU 预热完成 ✅")
 
         # 是否启用 web 视频流
         self.enable_web_stream = HAS_REQUESTS
@@ -1016,6 +1098,11 @@ class SecurityMonitor:
         # 多摄像头线程控制
         self._stop_event = threading.Event()
         self._threads = []
+
+        # 异步帧发送线程池（不阻塞主循环）
+        self._frame_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="frame_sender") if HAS_REQUESTS else None
+        self._pending_frames = 0  # 待处理帧计数，防止队列无限增长
+        self._frame_lock = threading.Lock()
 
     def _init_video_source(self, source=0):
         """初始化视频源"""
@@ -1102,14 +1189,14 @@ class SecurityMonitor:
             except OSError:
                 pass
             info = {
-                "precision": "FP16" if torch.cuda.is_available() else "FP32",
-                "device": "cuda" if torch.cuda.is_available() else "cpu",
+                "precision": "FP16" if Config.HALF else "FP32",
+                "device": Config.DEVICE,
                 "model_size_mb": round(model_size, 1),
                 "total_layers": 0,
                 "conv_layers": 0,
                 "quantized_layers": 0,
-                "gpu_available": torch.cuda.is_available(),
-                "half_precision": torch.cuda.is_available()
+                "gpu_available": Config.DEVICE == "cuda",
+                "half_precision": Config.HALF
             }
             requests.post(
                 f"{WEB_SERVER_URL}/api/model_info",
@@ -1170,15 +1257,49 @@ class SecurityMonitor:
             print(f"读取视频帧时出错: {e}")
             return test_image.copy(), True
 
+    def _fetch_http_snapshot(self, url, session):
+        """通过 HTTP 获取单帧快照，返回 (frame, success)"""
+        try:
+            resp = session.get(url, timeout=5)
+            if resp.status_code == 200 and len(resp.content) > 100:
+                img_array = np.frombuffer(resp.content, dtype=np.uint8)
+                frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                if frame is not None:
+                    return frame, True
+        except Exception:
+            pass
+        return None, False
+
     def _run_camera_thread(self, cam_config):
         """单个摄像头的检测循环（在线程中运行）"""
         cam_str = cam_config["id"]
         source = cam_config["address"]
         cam_name = cam_config["name"]
-        print(f"[{cam_name}] 线程启动，类型: {cam_config['type']}，地址: {source}")
+        cam_type = cam_config["type"]
+        print(f"[{cam_name}] 线程启动，类型: {cam_type}，地址: {source}")
 
-        # 初始化视频源
-        use_static, cap, frame_width, frame_height = self._init_video_source(source)
+        # HTTP 快照模式：不使用 cv2.VideoCapture
+        if cam_type == "http_snapshot":
+            snapshot_url = source
+            user = cam_config.get("user", "admin")
+            password = cam_config.get("password", "")
+            http_session = requests.Session()
+            http_session.auth = (user, password)
+            # 试取一帧验证连接
+            test_frame, ok = self._fetch_http_snapshot(snapshot_url, http_session)
+            if ok:
+                frame_height, frame_width = test_frame.shape[:2]
+                print(f"[{cam_name}] HTTP 快照连接成功，分辨率: {frame_width}x{frame_height}")
+            else:
+                print(f"[{cam_name}] HTTP 快照连接失败: {snapshot_url}")
+                frame_width, frame_height = 1280, 720
+            cap = None
+            use_static = not ok
+            test_image = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
+        else:
+            # USB / RTSP 模式
+            use_static, cap, frame_width, frame_height = self._init_video_source(source)
+
         if use_static:
             test_image = np.zeros((720, 1280, 3), dtype=np.uint8)
             cv2.putText(test_image, f"{cam_name}", (400, 360), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
@@ -1193,11 +1314,21 @@ class SecurityMonitor:
         last_move_times = []
         eye_fatigue_counts = []
         gather_start_times = {}
-        logs = []
+        logs = deque(maxlen=20)
         prev_actions = []
         frame_count = 0
         start_time = time.time()
         last_model_info_time = time.time()
+
+        # 跳帧推理 — 缓存上一次推理结果
+        cached_results = None
+        cached_actions = []
+        cached_person_num = 0
+        cached_fighting_persons = []
+        cached_fatigued_persons = []
+        cached_eye_fatigued_persons = []
+        cached_action_confidences = {}
+        inference_every = max(1, self.config.INFERENCE_EVERY)
 
         # 窗口名（每个摄像头独立窗口）
         window_name = f"Camera {cam_str}"
@@ -1205,26 +1336,52 @@ class SecurityMonitor:
         try:
             while not self._stop_event.is_set():
                 # 1. 读取帧
-                frame, use_static = self._get_frame_from_cap(cap, use_static, test_image)
-                if use_static and cap is not None:
-                    cap.release()
-                    cap = None
+                if cam_type == "http_snapshot" and not use_static:
+                    frame, ok = self._fetch_http_snapshot(snapshot_url, http_session)
+                    if not ok:
+                        print(f"[{cam_name}] HTTP 快照获取失败，切换到静态图像模式")
+                        use_static = True
+                        frame = test_image.copy()
+                else:
+                    frame, use_static = self._get_frame_from_cap(cap, use_static, test_image)
+                    if use_static and cap is not None:
+                        cap.release()
+                        cap = None
                 frame_count += 1
 
-                # 2. 模型推理
-                results = self.model(
-                    frame,
-                    imgsz=self.config.IMG_SIZE,
-                    conf=self.config.CONF_THRESH,
-                    device=self.config.DEVICE,
-                    half=torch.cuda.is_available(),
-                    batch=False
-                )
+                # 2. 模型推理（跳帧：每 inference_every 帧推理一次）
+                if frame_count % inference_every == 1 or cached_results is None:
+                    results = self.model(
+                        frame,
+                        imgsz=self.config.IMG_SIZE,
+                        conf=self.config.CONF_THRESH,
+                        device=self.config.DEVICE,
+                        half=self.config.HALF,
+                        batch=False
+                    )
 
-                # 3. 检测行为
-                actions, person_num, fighting_persons, fatigued_persons, eye_fatigued_persons, prev_centers, last_move_times, eye_fatigue_counts, action_confidences, gather_start_times = self.detection_module.detect_security_actions(
-                    results, prev_centers, last_move_times, eye_fatigue_counts, gather_start_times
-                )
+                    # 3. 检测行为
+                    actions, person_num, fighting_persons, fatigued_persons, eye_fatigued_persons, prev_centers, last_move_times, eye_fatigue_counts, action_confidences, gather_start_times = self.detection_module.detect_security_actions(
+                        results, prev_centers, last_move_times, eye_fatigue_counts, gather_start_times
+                    )
+
+                    # 缓存结果
+                    cached_results = results
+                    cached_actions = actions
+                    cached_person_num = person_num
+                    cached_fighting_persons = fighting_persons
+                    cached_fatigued_persons = fatigued_persons
+                    cached_eye_fatigued_persons = eye_fatigued_persons
+                    cached_action_confidences = action_confidences
+                else:
+                    # 复用缓存结果
+                    results = cached_results
+                    actions = cached_actions
+                    person_num = cached_person_num
+                    fighting_persons = cached_fighting_persons
+                    fatigued_persons = cached_fatigued_persons
+                    eye_fatigued_persons = cached_eye_fatigued_persons
+                    action_confidences = cached_action_confidences
 
                 # 4. 可视化关键点
                 frame_out = results[0].plot() if results and len(results) > 0 else frame.copy()
@@ -1248,9 +1405,15 @@ class SecurityMonitor:
                     if len(all_kp) >= self.config.GATHER_THRESHOLD:
                         self._draw_gathering_persons(results[0], all_kp, frame_out)
 
-                # 8. 发送帧到 web（带摄像头ID）
-                if frame_count % SEND_FRAME_INTERVAL == 0 and session is not None:
-                    self._send_frame_session(frame, cam_str, session)
+                # 8. 发送帧到 web（异步，不阻塞主循环，队列上限3帧）
+                if frame_count % SEND_FRAME_INTERVAL == 0 and session is not None and self._frame_executor is not None:
+                    with self._frame_lock:
+                        can_submit = self._pending_frames < 3
+                        if can_submit:
+                            self._pending_frames += 1
+                    if can_submit:
+                        future = self._frame_executor.submit(self._send_frame_session, frame.copy(), cam_str, session)
+                        future.add_done_callback(lambda _: self._release_frame_slot())
 
                 # 9. 日志
                 current_time_str = time.strftime("%H:%M:%S")
@@ -1299,10 +1462,22 @@ class SecurityMonitor:
                 session.close()
             print(f"[摄像头 {cam_str}] 线程结束")
 
+    def _release_frame_slot(self):
+        """释放帧发送槽位"""
+        with self._frame_lock:
+            self._pending_frames = max(0, self._pending_frames - 1)
+
     def _send_frame_session(self, frame, cam, session):
-        """使用指定会话发送帧到web服务器"""
+        """使用指定会话发送帧到web服务器（支持 GPU resize）"""
         try:
-            frame_resized = cv2.resize(frame, (self.web_stream_width, self.web_stream_height))
+            if HAS_CV2_CUDA:
+                # GPU 加速 resize
+                gpu_frame = cv2.cuda_GpuMat()
+                gpu_frame.upload(frame)
+                gpu_resized = cv2.cuda.resize(gpu_frame, (self.web_stream_width, self.web_stream_height))
+                frame_resized = gpu_resized.download()
+            else:
+                frame_resized = cv2.resize(frame, (self.web_stream_width, self.web_stream_height))
             encode_params = [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
             _, img_encoded = cv2.imencode('.jpg', frame_resized, encode_params)
             session.post(
@@ -1395,21 +1570,30 @@ class SecurityMonitor:
             print(f"绘制聚集人员失败: {e}")
 
     def _draw_ui(self, frame_out, is_alarm, actions, logs, action_confidences, person_num, fps):
-        """绘制UI"""
-        # 绘制标题栏
+        """绘制UI — 优化：批量文字渲染"""
+        # 标题栏（独立区域，单独处理）
         frame_out = self.ui_manager.draw_header(frame_out, is_alarm)
 
-        # 绘制报警横幅
+        # 报警横幅
         frame_out, _ = self.alert_manager.check_and_trigger_alert(actions, frame_out)
 
-        # 绘制FPS卡片
-        frame_out = self.ui_manager.draw_fps(frame_out, fps)
+        # FPS 卡片背景（OpenCV 画矩形，快）
+        card_w, card_h = 120, 40
+        fx = frame_out.shape[1] - card_w - 10
+        cv2.rectangle(frame_out, (fx, 10), (fx + card_w, 50), self.config.COLORS['panel'], -1)
+        cv2.rectangle(frame_out, (fx, 10), (fx + card_w, 50), self.config.COLORS['card_border'], 1)
 
-        # 绘制左侧面板
+        # 左侧面板（内部已批量渲染）
         frame_out = self.ui_manager.draw_left_panel(frame_out, person_num, actions, logs, action_confidences)
 
-        # 绘制退出提示
-        frame_out = self.ui_manager.draw_exit_hint(frame_out)
+        # === 主帧剩余文字批量渲染 ===
+        draw = Utils.begin_text_batch(frame_out)
+        # FPS 文字
+        Utils.draw_text_cn_batch(draw, f"{fps:.1f} FPS", (fx + 10, 35), 20, self.config.COLORS['text'])
+        # 退出提示
+        Utils.draw_text_cn_batch(draw, "按 Enter 退出系统",
+                                  (frame_out.shape[1] - 250, frame_out.shape[0] - 30), 20, self.config.COLORS['text'])
+        frame_out = Utils.end_text_batch(frame_out)
 
         return frame_out
 

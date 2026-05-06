@@ -9,7 +9,9 @@ Bottlenecks validated:
 import sys
 import os
 import json
-import tempfile
+
+# 跳过 GPU 检测（测试环境不需要 GPU）
+os.environ["YOLOV8_SKIP_GPU_CHECK"] = "1"
 
 # Add the project root to path so we can import the module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ai-models"))

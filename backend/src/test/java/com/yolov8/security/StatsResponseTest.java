@@ -95,24 +95,23 @@ class StatsResponseTest {
     }
 
     @Test
-    void behaviorCounts_chineseGettersMirrorEnglishOnes() {
+    void behaviorCounts_gettersReturnCorrectValues() {
         StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(7, 6, 5, 4, 0);
 
-        // Chinese-named getters should return the same values as English ones
-        assertEquals(bc.getFall(), bc.get跌倒());
-        assertEquals(bc.getFight(), bc.get打架());
-        assertEquals(bc.getAbsent(), bc.get离岗());
-        assertEquals(bc.getFatigue(), bc.get疲劳());
-        assertEquals(bc.getGather(), bc.get人员聚集());
+        assertEquals(7, bc.getFall());
+        assertEquals(6, bc.getFight());
+        assertEquals(5, bc.getAbsent());
+        assertEquals(4, bc.getFatigue());
+        assertEquals(0, bc.getGather());
     }
 
     @Test
-    void behaviorCounts_chineseSettersMirrorEnglishOnes() {
+    void behaviorCounts_settersWork() {
         StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts();
-        bc.set跌倒(100);
-        bc.set打架(200);
-        bc.set离岗(300);
-        bc.set疲劳(400);
+        bc.setFall(100);
+        bc.setFight(200);
+        bc.setAbsent(300);
+        bc.setFatigue(400);
 
         assertEquals(100, bc.getFall());
         assertEquals(200, bc.getFight());

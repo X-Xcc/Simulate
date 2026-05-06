@@ -1,5 +1,6 @@
 package com.yolov8.security.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
@@ -38,14 +39,19 @@ public class StatsResponse {
 
     public static class BehaviorCounts {
         @JsonProperty("跌倒")
+        @JsonAlias({"fall", "跌倒"})
         private int fall;
         @JsonProperty("打架")
+        @JsonAlias({"fight", "打架"})
         private int fight;
         @JsonProperty("离岗")
+        @JsonAlias({"absent", "离岗"})
         private int absent;
         @JsonProperty("疲劳")
+        @JsonAlias({"fatigue", "疲劳"})
         private int fatigue;
         @JsonProperty("人员聚集")
+        @JsonAlias({"gather", "人员聚集"})
         private int gather;
 
         public BehaviorCounts() {
@@ -70,27 +76,5 @@ public class StatsResponse {
         public void setAbsent(int absent) { this.absent = absent; }
         public void setFatigue(int fatigue) { this.fatigue = fatigue; }
         public void setGather(int gather) { this.gather = gather; }
-
-        @JsonProperty("跌倒")
-        public int get跌倒() { return fall; }
-        @JsonProperty("打架")
-        public int get打架() { return fight; }
-        @JsonProperty("离岗")
-        public int get离岗() { return absent; }
-        @JsonProperty("疲劳")
-        public int get疲劳() { return fatigue; }
-        @JsonProperty("人员聚集")
-        public int get人员聚集() { return gather; }
-
-        @JsonProperty("跌倒")
-        public void set跌倒(int fall) { this.fall = fall; }
-        @JsonProperty("打架")
-        public void set打架(int fight) { this.fight = fight; }
-        @JsonProperty("离岗")
-        public void set离岗(int absent) { this.absent = absent; }
-        @JsonProperty("疲劳")
-        public void set疲劳(int fatigue) { this.fatigue = fatigue; }
-        @JsonProperty("人员聚集")
-        public void set人员聚集(int gather) { this.gather = gather; }
     }
 }

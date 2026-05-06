@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Paths;
@@ -17,6 +18,7 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
 
     private final int bcryptCost;
 
+    @Autowired
     public UserService(AppConfig appConfig, ObjectMapper objectMapper) {
         this(appConfig, objectMapper, 10);
     }

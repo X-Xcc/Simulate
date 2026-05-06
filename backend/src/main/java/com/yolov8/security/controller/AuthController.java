@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Date;
 import java.util.Map;
 
@@ -31,11 +32,13 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        if (request.getUsername() == null || request.getPassword() == null) {
+        if (request.getUsername() == null || request.getUsername().isBlank() ||
+            request.getPassword() == null || request.getPassword().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "用户名和密码不能为空"));
         }
 
-        if (adminUsername.equals(request.getUsername()) && adminPassword.equals(request.getPassword())) {
+        if (constantTimeEquals(adminUsername, request.getUsername()) &&
+            constantTimeEquals(adminPassword, request.getPassword())) {
             SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
             long now = System.currentTimeMillis();
             String token = Jwts.builder()
@@ -49,5 +52,9 @@ public class AuthController {
         }
 
         return ResponseEntity.status(401).body(Map.of("error", "用户名或密码错误"));
+    }
+
+    private static boolean constantTimeEquals(String a, String b) {
+        return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
 }

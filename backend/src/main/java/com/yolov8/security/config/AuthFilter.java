@@ -28,6 +28,11 @@ public class AuthFilter extends OncePerRequestFilter {
         "/video_feed", "/api/images/**"
     };
 
+    // GET-only public API paths (monitor dashboard data)
+    private static final String[] PUBLIC_GET_API_PATHS = {
+        "/api/stats", "/api/stats/summary", "/api/camera_config", "/api/cameras"
+    };
+
     @Value("${app.api-key:}")
     private String apiKey;
 
@@ -63,6 +68,14 @@ public class AuthFilter extends OncePerRequestFilter {
                 return true;
             }
         }
+        // GET-only public API paths for monitor dashboard
+        if ("GET".equalsIgnoreCase(request.getMethod())) {
+            for (String pub : PUBLIC_GET_API_PATHS) {
+                if (path.equals(pub)) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
@@ -94,15 +107,8 @@ public class AuthFilter extends OncePerRequestFilter {
 
         log.warn("Unauthorized access {} from {}", request.getRequestURI(), request.getRemoteAddr());
 
-        // For browser requests, redirect to login page
-        String accept = request.getHeader("Accept");
-        if (accept != null && accept.contains("text/html")) {
-            String contextPath = request.getContextPath();
-            response.sendRedirect(contextPath + "/login");
-            return;
-        }
-
-        // For API requests, return JSON error
+        // All unauthorized requests return 401 JSON
+        // Client-side JS (authFetch) handles redirect to login for browser requests
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"status\":\"error\",\"message\":\"Unauthorized\"}");
