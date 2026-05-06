@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 监狱智能行为分析系统 (Prison Intelligent Behavior Analysis System) — real-time security monitoring using YOLOv8 pose estimation. Detects falls, fighting, fatigue, eye fatigue, guard absence, and crowd gathering in prison environments.
 
+## Project Architecture
+
+This is a YOLOv8 security analysis system with a Java Spring Boot backend and HTML/JS dashboard frontend. Pipeline: Camera (RTSP/HTTP) → Python YOLOv8 detection → JSON/JPG output → Java API → Dashboard. The dashboard communicates with the backend via REST polling.
+
 ## Architecture
 
 Two-component system with dual Python→Java communication paths:
@@ -57,6 +61,20 @@ Camera/video file → YOLOv8 Pose (Python)
                               ←── Java serves REST API + MJPEG stream
                               ←── Web dashboard polls /api/stats every 2s
 ```
+
+## Environment Setup
+
+## Environment
+- Python: Use venv (NOT conda)
+- PyTorch: CUDA 12.8 for RTX 5060, install via Tsinghua mirror: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128`
+- GPU inference is MANDATORY — always force CUDA device, never default to CPU or frame-skipping
+- JAVA_HOME must be set before running any Java commands
+- Always clean stale compiled files in target/classes/ after editing source files — the dashboard won't reflect changes otherwise
+
+## Startup
+- Use start.bat with correct ordering: clean stale files FIRST, then build, then start services
+- Watch for path escaping issues in .bat files (trailing backslashes)
+- After editing any source file, rebuild or manually copy to target/classes/ before restarting
 
 ## Key Commands
 
