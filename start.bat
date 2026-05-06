@@ -2,6 +2,18 @@
 chcp 936 >nul 2>&1
 setlocal enabledelayedexpansion
 
+:: Parse command argument
+set "CMD=%~1"
+if /i "%CMD%"=="stop" goto :stop_services
+if /i "%CMD%"=="restart" goto :restart_services
+if /i "%CMD%"=="build" goto :build_only
+if not "%CMD%"=="" (
+    echo Unknown command: %CMD%
+    echo Usage: start.bat [stop^|restart^|build]
+    exit /b 1
+)
+
+:start_normal
 set "BASE_DIR=%~dp0"
 if "%BASE_DIR:~-1%"=="\" set "BASE_DIR=%BASE_DIR:~0,-1%"
 set "BACKEND_DIR=%BASE_DIR%\backend"
@@ -191,3 +203,58 @@ taskkill /F /IM java.exe >nul 2>&1
 taskkill /F /IM python.exe >nul 2>&1
 echo    Done.
 endlocal
+exit /b 0
+
+:stop_services
+call :do_stop
+timeout /t 3 /nobreak >nul
+endlocal
+exit /b 0
+
+:do_stop
+echo.
+echo  ===========================================
+echo    Stopping YOLOv8 Security System...
+echo  ===========================================
+echo.
+
+:: Kill Java backend
+echo [1/2] Stopping Spring Boot backend...
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":5000" ^| findstr "LISTENING"') do (
+    taskkill /f /pid %%a >nul 2>&1
+    echo    Killed PID %%a
+)
+taskkill /f /im java.exe /fi "windowtitle eq YOLOv8-Backend*" >nul 2>&1
+taskkill /F /IM java.exe >nul 2>&1
+echo    Done.
+
+:: Kill Python detection
+echo [2/2] Stopping Python detection...
+taskkill /f /fi "windowtitle eq YOLOv8-Detection*" >nul 2>&1
+taskkill /F /IM python.exe >nul 2>&1
+echo    Done.
+
+echo.
+echo  All services stopped.
+goto :eof
+
+:restart_services
+call :do_stop
+timeout /t 2 /nobreak >nul
+echo    Restarting...
+goto :start_normal
+
+:build_only
+echo.
+echo [BUILD] Building backend with Maven...
+set "MAVEN_JAR=%BASE_DIR%\.mvn\wrapper\maven-wrapper.jar"
+if not exist "%MAVEN_JAR%" set "MAVEN_JAR=%BASE_DIR%\maven-wrapper\maven-wrapper.jar"
+"%JAVA_CMD%" "-Dmaven.multiModuleProjectDirectory=%BASE_DIR%" -classpath "%MAVEN_JAR%" org.apache.maven.wrapper.MavenWrapperMain -f backend\pom.xml clean package -DskipTests
+if %errorlevel% neq 0 (
+    echo [ERROR] Maven build failed!
+    pause
+    exit /b 1
+)
+echo    Build complete.
+endlocal
+exit /b 0
