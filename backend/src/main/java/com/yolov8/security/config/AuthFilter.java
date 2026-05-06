@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -23,26 +24,24 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
     private static final String HEADER = "X-API-Key";
     private static final String[] PUBLIC_PATHS = {
-        "/", "/index", "/admin", "/monitor", "/login", "/static/**", "/error", "/api/login",
-        "/video_feed", "/api/images/**", "/api/update_frame", "/api/stats", "/api/model_info", "/api/ai/**",
-        "/api/system_info"
+        "/", "/index", "/login", "/monitor", "/static/**", "/css/**", "/js/**", "/error", "/api/login",
+        "/video_feed", "/api/images/**"
     };
 
-    private final AntPathMatcher matcher = new AntPathMatcher();
-    private final AppConfig appConfig;
+    @Value("${app.api-key:}")
     private String apiKey;
-    private SecretKey jwtKey;
 
-    public AuthFilter(AppConfig appConfig) {
-        this.appConfig = appConfig;
-    }
+    @Value("${app.jwt.secret:}")
+    private String jwtSecret;
+
+    private final AntPathMatcher matcher = new AntPathMatcher();
+    private SecretKey jwtKey;
 
     @PostConstruct
     public void init() {
-        this.apiKey = appConfig.getApiKey();
-        String secret = appConfig.getJwtSecret();
-        if (secret != null && !secret.isBlank()) {
-            this.jwtKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        if (jwtSecret != null && !jwtSecret.isBlank()) {
+            this.jwtKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+            log.info("JWT auth enabled");
         } else {
             this.jwtKey = null;
             log.warn("JWT secret is not configured, JWT auth will be disabled");
@@ -89,6 +88,7 @@ public class AuthFilter extends OncePerRequestFilter {
                 chain.doFilter(request, response);
                 return;
             } catch (Exception e) {
+                log.debug("JWT validation failed: {}", e.getMessage());
             }
         }
 

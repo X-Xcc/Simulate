@@ -118,7 +118,7 @@
         DOM.card.style.transition = 'opacity 0.3s, transform 0.3s';
         DOM.card.style.opacity = '0';
         DOM.card.style.transform = 'scale(0.95)';
-        setTimeout(() => { window.location.href = '/yolov8-security/index'; }, 350);
+        setTimeout(() => { window.location.href = '/yolov8-security/'; }, 350);
     }
 
 })();

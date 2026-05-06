@@ -8,7 +8,7 @@ public class PageController {
 
     @GetMapping({"/", "/index"})
     public String index() {
-        return "index";
+        return "monitor";
     }
 
     @GetMapping("/login")
@@ -24,5 +24,10 @@ public class PageController {
     @GetMapping("/monitor")
     public String monitor() {
         return "monitor";
+    }
+
+    @GetMapping("/annotate")
+    public String annotate() {
+        return "annotate";
     }
 }
