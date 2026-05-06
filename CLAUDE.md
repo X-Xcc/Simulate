@@ -14,17 +14,17 @@ This is a YOLOv8 security analysis system with a Java Spring Boot backend and HT
 
 Two-component system with dual Python→Java communication paths:
 
-### 1. Python AI Detection (`ai-models/yolov8_security.py`)
+### 1. Python AI Detection (`detection/yolov8_security.py`)
 - YOLOv8n-pose model for real-time pose estimation
 - Detects: 跌倒 (fall), 打架 (fighting), 疲劳 (fatigue/posture), 眼疲劳 (eye fatigue via EAR), 离岗 (leave post), 人员聚集 (crowd gathering)
 - OpenCV-based video processing with UI overlay (OpenCV window)
 - **Dual communication to Java backend**:
-  - (a) Saves detection JSON (`detection_*.json`) + frame images (`frame_*.jpg`) to `backend/data/` directory for Java to scan
+  - (a) Saves detection JSON (`detection_*.json`) + frame images (`frame_*.jpg`) to `server/data/` directory for Java to scan
   - (b) HTTP POST frames to `/api/update_frame` for real-time MJPEG stream
 - Modules: `DetectionModule` (behavior detection), `DataSaver`, `AlertManager`, `UIManager`
-- Optional Qwen2.5-VL service (`ai-models/qwen_vl_service.py`, port 5001) for LLM-based scene analysis
+- Optional Qwen2.5-VL service (`detection/qwen_vl_service.py`, port 5001) for LLM-based scene analysis
 
-### 2. Java Spring Boot Backend (`backend/`)
+### 2. Java Spring Boot Backend (`server/`)
 - Spring Boot 3.x, Java 17, Maven (WAR packaging)
 - Serves web dashboard (Thymeleaf template at `src/main/resources/templates/index.html`, ~2200 lines with Chart.js)
 - REST API endpoints under `/yolov8-security/`:
@@ -42,7 +42,7 @@ Two-component system with dual Python→Java communication paths:
 - Service base class: `AbstractJsonFileService<T>` — generic JSON-file-backed CRUD service with in-memory cache, auto-save, and `getDataDir()`/`getFileName()` template methods. All new services extend this.
 - Filters: `AuthFilter` (token-based API auth), `RateLimitFilter`, `CorsConfig`
 - Nginx reverse proxy (`nginx/nginx.conf`): HTTPS redirect, WebSocket/SSE proxying for video feed, SPA fallback
-- Frontend static assets (`backend/src/main/resources/static/`):
+- Frontend static assets (`web/` directory, served via WebConfig resource handlers):
   - `css/main.css` — global styles (sidebar, header, theme variables)
   - `css/monitor.css`, `css/admin.css`, `css/users.css` — page-specific styles
   - `js/common.js` — shared utilities (API calls, toast notifications, sidebar loader)
@@ -54,7 +54,7 @@ Two-component system with dual Python→Java communication paths:
 ### Communication Flow
 ```
 Camera/video file → YOLOv8 Pose (Python)
-                              → writes JSON + images to backend/data/  ←──┐
+                              → writes JSON + images to server/data/  ←──┐
                               → HTTP POST frames to Java backend           │
                                                                          │
                               ←── Java scans data/ directory ────────────┘
@@ -80,7 +80,7 @@ Camera/video file → YOLOv8 Pose (Python)
 
 ### Python Detection
 ```bash
-cd ai-models && python yolov8_security.py
+cd detection && python yolov8_security.py
 ```
 
 ### Tests
@@ -90,14 +90,14 @@ cd tests && python -m pytest test_detection.py -v
 cd tests && python -m pytest test_detection.py -v -k "test_name"
 
 # Java tests
-cd backend && .\mvnw test
+cd server && .\mvnw test
 ```
 
 ### Java Backend
 ```bash
-cd backend && .\mvnw clean package -DskipTests     # Build WAR
-cd backend && .\mvnw spring-boot:run               # Run dev server
-cd backend && .\mvnw test                           # Run tests
+cd server && .\mvnw clean package -DskipTests     # Build WAR
+cd server && .\mvnw spring-boot:run               # Run dev server
+cd server && .\mvnw test                           # Run tests
 ```
 
 ### Docker
@@ -109,18 +109,18 @@ docker-compose logs -f
 
 ## Key Implementation Details
 
-- **Flat-file data exchange (no database)** — Python writes `detection_*.json` and `frame_*.jpg` to `backend/data/`, Java's `DetectionService` scans and parses them via Jackson. This is the primary data flow.
+- **Flat-file data exchange (no database)** — Python writes `detection_*.json` and `frame_*.jpg` to `server/data/`, Java's `DetectionService` scans and parses them via Jackson. This is the primary data flow.
 - **DetectionService caching** — `DirScan` cache with 2-second TTL (`SCAN_CACHE_TTL_MS = 2000L`). After `DELETE /api/delete_all_images`, `invalidateScanCache()` must be called or deletes won't be visible immediately.
 - **StatsResponse aggregation** — `BehaviorCounts` POJO tracks fall, fight, absent, fatigue, gather. Recent detections capped at 50, all detections at 200.
 - **Video streaming** — `VideoStreamController` serves MJPEG via `multipart/x-mixed-replace`; frames are read from disk (written by Python), not generated on-the-fly. Nginx proxies this with `proxy_buffering off` and `proxy_cache off`.
 - **Auth** — `AuthFilter` checks `Authorization` header against `app.auth.token` (default from `.env` `API_KEY`). Token mismatch returns 401.
 - **Rate limiting** — `RateLimitFilter` uses token bucket per IP.
-- **AbstractJsonFileService** — base class for SettingsService, UserService, DeviceService. Provides `getAll()`, `getById()`, `save()`, `delete()` with in-memory caching and auto-persistence to `backend/data/` as flat JSON files. New CRUD services should extend this.
-- **Python Config class** (`ai-models/yolov8_security.py`, line 56) centralizes all parameters: model path, detection thresholds, alert cooldown, UI colors, save intervals, EAR threshold for eye fatigue.
+- **AbstractJsonFileService** — base class for SettingsService, UserService, DeviceService. Provides `getAll()`, `getById()`, `save()`, `delete()` with in-memory caching and auto-persistence to `server/data/` as flat JSON files. New CRUD services should extend this.
+- **Python Config class** (`detection/yolov8_security.py`, line 56) centralizes all parameters: model path, detection thresholds, alert cooldown, UI colors, save intervals, EAR threshold for eye fatigue.
 
 ## Config
 
-- Python: `Config` class in `ai-models/yolov8_security.py` (line 56)
+- Python: `Config` class in `detection/yolov8_security.py` (line 56)
 - Java: `application.properties` + `AppConfig.java`
   - `app.auth.token=${API_KEY:default-dev-token}` — API auth token
   - `server.port=5000` — backend port
@@ -135,7 +135,7 @@ docker-compose logs -f
 
 ## Important Notes
 
-- No database — all detection data is stored as flat JSON files in `backend/data/`
+- No database — all detection data is stored as flat JSON files in `server/data/`
 - The Python script reads from a video file (`videos/test_video.mp4`) by default; change `Config.SOURCE` to `0` for live camera
 - Java tests use JUnit 5 with `@TempDir` for isolated file I/O testing — no mocking framework
 - The web UI is a single Thymeleaf template with embedded CSS/JS using Chart.js (no separate frontend build)

@@ -88,7 +88,7 @@ Java 后端 ──→ 读取 JSON 和图片 ──→ 提供网页 API ──→
 ### 没有摄像头怎么办？
 
 系统默认使用摄像头。如果没有摄像头，可以改成播放视频文件：
-1. 打开 `ai-models/yolov8_security.py`
+1. 打开 `detection/yolov8_security.py`
 2. 找到 `SOURCE = 0` 这一行（约第 64 行）
 3. 改成 `SOURCE = "videos/test_video.mp4"`（把视频文件放在 `videos/` 文件夹里）
 4. 如果没有视频文件，程序会自动创建一个测试画面
@@ -137,7 +137,7 @@ pip install ultralytics opencv-python numpy pillow requests
 
 ```bash
 # 进入 AI 模型目录
-cd ai-models
+cd detection
 
 # 运行检测程序
 python yolov8_security.py
@@ -162,8 +162,8 @@ java -version
 **构建并运行后端：**
 
 ```bash
-# 进入 backend 目录
-cd backend
+# 进入 server 目录
+cd server
 
 # 构建项目（第一次运行需要下载依赖，会慢一些）
 ./mvnw clean package -DskipTests
@@ -234,7 +234,7 @@ pip install ultralytics opencv-python numpy pillow requests
 
 ### Q：画面很卡怎么办？
 
-可以降低画质来提高速度。打开 `ai-models/yolov8_security.py`，找到 `Config` 类，把 `IMG_SIZE = 512` 改成 `IMG_SIZE = 320`（数字越小越快，但精度会降低）。
+可以降低画质来提高速度。打开 `detection/yolov8_security.py`，找到 `Config` 类，把 `IMG_SIZE = 512` 改成 `IMG_SIZE = 320`（数字越小越快，但精度会降低）。
 
 ### Q：不想每次开摄像头，想用视频文件测试？
 
@@ -247,11 +247,11 @@ pip install ultralytics opencv-python numpy pillow requests
 ```
 yolov8_security/                        # 项目根目录
 │
-├── ai-models/                          # Python AI 检测程序
+├── detection/                          # Python AI 检测程序
 │   └── yolov8_security.py              #   ★ 主程序（运行这个文件）
 │   └── qwen_vl_service.py              #   可选：大模型场景分析服务
 │
-├── backend/                            # Java 后端（提供 Web 服务）
+├── server/                             # Java 后端（提供 Web 服务）
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/.../config/        #   配置类（认证、限流等）
@@ -264,24 +264,28 @@ yolov8_security/                        # 项目根目录
 │   ├── pom.xml                         #   Maven 项目配置
 │   └── mvnw / mvnw.cmd                 #   Maven 构建工具
 │
+├── web/                                # 前端静态资源（CSS/JS）
+│   ├── css/                            #   样式文件
+│   └── js/                             #   JavaScript 文件
+│
+├── deploy/                             # 部署配置
+│   ├── docker-compose.yml              #   Docker 一键部署配置
+│   ├── nginx/                          #   Nginx 配置
+│   └── .env.example                    #   环境变量模板
+│
 ├── models/                             # AI 模型文件（需要自己下载）
 │   └── yolov8n-pose.pt                 #   ★ YOLOv8 姿态估计模型
-│
-├── nginx/
-│   └── nginx.conf                      #   Nginx 反向代理配置
 │
 ├── tests/                              # Python 测试
 │   └── test_detection.py
 │
-├── backend/data/                       # ★ 自动生成：检测数据存放目录
+├── server/data/                        # ★ 自动生成：检测数据存放目录
 │   ├── detection_20250101_120000.json  #   检测结果（JSON 格式）
 │   └── frame_20250101_120000.jpg       #   异常截图
 │
 ├── results/                            # 自动生成：录制的检测视频
 ├── videos/                             # 放你自己的测试视频文件
 │
-├── docker-compose.yml                  # Docker 一键部署配置
-├── environment.yml                     # Conda 环境配置
 └── README.md                           # 本文件
 ```
 
@@ -289,7 +293,7 @@ yolov8_security/                        # 项目根目录
 
 ## 高级设置（如果你想调整参数）
 
-打开 `ai-models/yolov8_security.py`，找到 `class Config`（约第 57 行），可以修改以下参数：
+打开 `detection/yolov8_security.py`，找到 `class Config`（约第 57 行），可以修改以下参数：
 
 | 参数名 | 默认值 | 说明 | 怎么调 |
 |--------|--------|------|--------|
@@ -313,12 +317,12 @@ yolov8_security/                        # 项目根目录
 | 视频流 | MJPEG（`multipart/x-mixed-replace`） |
 | 反向代理 | Nginx |
 | 容器化 | Docker + Docker Compose |
-| 数据存储 | 无数据库，使用 JSON 文件（在 `backend/data/` 目录） |
+| 数据存储 | 无数据库，使用 JSON 文件（在 `server/data/` 目录） |
 
 ### 数据怎么传输的
 
 Python 和 Java 之间通过两种方式通信：
-1. **文件方式**：Python 把检测结果写成 `.json` 文件，把截图存为 `.jpg` 文件，都放在 `backend/data/` 文件夹。Java 每隔 2 秒扫描一次这个文件夹。
+1. **文件方式**：Python 把检测结果写成 `.json` 文件，把截图存为 `.jpg` 文件，都放在 `server/data/` 文件夹。Java 每隔 2 秒扫描一次这个文件夹。
 2. **网络方式**：Python 直接把每一帧画面通过 HTTP 发送给 Java。
 
 ### API 接口
@@ -356,19 +360,19 @@ Python 和 Java 之间通过两种方式通信：
 | 组件 | 配置项 / 变量 | 必须指向 |
 |------|--------------|---------|
 | Java 读取检测 JSON | `app.file.upload-dir` | 包含 `detection_*.json` 的目录 |
-| Python 写入检测 JSON | `Config.DATASET_DIR` | `PROJECT_ROOT/backend/data` |
+| Python 写入检测 JSON | `Config.DATASET_DIR` | `PROJECT_ROOT/server/data` |
 | Python 可执行文件 | `app.python.executable` | 有效的 python / python.exe |
-| YOLO 脚本路径 | `app.python.script.path` | `ai-models/yolov8_security.py` |
+| YOLO 脚本路径 | `app.python.script.path` | `detection/yolov8_security.py` |
 | 模型权重 | `Config.MODEL_PATH` | `models/yolov8n-pose.pt` |
 | 视频输出 | `Config.RESULT_VIDEO_PATH` | `results/security_result.mp4` |
 
 ### Python 脚本关键配置
 
-`ai-models/yolov8_security.py` 中的关键变量：
+`detection/yolov8_security.py` 中的关键变量：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `WEB_SERVER_URL` | `http://127.0.0.1:5000/yolov8-security` | Java 后端地址（可通过环境变量覆盖） |
-| `Config.DATASET_DIR` | `PROJECT_ROOT/backend/data` | 检测结果写入目录 |
+| `Config.DATASET_DIR` | `PROJECT_ROOT/server/data` | 检测结果写入目录 |
 | `Config.MODEL_PATH` | `PROJECT_ROOT/models/yolov8n-pose.pt` | YOLO 模型路径 |
 | `Config.SOURCE` | `PROJECT_ROOT/videos/test_video.mp4` | 视频源（`0`=摄像头，或文件路径） |
