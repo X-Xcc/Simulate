@@ -16,8 +16,8 @@ if not "%CMD%"=="" (
 :start_normal
 set "BASE_DIR=%~dp0"
 if "%BASE_DIR:~-1%"=="\" set "BASE_DIR=%BASE_DIR:~0,-1%"
-set "BACKEND_DIR=%BASE_DIR%\backend"
-set "AI_DIR=%BASE_DIR%\ai-models"
+set "BACKEND_DIR=%BASE_DIR%\server"
+set "AI_DIR=%BASE_DIR%\detection"
 set "MODEL_DIR=%BASE_DIR%\models"
 set "DATA_DIR=%BACKEND_DIR%\data"
 set "VENV_DIR=%BASE_DIR%\.venv"
@@ -131,7 +131,7 @@ echo.
 echo [4/6] Building backend with Maven...
 set "MAVEN_JAR=%BASE_DIR%\.mvn\wrapper\maven-wrapper.jar"
 if not exist "%MAVEN_JAR%" set "MAVEN_JAR=%BASE_DIR%\maven-wrapper\maven-wrapper.jar"
-"%JAVA_CMD%" "-Dmaven.multiModuleProjectDirectory=%BASE_DIR%" -classpath "%MAVEN_JAR%" org.apache.maven.wrapper.MavenWrapperMain -f backend\pom.xml clean package -DskipTests
+"%JAVA_CMD%" "-Dmaven.multiModuleProjectDirectory=%BASE_DIR%" -classpath "%MAVEN_JAR%" org.apache.maven.wrapper.MavenWrapperMain -f server\pom.xml clean package -DskipTests
 if %errorlevel% neq 0 (
     echo [ERROR] Maven build failed!
     pause
@@ -249,7 +249,7 @@ echo.
 echo [BUILD] Building backend with Maven...
 set "MAVEN_JAR=%BASE_DIR%\.mvn\wrapper\maven-wrapper.jar"
 if not exist "%MAVEN_JAR%" set "MAVEN_JAR=%BASE_DIR%\maven-wrapper\maven-wrapper.jar"
-"%JAVA_CMD%" "-Dmaven.multiModuleProjectDirectory=%BASE_DIR%" -classpath "%MAVEN_JAR%" org.apache.maven.wrapper.MavenWrapperMain -f backend\pom.xml clean package -DskipTests
+"%JAVA_CMD%" "-Dmaven.multiModuleProjectDirectory=%BASE_DIR%" -classpath "%MAVEN_JAR%" org.apache.maven.wrapper.MavenWrapperMain -f server\pom.xml clean package -DskipTests
 if %errorlevel% neq 0 (
     echo [ERROR] Maven build failed!
     pause
