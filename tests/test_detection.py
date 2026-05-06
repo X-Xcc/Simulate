@@ -14,7 +14,7 @@ import json
 os.environ["YOLOV8_SKIP_GPU_CHECK"] = "1"
 
 # Add the project root to path so we can import the module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "ai-models"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "detection"))
 
 import numpy as np
 
