@@ -325,11 +325,50 @@ Python 和 Java 之间通过两种方式通信：
 
 如果你要自己写程序读取检测数据，可以调用以下接口（所有接口前缀 `/yolov8-security/`）：
 
-| 接口地址 | 方法 | 作用 |
-|----------|------|------|
-| `/api/stats` | GET | 获取检测统计数据（Web 页面每 2 秒调一次） |
-| `/api/images` | GET | 获取所有截图列表 |
-| `/api/images/{文件名}` | GET | 获取某张截图 |
-| `/api/delete_all_images` | DELETE | 删除所有截图和检测数据 |
-| `/api/model_info` | GET | 查看模型信息 |
-| `/video_feed` | GET | 实时视频流地址 |
+| 方法 | 接口地址 | 作用 |
+|------|----------|------|
+| GET | `/api/status` | 系统状态（监控是否运行中、模型信息） |
+| GET | `/api/recent` | 最近 20 条检测记录 |
+| GET | `/api/stats` | 检测统计数据（Web 页面每 2 秒调一次） |
+| GET | `/api/images` | 获取所有截图列表 |
+| GET | `/api/images/{文件名}` | 获取某张截图 |
+| DELETE | `/api/delete_all_images` | 删除所有截图和检测数据 |
+| POST | `/api/alert` | 手动触发报警 |
+| POST | `/api/update_frame` | 接收 Python 发送的视频帧 |
+| POST | `/api/model_info` | 接收模型量化信息 |
+| POST | `/api/qwen/analyze` | 发送图片给 Qwen VL 分析 |
+| GET | `/api/stream` | SSE 视频帧流 |
+| GET | `/video_feed` | MJPEG 实时视频流地址 |
+| GET/PUT | `/api/settings` | 系统设置（JSON 持久化） |
+| GET/POST/PUT/DELETE | `/api/users` | 用户管理（JSON 持久化） |
+| GET/POST/PUT/DELETE | `/api/devices` | 设备/摄像头管理（JSON 持久化） |
+
+### 认证
+
+- `AuthFilter` 检查请求头 `Authorization` 是否匹配 `app.auth.token` 配置
+- `application.properties` 设置 `app.auth.token=${API_KEY:default-dev-token}`
+- 如果 token 为空则跳过认证
+
+### 关键路径映射
+
+以下路径必须保持一致，否则系统无法正常工作：
+
+| 组件 | 配置项 / 变量 | 必须指向 |
+|------|--------------|---------|
+| Java 读取检测 JSON | `app.file.upload-dir` | 包含 `detection_*.json` 的目录 |
+| Python 写入检测 JSON | `Config.DATASET_DIR` | `PROJECT_ROOT/backend/data` |
+| Python 可执行文件 | `app.python.executable` | 有效的 python / python.exe |
+| YOLO 脚本路径 | `app.python.script.path` | `ai-models/yolov8_security.py` |
+| 模型权重 | `Config.MODEL_PATH` | `models/yolov8n-pose.pt` |
+| 视频输出 | `Config.RESULT_VIDEO_PATH` | `results/security_result.mp4` |
+
+### Python 脚本关键配置
+
+`ai-models/yolov8_security.py` 中的关键变量：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `WEB_SERVER_URL` | `http://127.0.0.1:5000/yolov8-security` | Java 后端地址（可通过环境变量覆盖） |
+| `Config.DATASET_DIR` | `PROJECT_ROOT/backend/data` | 检测结果写入目录 |
+| `Config.MODEL_PATH` | `PROJECT_ROOT/models/yolov8n-pose.pt` | YOLO 模型路径 |
+| `Config.SOURCE` | `PROJECT_ROOT/videos/test_video.mp4` | 视频源（`0`=摄像头，或文件路径） |
