@@ -93,6 +93,16 @@ public class AuthFilter extends OncePerRequestFilter {
         }
 
         log.warn("Unauthorized access {} from {}", request.getRequestURI(), request.getRemoteAddr());
+
+        // For browser requests, redirect to login page
+        String accept = request.getHeader("Accept");
+        if (accept != null && accept.contains("text/html")) {
+            String contextPath = request.getContextPath();
+            response.sendRedirect(contextPath + "/login");
+            return;
+        }
+
+        // For API requests, return JSON error
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"status\":\"error\",\"message\":\"Unauthorized\"}");
