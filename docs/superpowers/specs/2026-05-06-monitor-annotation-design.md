@@ -74,7 +74,7 @@
 ### 模块拆分
 monitor.html 的 JS 拆分为独立文件：
 - `static/js/monitor.js` — 主逻辑（摄像头网格、API 轮询、告警列表）
-- CSS 保留在模板内（监控大屏的样式是独立的深色主题，不使用 common.css）
+- 使用 common.css `[data-theme="dark"]` 暗色主题，页面特定样式用 `<style>` 块
 
 ---
 
@@ -182,7 +182,9 @@ monitor.html 的 JS 拆分为独立文件：
 
 ### 4.6 后端 API
 
-`AnnotationService` 继承 `AbstractJsonFileService<AnnotationData>`。
+`AnnotationService` 自定义服务（不继承 AbstractJsonFileService），参考 CameraConfigService 的 ReadWriteLock 模式，每张图片一个 JSON 文件。
+
+注意：非参数路由（/stats, /export）必须放在 {imageFilename} 路由前面，避免 Spring MVC 路由冲突。
 
 | 端点 | 方法 | 用途 |
 |---|---|---|
@@ -234,10 +236,10 @@ monitor.html 的 JS 拆分为独立文件：
 - 无其他新增依赖
 
 ### 复用现有组件
-- `common.css` — 后台管理页面共享样式（标注页面使用独立深色主题）
-- `common.js` — API 调用工具、toast 通知
-- `AbstractJsonFileService` — 标注服务基类
+- `common.css` — 共享样式，通过 `[data-theme="dark"]` 支持暗色主题（monitor 和 annotate 使用暗色，admin 使用亮色）
+- `common.js` — API 调用工具、toast 通知（toast 图标使用 SVG）
 - 模态框、表单组件 — 复用 admin.html 模式
+- `CameraConfigService` ReadWriteLock 模式 — AnnotationService 参考
 
 ---
 
