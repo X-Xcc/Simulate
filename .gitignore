@@ -41,6 +41,7 @@ models/*.pt
 # Environment
 .env
 .venv/
+venv/
 
 # Claude Code / gstack
 .claude/

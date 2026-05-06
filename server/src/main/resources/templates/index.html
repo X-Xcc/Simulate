@@ -5,131 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>监狱智能行为分析系统 - 实时监控</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script>window.Chart||document.write('<script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"><\/script>')</script>
     <link rel="stylesheet" href="/yolov8-security/static/css/common.css">
-    <style>
-
-    /* STAT CARDS */
-    .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:16px}
-    .stat-card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow-sm);transition:all .15s;position:relative;overflow:hidden}
-    .stat-card:hover{box-shadow:var(--shadow-md);border-color:#d0d4da}
-    .stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:transparent;transition:background .2s}
-    .stat-card:hover::after{background:var(--accent)}
-    .stat-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-    .stat-icon{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px}
-    .stat-icon.blue{background:var(--accent-bg);color:var(--accent)}
-    .stat-icon.green{background:var(--green-bg);color:var(--green)}
-    .stat-icon.red{background:var(--red-bg);color:var(--red)}
-    .stat-icon.orange{background:var(--orange-bg);color:var(--orange)}
-    .stat-icon.purple{background:var(--purple-bg);color:var(--purple)}
-    .stat-icon.cyan{background:var(--cyan-bg);color:var(--cyan)}
-    .stat-trend{font-size:11px;font-weight:600;padding:2px 6px;border-radius:20px}
-    .stat-trend.up{background:var(--green-bg);color:var(--green)}
-    .stat-trend.down{background:var(--red-bg);color:var(--red)}
-    .stat-trend.neutral{background:var(--bg);color:var(--text-muted)}
-    .stat-value{font-size:22px;font-weight:800;color:var(--text-primary);line-height:1;margin-bottom:2px;letter-spacing:-.5px}
-    .stat-label{font-size:12px;color:var(--text-muted);font-weight:500}
-    .stat-bar-row{display:flex;align-items:center;gap:7px;margin-top:7px}
-    .stat-bar{flex:1;height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
-    .stat-bar-fill{height:100%;border-radius:2px;transition:width 1s ease}
-    .stat-bar-pct{font-size:10px;font-weight:600;color:var(--text-muted);min-width:28px;text-align:right}
-
-    /* GRID */
-    .grid-row{display:grid;gap:14px;margin-bottom:16px}
-    .grid-2{grid-template-columns:1fr 1fr;gap:14px}
-
-
-    /* VIDEO */
-    .video-section{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
-    .cam-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--bg)}
-    .cam-tab{padding:8px 16px;font-size:12px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .15s;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
-    .cam-tab:hover{color:var(--text-primary);background:var(--accent-hover)}
-    .cam-tab.active{color:var(--accent);border-bottom-color:var(--accent);background:var(--card-bg)}
-    .cam-tab .cam-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
-    .cam-tab .cam-dot.offline{background:var(--red)}
-    .video-main-wrap{background:#0a0a0a;position:relative;aspect-ratio:16/9}
-    .video-main-wrap img{width:100%;height:100%;object-fit:cover}
-    .video-error{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:rgba(255,255,255,.5);font-size:13px;background:#0a0a0a}
-    .video-error.show{display:flex}
-    .video-error-icon{font-size:32px;opacity:.4}
-    .video-overlay{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.8));padding:18px 12px 8px;display:flex;align-items:flex-end;justify-content:space-between}
-    .video-label{font-size:12px;color:#fff;font-weight:600;display:flex;align-items:center;gap:5px}
-    .video-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 1.5s infinite}
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-    .video-fps{font-size:11px;color:rgba(255,255,255,.6);font-family:monospace}
-    .video-actions{padding:8px 11px;display:flex;gap:5px;border-top:1px solid var(--border-light)}
-    .v-btn{padding:5px 11px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--card-bg);color:var(--text-secondary);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:4px}
-    .v-btn:hover{background:var(--accent-hover);color:var(--accent);border-color:var(--accent)}
-
-    /* CHART */
-    .chart-wrap{position:relative;height:220px}
-
-    /* INFO GRID */
-    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-    .info-item{padding:9px 11px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light)}
-    .info-label{font-size:10px;color:var(--text-muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:2px}
-    .info-val{font-size:13px;font-weight:700;color:var(--text-primary)}
-    .info-val.green{color:var(--green)}
-    .info-val.red{color:var(--red)}
-
-    /* SERVER */
-    .server-list{display:flex;flex-direction:column;gap:5px}
-    .server-item{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--card-bg);transition:all .15s}
-    .server-item:hover{border-color:#d0d4da}
-    .server-icon{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
-    .server-name{font-size:12px;font-weight:600;color:var(--text-primary)}
-    .server-meta{font-size:10px;color:var(--text-muted);margin-top:1px}
-    .server-info{flex:1}
-
-
-    /* IMAGE VIEWER */
-    .image-viewer{position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;flex-direction:column}
-    .image-viewer.show{display:flex}
-    .image-viewer-header{position:absolute;top:0;left:0;right:0;padding:12px 18px;display:flex;align-items:center;justify-content:space-between}
-    .image-viewer-title{color:#fff;font-size:12px;font-weight:600}
-    .image-viewer-close{width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-    .image-viewer-close:hover{background:rgba(255,255,255,.2)}
-    .image-viewer-img{max-width:80vw;max-height:70vh;border-radius:9px;border:1px solid rgba(255,255,255,.1)}
-    .image-viewer-info{color:rgba(255,255,255,.6);font-size:11px;display:flex;gap:18px;margin-top:10px}
-
-    /* ALERT TICKER */
-    .alert-ticker{background:var(--red);color:#fff;padding:6px 14px;font-size:11px;font-weight:600;display:none;align-items:center;gap:7px;letter-spacing:.3px;animation:tickerPulse 2s infinite;border-bottom:2px solid rgba(255,255,255,.2)}
-    .alert-ticker.show{display:flex}
-    @keyframes tickerPulse{0%,100%{opacity:1}50%{opacity:.85}}
-    .alert-ticker-close{margin-left:auto;background:rgba(255,255,255,.2);border:none;color:#fff;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}
-
-    /* ALERT FLASH */
-    @keyframes alertFlash{0%,100%{border-color:var(--border);background:var(--card-bg)}50%{border-color:var(--red);background:var(--red-bg)}}
-    .stat-card.alert-active{animation:alertFlash 1.2s ease 2}
-
-
-    /* EMPTY STATE */
-    .empty-state{text-align:center;padding:28px 14px;color:var(--text-muted)}
-    .empty-state-icon{font-size:24px;margin-bottom:6px;opacity:.5}
-    .empty-state-text{font-size:12px}
-
-    /* ANIMATIONS */
-    @keyframes slideUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-    .stat-card,.card{animation:slideUp .3s ease both}
-    .stat-card:nth-child(1){animation-delay:.02s}
-    .stat-card:nth-child(2){animation-delay:.04s}
-    .stat-card:nth-child(3){animation-delay:.06s}
-    .stat-card:nth-child(4){animation-delay:.08s}
-    .stat-card:nth-child(5){animation-delay:.10s}
-    .stat-card:nth-child(6){animation-delay:.12s}
-    .stat-value.updated{animation:valueFlash .6s ease}
-    @keyframes valueFlash{0%{color:var(--accent);transform:scale(1.05)}100%{color:var(--text-primary);transform:scale(1)}}
-
-    /* LOADING STATE */
-    @keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
-    .loading-shimmer{background:linear-gradient(90deg,var(--bg) 25%,var(--border-light) 50%,var(--bg) 75%);background-size:400px 100%;animation:shimmer 1.5s infinite;border-radius:4px;color:transparent!important}
-    .stat-value.loading{font-size:14px;color:var(--text-muted)}
-    .data-status{text-align:center;padding:12px;font-size:12px;color:var(--text-muted)}
-    .data-status.error{color:var(--red)}
-    .data-status .retry-link{color:var(--accent);cursor:pointer;text-decoration:underline;margin-left:6px}
-
-    @media(max-width:1100px){.grid-2{grid-template-columns:1fr}}
-    </style>
+    <link rel="stylesheet" href="/yolov8-security/static/css/index-page.css">
 </head>
 <body>
 <div class="layout">
@@ -163,12 +40,12 @@
     </div>
     <div class="sidebar-section">
         <div class="sidebar-section-label">系统</div>
-        <div class="sidebar-item" onclick="location.href='/yolov8-security/admin'">
+        <div class="sidebar-item" id="sidebarAdmin">
             <div class="icon">⚙</div><span>后台管理</span>
         </div>
     </div>
     <div class="sidebar-footer">
-        <div class="sidebar-user" onclick="showUserInfo()">
+        <div class="sidebar-user" id="sidebarUser">
             <div class="sidebar-avatar">陈</div>
             <div>
                 <div class="sidebar-user-name">陈明</div>
@@ -182,7 +59,7 @@
 <div class="main">
     <div class="alert-ticker" id="alertTicker">
         🚨 <span id="alertTickerText">检测到危险行为：跌倒事件！</span>
-        <button class="alert-ticker-close" onclick="dismissTicker()">✕</button>
+        <button class="alert-ticker-close">✕</button>
     </div>
 
     <header class="topbar">
@@ -196,9 +73,9 @@
         <div class="topbar-right">
             <span class="topbar-time" id="topbarTime">--:--:--</span>
             <div class="topbar-sep"></div>
-            <button class="topbar-btn" id="themeToggle" title="切换主题" onclick="toggleTheme()">🌙</button>
-            <button class="topbar-btn" title="刷新数据" onclick="fetchData();toast('数据已刷新','success')">↻</button>
-            <button class="topbar-btn" title="后台管理" onclick="location.href='/yolov8-security/admin'">⚙</button>
+            <button class="topbar-btn" id="themeToggle" title="切换主题">🌙</button>
+            <button class="topbar-btn" title="刷新数据" data-action="refresh">↻</button>
+            <button class="topbar-btn" title="后台管理" id="topbarAdmin">⚙</button>
         </div>
     </header>
 
@@ -208,13 +85,13 @@
         <!-- VIDEO with camera tabs -->
         <div class="video-section">
             <div class="cam-tabs" id="camTabs">
-                <div class="cam-tab active" data-cam="0" onclick="switchCam(this)">
+                <div class="cam-tab active" data-cam="0">
                     <span class="cam-dot"></span>A区-主监控
                 </div>
-                <div class="cam-tab" data-cam="1" onclick="switchCam(this)">
+                <div class="cam-tab" data-cam="1">
                     <span class="cam-dot"></span>B区-走廊
                 </div>
-                <div class="cam-tab" data-cam="2" onclick="switchCam(this)">
+                <div class="cam-tab" data-cam="2">
                     <span class="cam-dot"></span>C区-操场
                 </div>
             </div>
@@ -223,7 +100,7 @@
                 <div class="video-error" id="videoError">
                     <div class="video-error-icon">📹</div>
                     <div>视频流连接失败</div>
-                    <button class="v-btn" onclick="retryVideoFeed()" style="margin-top:4px">重新连接</button>
+                    <button class="v-btn" style="margin-top:4px" data-action="retryVideo">重新连接</button>
                 </div>
                 <div class="video-overlay">
                     <div class="video-label"><span class="video-dot"></span><span id="camLabel">A区-主监控</span></div>
@@ -231,10 +108,10 @@
                 </div>
             </div>
             <div class="video-actions">
-                <button class="v-btn" onclick="captureScreenshot()">📷 截图</button>
-                <button class="v-btn" onclick="fullscreen()">⛶ 全屏</button>
-                <button class="v-btn" onclick="testAlert()">⚠ 测试告警</button>
-                <button class="v-btn" onclick="toggleAlertSound()" id="soundBtn">🔊 告警声音</button>
+                <button class="v-btn" data-action="screenshot">📷 截图</button>
+                <button class="v-btn" data-action="fullscreen">⛶ 全屏</button>
+                <button class="v-btn" data-action="testAlert">⚠ 测试告警</button>
+                <button class="v-btn" id="soundBtn">🔊 告警声音</button>
             </div>
         </div>
 
@@ -320,9 +197,9 @@
                 <div class="card-header">
                     <div class="card-title">📈 行为检测趋势</div>
                     <div class="btn-group">
-                        <button class="btn btn-sm active" id="chartBtnMin" onclick="setChartRange('min',this)">分钟</button>
-                        <button class="btn btn-sm" id="chartBtnHour" onclick="setChartRange('hour',this)">小时</button>
-                        <button class="btn btn-sm" id="chartBtnDay" onclick="setChartRange('day',this)">天</button>
+                        <button class="btn btn-sm active" id="chartBtnMin">分钟</button>
+                        <button class="btn btn-sm" id="chartBtnHour">小时</button>
+                        <button class="btn btn-sm" id="chartBtnDay">天</button>
                     </div>
                 </div>
                 <div class="card-body"><div class="chart-wrap"><canvas id="lineChart"></canvas></div></div>
@@ -341,9 +218,9 @@
             <div class="card-header">
                 <div class="card-title">📋 检测记录</div>
                 <div class="btn-group">
-                    <button class="btn btn-sm" onclick="showFilterModal()">🔍 筛选</button>
-                    <button class="btn btn-sm" onclick="exportDetections()">📤 导出</button>
-                    <button class="btn btn-sm btn-danger" onclick="showClearConfirm()">🗑 清空</button>
+                    <button class="btn btn-sm" data-action="filter">🔍 筛选</button>
+                    <button class="btn btn-sm" data-action="export">📤 导出</button>
+                    <button class="btn btn-sm btn-danger" data-action="clear">🗑 清空</button>
                 </div>
             </div>
             <div class="table-wrap">
@@ -425,7 +302,7 @@
             <div class="card-header">
                 <div class="card-title">📷 摄像头配置</div>
                 <div class="btn-group">
-                    <button class="btn btn-sm btn-primary" onclick="showAddCameraModal()">+ 添加摄像头</button>
+                    <button class="btn btn-sm btn-primary" id="addCameraBtn">+ 添加摄像头</button>
                 </div>
             </div>
             <div class="table-wrap">
@@ -458,7 +335,7 @@
     <div class="modal">
         <div class="modal-header">
             <div class="modal-title" id="modalTitle">提示</div>
-            <button class="modal-close" onclick="closeModal()">×</button>
+            <button class="modal-close">×</button>
         </div>
         <div class="modal-body" id="modalBody"></div>
         <div class="modal-footer" id="modalFooter"></div>
@@ -469,7 +346,7 @@
 <div class="image-viewer" id="imageViewer">
     <div class="image-viewer-header">
         <div class="image-viewer-title" id="viewerTitle">检测截图</div>
-        <button class="image-viewer-close" onclick="document.getElementById('imageViewer').classList.remove('show')">×</button>
+        <button class="image-viewer-close">×</button>
     </div>
     <img class="image-viewer-img" id="viewerImg" src="" alt="">
     <div class="image-viewer-info" id="viewerInfo"></div>
@@ -479,770 +356,6 @@
 <script src="/yolov8-security/static/js/chart-module.js"></script>
 <script src="/yolov8-security/static/js/detection-module.js"></script>
 <script src="/yolov8-security/static/js/alert-module.js"></script>
-<script>
-/* ===== Page initialization — delegates to modules ===== */
-(function() {
-    'use strict';
-
-    var Common = window.Common;
-    var ChartModule = window.ChartModule;
-    var DetectionModule = window.DetectionModule;
-    var AlertModule = window.AlertModule;
-    var API_BASE = Common.API_BASE;
-
-    /* ===== STATE ===== */
-    var CAM_DEFAULT_NAMES = { '0': 'A区-主监控', '1': 'B区-走廊', '2': 'C区-操场' };
-    var S = { total: 0, images: 0, fall: 0, fight: 0, fatigue: 0, leave: 0, gather: 0 };
-    var currentCam = '0';
-    var previousDetectionCount = 0;
-    var lastKnownTotal = -1;
-
-    /* ===== THEME (delegates to Common) ===== */
-    function initTheme() {
-        var saved = localStorage.getItem('theme') || 'light';
-        document.documentElement.setAttribute('data-theme', saved);
-        updateThemeIcon(saved);
-    }
-    function toggleTheme() {
-        var current = document.documentElement.getAttribute('data-theme') || 'light';
-        var next = current === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('theme', next);
-        updateThemeIcon(next);
-        ChartModule.updateChartTheme();
-    }
-    function updateThemeIcon(theme) {
-        var btn = document.getElementById('themeToggle');
-        if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\uD83C\uDF19';
-    }
-    initTheme();
-
-    /* ===== CLOCK ===== */
-    var _startTime = Date.now();
-    function tick() {
-        var n = new Date();
-        var p = function(v) { return String(v).padStart(2, '0'); };
-        var el = document.getElementById('topbarTime');
-        if (el) el.textContent = n.getFullYear() + '-' + p(n.getMonth() + 1) + '-' + p(n.getDate()) + ' ' + p(n.getHours()) + ':' + p(n.getMinutes()) + ':' + p(n.getSeconds());
-        var elapsed = Math.floor((Date.now() - _startTime) / 1000);
-        var h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
-        Common.setTxt('sUptime', (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's');
-    }
-    tick();
-    setInterval(tick, 1000);
-
-    /* ===== CAMERA SWITCHING ===== */
-    var camNameMap = {};
-    Object.keys(CAM_DEFAULT_NAMES).forEach(function(k) { camNameMap[k] = CAM_DEFAULT_NAMES[k]; });
-
-    function switchCam(tab) {
-        document.querySelectorAll('.cam-tab').forEach(function(t) { t.classList.remove('active'); });
-        tab.classList.add('active');
-        currentCam = tab.dataset.cam;
-        document.getElementById('videoFeed').src = API_BASE + '/video_feed?cam=' + currentCam;
-        document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 ' + currentCam;
-    }
-    // Expose for onclick in static HTML
-    window.switchCam = switchCam;
-
-    function buildCamTabs(camIds) {
-        var container = document.getElementById('camTabs');
-        if (!container || !camIds || camIds.length === 0) return;
-        var normalizedIds = camIds.map(function(id) { return String(id).replace('cam', ''); });
-        container.innerHTML = '';
-        normalizedIds.forEach(function(id, i) {
-            var name = camNameMap[id] || '摄像头 ' + (i + 1);
-            var div = document.createElement('div');
-            div.className = 'cam-tab' + (i === 0 ? ' active' : '');
-            div.dataset.cam = id;
-            var dot = document.createElement('span');
-            dot.className = 'cam-dot';
-            div.appendChild(dot);
-            div.appendChild(document.createTextNode(name));
-            div.addEventListener('click', function() { switchCam(div); });
-            container.appendChild(div);
-        });
-        if (normalizedIds.length > 0) {
-            currentCam = normalizedIds[0];
-            document.getElementById('videoFeed').src = API_BASE + '/video_feed?cam=' + currentCam;
-            document.getElementById('camLabel').textContent = camNameMap[currentCam] || '摄像头 1';
-        }
-    }
-
-    /* ===== MODAL close listener ===== */
-    document.getElementById('modalOverlay').addEventListener('click', function(e) {
-        if (e.target === document.getElementById('modalOverlay')) Common.closeModal();
-    });
-
-    /* ===== USER INFO ===== */
-    function showUserInfo() {
-        var now = new Date();
-        var p = function(v) { return String(v).padStart(2, '0'); };
-        var timeStr = now.getFullYear() + '-' + p(now.getMonth() + 1) + '-' + p(now.getDate()) + ' ' + p(now.getHours()) + ':' + p(now.getMinutes()) + ':' + p(now.getSeconds());
-
-        var body = document.createElement('div');
-        body.innerHTML =
-            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">' +
-                '<div style="width:44px;height:44px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff">\u9648</div>' +
-                '<div><div style="font-size:14px;font-weight:700">\u9648\u660E</div><div style="font-size:11px;color:var(--text-muted)">\u5DE5\u53F7 J-005 \u00B7 \u8D85\u7EA7\u7BA1\u7406\u5458</div></div>' +
-            '</div>' +
-            '<div style="border-top:1px solid var(--border);padding-top:10px">' +
-                '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u5C97\u4F4D</div><div style="font-size:12px;font-weight:600;margin-top:2px">\u76D1\u533A\u957F</div></div>' +
-                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u72B6\u6001</div><div style="font-size:12px;font-weight:600;color:var(--green);margin-top:2px">\u25CF \u5728\u7EBF</div></div>' +
-                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u6700\u540E\u767B\u5F55</div><div style="font-size:12px;font-weight:600;margin-top:2px">' + Common.escHtml(timeStr) + '</div></div>' +
-                    '<div style="padding:8px;background:var(--bg);border-radius:5px"><div style="font-size:9px;color:var(--text-muted);font-weight:600">\u767B\u5F55IP</div><div style="font-size:12px;font-weight:600;margin-top:2px">192.168.1.14</div></div>' +
-                '</div>' +
-            '</div>';
-
-        var footer = document.createElement('div');
-        var closeBtn = document.createElement('button');
-        closeBtn.className = 'btn';
-        closeBtn.textContent = '\u5173\u95ED';
-        closeBtn.addEventListener('click', Common.closeModal);
-        footer.appendChild(closeBtn);
-        var logoutBtn = document.createElement('button');
-        logoutBtn.className = 'btn btn-danger';
-        logoutBtn.textContent = '\u9000\u51FA\u767B\u5F55';
-        logoutBtn.addEventListener('click', function() {
-            sessionStorage.removeItem('auth_token');
-            localStorage.removeItem('auth_token');
-            window.location.href = API_BASE + '/login';
-        });
-        footer.appendChild(logoutBtn);
-
-        Common.openModal('\u5F53\u524D\u7528\u6237', body, footer);
-    }
-    window.showUserInfo = showUserInfo;
-
-    /* ===== VIDEO ===== */
-    function fullscreen() {
-        var el = document.getElementById('videoWrap');
-        if (!el) return;
-        (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen).call(el);
-    }
-    window.fullscreen = fullscreen;
-
-    function captureScreenshot() {
-        var video = document.getElementById('videoFeed');
-        if (!video) return;
-        try {
-            var canvas = document.createElement('canvas');
-            canvas.width = video.naturalWidth || video.width;
-            canvas.height = video.naturalHeight || video.height;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            canvas.toBlob(function(blob) {
-                if (!blob) { Common.toast('\u622A\u56FE\u5931\u8D25\uFF1A\u89C6\u9891\u6D41\u4E0D\u652F\u6301\u622A\u56FE', 'error'); return; }
-                var link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = '\u622A\u56FE_' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
-                link.click();
-                URL.revokeObjectURL(link.href);
-                Common.toast('\u622A\u56FE\u5DF2\u4FDD\u5B58', 'success');
-            }, 'image/jpeg', 0.9);
-        } catch (e) {
-            Common.toast('\u622A\u56FE\u5931\u8D25\uFF1A\u6D4F\u89C8\u5668\u5B89\u5168\u9650\u5236', 'error');
-        }
-    }
-    window.captureScreenshot = captureScreenshot;
-
-    /* ===== MODEL INFO ===== */
-    async function fetchModelInfo() {
-        try {
-            var results = await Promise.allSettled([
-                Common.authFetch(API_BASE + '/api/model_info'),
-                Common.authFetch(API_BASE + '/api/ai/status'),
-                Common.authFetch(API_BASE + '/api/system_info')
-            ]);
-            var modelRes = results[0], aiRes = results[1], sysRes = results[2];
-            if (modelRes.status === 'fulfilled') {
-                var m = modelRes.value;
-                Common.setTxt('modelPrecision', m.precision || 'N/A');
-                Common.setTxt('modelDevice', m.device || 'N/A');
-                Common.setTxt('modelGpu', m.gpu_available ? '\u53EF\u7528' : '\u4E0D\u53EF\u7528');
-                var yoloMeta = document.getElementById('yoloServiceMeta');
-                if (yoloMeta) yoloMeta.textContent = 'Python \u00B7 ' + (m.device || 'CPU') + ' \u00B7 ' + (m.precision || 'FP32');
-                var yoloStatus = document.getElementById('yoloServiceStatus');
-                if (yoloStatus) {
-                    var online = m.status === 'online';
-                    yoloStatus.textContent = online ? '\u8FD0\u884C\u4E2D' : '\u7EBF\u7EBF';
-                    yoloStatus.className = 'badge ' + (online ? 'badge-green' : 'badge-red') + ' badge-dot';
-                }
-            }
-            if (aiRes.status === 'fulfilled') {
-                var a = aiRes.value;
-                var qwenMeta = document.getElementById('qwenServiceMeta');
-                var qwenStatus = document.getElementById('qwenServiceStatus');
-                var aOnline = a.status === 'online';
-                if (qwenMeta) qwenMeta.textContent = aOnline ? '\u5DF2\u52A0\u8F7D \u00B7 \u53EF\u7528' : '\u672A\u542F\u52A8';
-                if (qwenStatus) {
-                    qwenStatus.textContent = aOnline ? '\u5728\u7EBF' : '\u7EBF\u7EBF';
-                    qwenStatus.className = 'badge ' + (aOnline ? 'badge-green' : 'badge-gray') + ' badge-dot';
-                }
-            }
-            if (sysRes.status === 'fulfilled') {
-                var s = sysRes.value;
-                if (s.status === 'success') Common.setTxt('logStorage', s.dataDirSizeMb + ' MB');
-            }
-        } catch (e) { console.warn('fetchModelInfo error:', e); }
-    }
-
-    /* ===== FETCH SUMMARY ===== */
-    async function fetchSummary() {
-        try {
-            var data = await Common.authFetch(API_BASE + '/api/stats/summary');
-            var total = data.totalDetections || 0;
-            if (total !== lastKnownTotal) {
-                lastKnownTotal = total;
-                fetchData();
-            }
-        } catch (e) { /* silent */ }
-    }
-
-    /* ===== FETCH DATA ===== */
-    async function fetchData() {
-        try {
-            var data = await Common.authFetch(API_BASE + '/api/stats');
-            var bc = data.behaviorCounts || {};
-            S.total = data.totalDetections || 0;
-            S.images = data.totalImages || 0;
-            S.fall = bc['\u8DCC\u5012'] || 0;
-            S.fight = bc['\u6253\u67B6'] || 0;
-            S.fatigue = bc['\u7592\u52B3'] || 0;
-            S.leave = bc['\u79BB\u5C97'] || 0;
-            S.gather = bc['\u4EBA\u5458\u805A\u96C6'] || 0;
-
-            // Detect new alerts
-            var newTotal = S.fall + S.fight + S.fatigue + S.leave + S.gather;
-            if (previousDetectionCount > 0 && newTotal > previousDetectionCount) {
-                var diff = newTotal - previousDetectionCount;
-                if (diff > 0) {
-                    AlertModule.playAlertSound();
-                    if (S.fall > 0) AlertModule.flashStatCard('cardFall');
-                    if (S.fight > 0) AlertModule.flashStatCard('cardFight');
-                    if (S.fatigue > 0) AlertModule.flashStatCard('cardFatigue');
-                    if (S.leave > 0) AlertModule.flashStatCard('cardLeave');
-                    if (S.gather > 0) AlertModule.flashStatCard('cardGather');
-                    var ad = data.allDetections || [];
-                    var recent = ad.slice(0, diff);
-                    var dangerous = recent.find(function(d) { return d.actions && (d.actions[0] === '\u8DCC\u5012' || d.actions[0] === '\u6253\u67B6'); });
-                    if (dangerous) {
-                        AlertModule.showTickerAlert('\u68C0\u6D4B\u5230\u5371\u9669\u884C\u4E3A\uFF1A' + dangerous.actions[0] + '\uFF01');
-                    }
-                }
-            }
-            previousDetectionCount = newTotal;
-
-            // Update stat cards
-            var setEl = function(id, val, barId, pct) {
-                var el = document.getElementById(id);
-                if (el) {
-                    el.classList.remove('loading');
-                    var old = el.textContent;
-                    el.textContent = val;
-                    if (old !== String(val) && val !== 0) {
-                        el.classList.add('updated');
-                        setTimeout(function() { el.classList.remove('updated'); }, 600);
-                    }
-                }
-                var bar = document.getElementById(barId);
-                if (bar) bar.style.width = Math.min(pct, 100) + '%';
-                var pctEl = document.getElementById(barId.replace('Bar', 'Pct'));
-                if (pctEl) pctEl.textContent = Math.round(pct) + '%';
-            };
-            var totalEl = document.getElementById('sTotal');
-            if (totalEl) {
-                totalEl.classList.remove('loading');
-                var oldT = totalEl.textContent;
-                var v = S.total.toLocaleString();
-                totalEl.textContent = v;
-                if (oldT !== v && S.total !== 0) {
-                    totalEl.classList.add('updated');
-                    setTimeout(function() { totalEl.classList.remove('updated'); }, 600);
-                }
-            }
-            var totalBehaviors = S.fall + S.fight + S.fatigue + S.leave + S.gather;
-            var totalBar = document.getElementById('sTotalBar');
-            if (totalBar) totalBar.style.width = S.total > 0 ? Math.min(totalBehaviors / S.total * 100, 100) + '%' : '0%';
-            var totalPctEl = document.getElementById('sTotalPct');
-            if (totalPctEl) totalPctEl.textContent = S.total > 0 ? Math.round(totalBehaviors / S.total * 100) + '%' : '0%';
-            var t = S.total || 1;
-            setEl('sFall', S.fall, 'sFallBar', S.fall / t * 100);
-            setEl('sFight', S.fight, 'sFightBar', S.fight / t * 100);
-            setEl('sFatigue', S.fatigue, 'sFatigueBar', S.fatigue / t * 100);
-            setEl('sLeave', S.leave, 'sLeaveBar', S.leave / t * 100);
-            setEl('sGather', S.gather, 'sGatherBar', S.gather / t * 100);
-
-            // Pie chart
-            var pieChart = ChartModule.pieChart;
-            if (pieChart) {
-                var pieData = [], pieLabels = [], pieColors = [];
-                [
-                    { l: '\u8DCC\u5012', v: S.fall, c: '#bf8700' },
-                    { l: '\u6253\u67B6', v: S.fight, c: '#cf222e' },
-                    { l: '\u79BB\u5C97', v: S.leave, c: '#0969da' },
-                    { l: '\u7592\u52B3', v: S.fatigue, c: '#8250df' },
-                    { l: '\u4EBA\u5458\u805A\u96C6', v: S.gather, c: '#1a7f37' }
-                ].forEach(function(e) { if (e.v > 0) { pieLabels.push(e.l); pieData.push(e.v); pieColors.push(e.c); } });
-                if (pieData.length === 0) { pieLabels.push('\u65E0\u6570\u636E'); pieData.push(1); pieColors.push('#e4e6eb'); }
-                pieChart.data.labels = pieLabels;
-                pieChart.data.datasets[0].data = pieData;
-                pieChart.data.datasets[0].backgroundColor = pieColors;
-                pieChart.update('none');
-            }
-
-            // Line chart
-            var allDets = data.allDetections || [];
-            var lineChart = ChartModule.lineChart;
-            if (lineChart) {
-                var now = new Date(), labels = [], values = [];
-                var activeBtn = document.querySelector('[id^=chartBtn].active');
-                var range = activeBtn && activeBtn.id === 'chartBtnHour' ? 'hour' : (activeBtn && activeBtn.id === 'chartBtnDay' ? 'day' : 'min');
-                var count, step, timeKeyFmt;
-                if (range === 'hour') { count = 24; step = 3600000; timeKeyFmt = function(t) { return String(t.getHours()).padStart(2, '0') + ':00'; }; }
-                else if (range === 'day') { count = 7; step = 86400000; timeKeyFmt = function(t) { return (t.getMonth() + 1) + '/' + t.getDate(); }; }
-                else { count = 20; step = 60000; timeKeyFmt = function(t) { return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); }; }
-                var buckets = {};
-                for (var i = count - 1; i >= 0; i--) { var bt = new Date(now - i * step); var key = timeKeyFmt(bt); labels.push(key); buckets[key] = 0; }
-                var rangeMs = count * step;
-                allDets.forEach(function(d) {
-                    if (!d.timestamp) return;
-                    try {
-                        var dt = new Date(d.timestamp.replace(/-/g, '/'));
-                        if (now - dt >= 0 && now - dt < rangeMs) { var k = timeKeyFmt(dt); if (buckets[k] !== undefined) buckets[k]++; }
-                    } catch (e) {}
-                });
-                labels.forEach(function(k) { values.push(buckets[k] || 0); });
-                lineChart.data.labels = labels;
-                lineChart.data.datasets[0].data = values;
-                lineChart.update('none');
-            }
-
-            DetectionModule.updateDetTable(data);
-            AlertModule.updateAlertTable(data);
-            window._latestStatsData = data;
-
-            // Inference speed
-            var fpsVals = allDets.filter(function(d) { return d.fps > 0; }).slice(0, 10).map(function(d) { return d.fps; });
-            if (fpsVals.length > 0) {
-                var avgFps = fpsVals.reduce(function(a, b) { return a + b; }, 0) / fpsVals.length;
-                var infMs = Math.round(1000 / avgFps);
-                var infEl = document.getElementById('sInference');
-                if (infEl) infEl.innerHTML = infMs + '<span style="font-size:12px;color:var(--text-muted)">ms</span>';
-            }
-        } catch (e) {
-            console.warn('fetchData error:', e);
-            DetectionModule.updateDetTable(null);
-            Common.toast('\u6570\u636E\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u670D\u52A1\u72B6\u6001', 'error');
-        }
-    }
-    // Expose for modules to call
-    window.fetchData = fetchData;
-
-    /* ===== CAMERA STATUS ===== */
-    var camTabsBuilt = false;
-    async function fetchCameraStatus() {
-        try {
-            var data = await Common.authFetch(API_BASE + '/api/cameras');
-            var activeCams = Array.from(data.cameras || []);
-            if (!camTabsBuilt && activeCams.length > 0) {
-                buildCamTabs(activeCams);
-                camTabsBuilt = true;
-            }
-            document.querySelectorAll('.cam-tab').forEach(function(tab) {
-                var camId = tab.dataset.cam;
-                var dot = tab.querySelector('.cam-dot');
-                if (dot) dot.classList.toggle('offline', activeCams.indexOf(camId) === -1);
-            });
-            Common.setTxt('camOnlineCount', activeCams.length);
-        } catch (e) {}
-    }
-
-    /* ===== CAMERA CONFIG ===== */
-    var _cameraConfigData = [];
-
-    async function fetchCameraConfig() {
-        try {
-            var data = await Common.authFetch(API_BASE + '/api/camera_config');
-            if (data.status === 'success') {
-                _cameraConfigData = data.data || [];
-                renderCameraTable(_cameraConfigData);
-            }
-        } catch (e) { console.warn('fetchCameraConfig error:', e); }
-    }
-
-    function renderCameraTable(cameras) {
-        var tbody = document.getElementById('cameraConfigTableBody');
-        if (!cameras.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="data-status">\u6682\u65E0\u6444\u50CF\u5934\u914D\u7F6E</td></tr>';
-            return;
-        }
-        var typeMap = { usb: ['USB', 'badge-green'], rtsp: ['RTSP', 'badge-blue'], http_snapshot: ['HTTP', 'badge-purple'] };
-        tbody.innerHTML = '';
-        cameras.forEach(function(c) {
-            var tmap = typeMap[c.type] || [c.type, 'badge'];
-            var typeLabel = tmap[0], badgeClass = tmap[1];
-            var addrStr = String(c.address);
-            var addrDisplay = addrStr.length > 40 ? addrStr.substring(0, 37) + '...' : addrStr;
-
-            var tr = document.createElement('tr');
-
-            var tdId = document.createElement('td');
-            var code = document.createElement('code');
-            code.textContent = c.id;
-            tdId.appendChild(code);
-            tr.appendChild(tdId);
-
-            var tdType = document.createElement('td');
-            var badge = document.createElement('span');
-            badge.className = 'badge ' + badgeClass;
-            badge.textContent = typeLabel;
-            tdType.appendChild(badge);
-            tr.appendChild(tdType);
-
-            var tdAddr = document.createElement('td');
-            tdAddr.title = addrStr;
-            tdAddr.style.cssText = 'max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-            tdAddr.textContent = addrDisplay;
-            tr.appendChild(tdAddr);
-
-            var tdName = document.createElement('td');
-            tdName.textContent = c.name || '';
-            tr.appendChild(tdName);
-
-            var tdOps = document.createElement('td');
-            var btnGroup = document.createElement('div');
-            btnGroup.className = 'btn-group';
-            var editBtn = document.createElement('button');
-            editBtn.className = 'btn btn-sm';
-            editBtn.textContent = '\u7F16\u8F91';
-            editBtn.addEventListener('click', function() { showEditCameraModal(c.id); });
-            btnGroup.appendChild(editBtn);
-            var delBtn = document.createElement('button');
-            delBtn.className = 'btn btn-sm btn-danger';
-            delBtn.textContent = '\u5220\u9664';
-            delBtn.addEventListener('click', function() { confirmDeleteCamera(c.id); });
-            btnGroup.appendChild(delBtn);
-            tdOps.appendChild(btnGroup);
-            tr.appendChild(tdOps);
-
-            tbody.appendChild(tr);
-        });
-    }
-
-    function showAddCameraModal() {
-        var body = document.createElement('div');
-        body.innerHTML =
-            '<div class="form-group">' +
-                '<label class="form-label">\u6444\u50CF\u5934\u7C7B\u578B</label>' +
-                '<select class="form-select" id="camType">' +
-                    '<option value="usb">USB \u6444\u50CF\u5934</option>' +
-                    '<option value="rtsp">RTSP \u7F51\u7EDC\u6D41</option>' +
-                    '<option value="http_snapshot">HTTP \u5FEB\u7167</option>' +
-                '</select>' +
-            '</div>' +
-            '<div class="form-group">' +
-                '<label class="form-label">\u5730\u5740</label>' +
-                '<input class="form-input" id="camAddress" type="number" placeholder="\u8BBE\u5907\u7F16\u53F7\uFF0C\u5982 0">' +
-            '</div>' +
-            '<div class="form-group">' +
-                '<label class="form-label">\u540D\u79F0</label>' +
-                '<input class="form-input" id="camName" placeholder="\u5982\uFF1A\u4E3B\u6444\u50CF\u5934">' +
-            '</div>' +
-            '<div id="camAuthFields" style="display:none">' +
-                '<div class="form-row">' +
-                    '<div class="form-group"><label class="form-label">\u7528\u6237\u540D</label><input class="form-input" id="camUser" placeholder="admin"></div>' +
-                    '<div class="form-group"><label class="form-label">\u5BC6\u7801</label><input class="form-input" id="camPassword" type="password" placeholder="\u53EF\u7559\u7A7A"></div>' +
-                '</div>' +
-            '</div>';
-
-        var footer = document.createElement('div');
-        var cancelBtn = document.createElement('button');
-        cancelBtn.className = 'btn';
-        cancelBtn.textContent = '\u53D6\u6D88';
-        cancelBtn.addEventListener('click', Common.closeModal);
-        footer.appendChild(cancelBtn);
-        var addBtn = document.createElement('button');
-        addBtn.className = 'btn btn-primary';
-        addBtn.textContent = '\u6DFB\u52A0';
-        addBtn.addEventListener('click', addCamera);
-        footer.appendChild(addBtn);
-
-        Common.openModal('\u6DFB\u52A0\u6444\u50CF\u5934', body, footer);
-
-        // Wire up type change after modal is visible
-        setTimeout(function() {
-            var typeEl = document.getElementById('camType');
-            if (typeEl) typeEl.addEventListener('change', onCameraTypeChange);
-        }, 60);
-    }
-    window.showAddCameraModal = showAddCameraModal;
-
-    function showEditCameraModal(id) {
-        var cam = _cameraConfigData.find(function(c) { return c.id === id; });
-        if (!cam) return;
-        var isUsb = cam.type === 'usb';
-        var isHttp = cam.type === 'http_snapshot';
-
-        var body = document.createElement('div');
-        body.innerHTML =
-            '<div class="form-group">' +
-                '<label class="form-label">\u6444\u50CF\u5934\u7C7B\u578B</label>' +
-                '<select class="form-select" id="camType">' +
-                    '<option value="usb"' + (isUsb ? ' selected' : '') + '>USB \u6444\u50CF\u5934</option>' +
-                    '<option value="rtsp"' + (cam.type === 'rtsp' ? ' selected' : '') + '>RTSP \u7F51\u7EDC\u6D41</option>' +
-                    '<option value="http_snapshot"' + (isHttp ? ' selected' : '') + '>HTTP \u5FEB\u7167</option>' +
-                '</select>' +
-            '</div>' +
-            '<div class="form-group">' +
-                '<label class="form-label">\u5730\u5740</label>' +
-                '<input class="form-input" id="camAddress" type="' + (isUsb ? 'number' : 'text') + '" value="' + Common.escAttr(String(cam.address)) + '" placeholder="' + (isUsb ? '\u8BBE\u5907\u7F16\u53F7' : 'URL\u5730\u5740') + '">' +
-            '</div>' +
-            '<div class="form-group">' +
-                '<label class="form-label">\u540D\u79F0</label>' +
-                '<input class="form-input" id="camName" value="' + Common.escAttr(cam.name || '') + '">' +
-            '</div>' +
-            '<div id="camAuthFields" style="display:' + (isHttp ? '' : 'none') + '">' +
-                '<div class="form-row">' +
-                    '<div class="form-group"><label class="form-label">\u7528\u6237\u540D</label><input class="form-input" id="camUser" value="' + Common.escAttr(cam.user || '') + '" placeholder="admin"></div>' +
-                    '<div class="form-group"><label class="form-label">\u5BC6\u7801</label><input class="form-input" id="camPassword" type="password" value="' + Common.escAttr(cam.password || '') + '" placeholder="\u53EF\u7559\u7A7A"></div>' +
-                '</div>' +
-            '</div>';
-
-        var footer = document.createElement('div');
-        var cancelBtn = document.createElement('button');
-        cancelBtn.className = 'btn';
-        cancelBtn.textContent = '\u53D6\u6D88';
-        cancelBtn.addEventListener('click', Common.closeModal);
-        footer.appendChild(cancelBtn);
-        var saveBtn = document.createElement('button');
-        saveBtn.className = 'btn btn-primary';
-        saveBtn.textContent = '\u4FDD\u5B58';
-        saveBtn.addEventListener('click', function() { saveCameraEdit(id); });
-        footer.appendChild(saveBtn);
-
-        Common.openModal('\u7F16\u8F91\u6444\u50CF\u5934', body, footer);
-
-        setTimeout(function() {
-            var typeEl = document.getElementById('camType');
-            if (typeEl) typeEl.addEventListener('change', onCameraTypeChange);
-        }, 60);
-    }
-
-    function onCameraTypeChange() {
-        var type = document.getElementById('camType').value;
-        var addrInput = document.getElementById('camAddress');
-        var authFields = document.getElementById('camAuthFields');
-        if (type === 'usb') {
-            addrInput.placeholder = '\u8BBE\u5907\u7F16\u53F7\uFF0C\u5982 0';
-            addrInput.type = 'number';
-            authFields.style.display = 'none';
-        } else if (type === 'rtsp') {
-            addrInput.placeholder = 'rtsp://192.168.1.100:554/stream1';
-            addrInput.type = 'text';
-            authFields.style.display = 'none';
-        } else {
-            addrInput.placeholder = 'http://192.168.1.100/snapshot.jpg';
-            addrInput.type = 'text';
-            authFields.style.display = '';
-        }
-    }
-
-    async function addCamera() {
-        var type = document.getElementById('camType').value;
-        var addrVal = document.getElementById('camAddress').value;
-        var address = type === 'usb' ? parseInt(addrVal) : addrVal;
-        var name = document.getElementById('camName').value;
-        if (!addrVal || !name) { Common.toast('\u8BF7\u586B\u5199\u5730\u5740\u548C\u540D\u79F0', 'error'); return; }
-        var body = { type: type, address: address, name: name };
-        if (type === 'http_snapshot') {
-            body.user = (document.getElementById('camUser') || {}).value || '';
-            body.password = (document.getElementById('camPassword') || {}).value || '';
-        }
-        try {
-            var result = await Common.authFetch(API_BASE + '/api/camera_config', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-            });
-            Common.toast('\u6444\u50CF\u5934\u5DF2\u6DFB\u52A0', 'success');
-            Common.closeModal();
-            fetchCameraConfig();
-        } catch (e) { Common.toast('\u6DFB\u52A0\u5931\u8D25', 'error'); }
-    }
-
-    async function saveCameraEdit(id) {
-        var type = document.getElementById('camType').value;
-        var addrVal = document.getElementById('camAddress').value;
-        var address = type === 'usb' ? parseInt(addrVal) : addrVal;
-        var name = document.getElementById('camName').value;
-        if (!addrVal || !name) { Common.toast('\u8BF7\u586B\u5199\u5730\u5740\u548C\u540D\u79F0', 'error'); return; }
-        var body = { type: type, address: address, name: name };
-        if (type === 'http_snapshot') {
-            body.user = (document.getElementById('camUser') || {}).value || '';
-            body.password = (document.getElementById('camPassword') || {}).value || '';
-        }
-        try {
-            await Common.authFetch(API_BASE + '/api/camera_config/' + id, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-            });
-            Common.toast('\u6444\u50CF\u5934\u5DF2\u66F4\u65B0', 'success');
-            Common.closeModal();
-            fetchCameraConfig();
-        } catch (e) { Common.toast('\u66F4\u65B0\u5931\u8D25', 'error'); }
-    }
-
-    function confirmDeleteCamera(id) {
-        var body = document.createElement('div');
-        body.style.cssText = 'text-align:center;padding:8px 0';
-        var icon = document.createElement('div');
-        icon.style.cssText = 'font-size:32px;margin-bottom:10px';
-        icon.textContent = '\u26A0';
-        body.appendChild(icon);
-        var title = document.createElement('div');
-        title.style.cssText = 'font-size:13px;font-weight:600';
-        title.textContent = '\u786E\u5B9A\u8981\u5220\u9664\u6B64\u6444\u50CF\u5934\u914D\u7F6E\u5417\uFF1F';
-        body.appendChild(title);
-        var desc = document.createElement('div');
-        desc.style.cssText = 'font-size:11px;color:var(--text-muted)';
-        desc.textContent = '\u5220\u9664\u540E\u9700\u91CD\u542FPython\u811A\u672C\u751F\u6548';
-        body.appendChild(desc);
-
-        var footer = document.createElement('div');
-        var cancelBtn = document.createElement('button');
-        cancelBtn.className = 'btn';
-        cancelBtn.textContent = '\u53D6\u6D88';
-        cancelBtn.addEventListener('click', Common.closeModal);
-        footer.appendChild(cancelBtn);
-        var delBtn = document.createElement('button');
-        delBtn.className = 'btn btn-danger';
-        delBtn.textContent = '\u786E\u8BA4\u5220\u9664';
-        delBtn.addEventListener('click', function() { deleteCamera(id); });
-        footer.appendChild(delBtn);
-
-        Common.openModal('\u786E\u8BA4\u5220\u9664', body, footer);
-    }
-
-    async function deleteCamera(id) {
-        try {
-            await Common.authFetch(API_BASE + '/api/camera_config/' + id, { method: 'DELETE' });
-            Common.toast('\u6444\u50CF\u5934\u5DF2\u5220\u9664', 'success');
-            Common.closeModal();
-            fetchCameraConfig();
-        } catch (e) { Common.toast('\u5220\u9664\u5931\u8D25', 'error'); }
-    }
-
-    /* ===== FPS COUNTER ===== */
-    var videoFeed = document.getElementById('videoFeed');
-    var frameCount = 0, lastFpsTime = Date.now(), videoErrorTimeout = null;
-    videoFeed.addEventListener('load', function() {
-        document.getElementById('videoError').classList.remove('show');
-        clearTimeout(videoErrorTimeout);
-        frameCount++;
-        var now = Date.now();
-        if (now - lastFpsTime >= 1000) {
-            var el = document.getElementById('fpsDisplay');
-            if (el) el.textContent = 'FPS: ' + frameCount;
-            frameCount = 0;
-            lastFpsTime = now;
-        }
-    });
-    videoFeed.addEventListener('error', function() {
-        videoErrorTimeout = setTimeout(function() {
-            document.getElementById('videoError').classList.add('show');
-        }, 3000);
-    });
-
-    function retryVideoFeed() {
-        document.getElementById('videoError').classList.remove('show');
-        videoFeed.src = API_BASE + '/video_feed?cam=' + currentCam + '&t=' + Date.now();
-    }
-    window.retryVideoFeed = retryVideoFeed;
-
-    /* ===== SIDEBAR SMOOTH SCROLL ===== */
-    document.querySelectorAll('.sidebar-item[href^="#"]').forEach(function(item) {
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-            var target = document.querySelector(this.getAttribute('href'));
-            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            document.querySelectorAll('.sidebar-item').forEach(function(i) { i.classList.remove('active'); });
-            this.classList.add('active');
-        });
-    });
-
-    /* ===== CHART RANGE BUTTONS ===== */
-    document.getElementById('chartBtnMin').addEventListener('click', function() { ChartModule.setChartRange('min', this); });
-    document.getElementById('chartBtnHour').addEventListener('click', function() { ChartModule.setChartRange('hour', this); });
-    document.getElementById('chartBtnDay').addEventListener('click', function() { ChartModule.setChartRange('day', this); });
-
-    /* ===== STATIC HTML EVENT WIRING ===== */
-    // Image viewer close
-    document.getElementById('imageViewer').addEventListener('click', function(e) {
-        if (e.target === document.getElementById('imageViewer') || e.target.id === 'imageViewer') {
-            DetectionModule.closeImageViewer();
-        }
-    });
-    // Image viewer close button (in HTML)
-    document.querySelector('.image-viewer-close').addEventListener('click', DetectionModule.closeImageViewer);
-
-    // Topbar buttons
-    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-    // Refresh button
-    document.querySelectorAll('.topbar-btn').forEach(function(btn) {
-        if (btn.title === '\u5237\u65B0\u6570\u636E') {
-            btn.addEventListener('click', function() { fetchData(); Common.toast('\u6570\u636E\u5DF2\u5237\u65B0', 'success'); });
-        }
-    });
-
-    // Sidebar admin link
-    document.querySelectorAll('.sidebar-item').forEach(function(item) {
-        if (item.textContent.indexOf('\u540E\u53F0\u7BA1\u7406') !== -1) {
-            item.addEventListener('click', function() { location.href = API_BASE + '/admin'; });
-        }
-    });
-
-    // Alert ticker close
-    document.querySelector('.alert-ticker-close').addEventListener('click', AlertModule.dismissTicker);
-
-    // Detection record buttons
-    document.querySelectorAll('#records .btn-group .btn').forEach(function(btn) {
-        if (btn.textContent.indexOf('\u7B5B\u9009') !== -1) btn.addEventListener('click', DetectionModule.showFilterModal);
-        if (btn.textContent.indexOf('\u5BFC\u51FA') !== -1) btn.addEventListener('click', DetectionModule.exportDetections);
-        if (btn.textContent.indexOf('\u6E05\u7A7A') !== -1) btn.addEventListener('click', DetectionModule.showClearConfirm);
-    });
-
-    // Video action buttons
-    document.querySelectorAll('.video-actions .v-btn').forEach(function(btn) {
-        if (btn.textContent.indexOf('\u622A\u56FE') !== -1) btn.addEventListener('click', captureScreenshot);
-        if (btn.textContent.indexOf('\u5168\u5C4F') !== -1) btn.addEventListener('click', fullscreen);
-        if (btn.textContent.indexOf('\u6D4B\u8BD5\u544A\u8B66') !== -1) btn.addEventListener('click', AlertModule.testAlert);
-        if (btn.id === 'soundBtn') btn.addEventListener('click', AlertModule.toggleAlertSound);
-    });
-
-    // Video retry button
-    document.querySelector('.video-error .v-btn').addEventListener('click', retryVideoFeed);
-
-    // Modal close button
-    document.querySelector('.modal-close').addEventListener('click', Common.closeModal);
-
-    // Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            Common.closeModal();
-            DetectionModule.closeImageViewer();
-        }
-    });
-
-    /* ===== INIT ===== */
-    DetectionModule.showTableLoading();
-    AlertModule.initSoundButton();
-    fetchData();
-    fetchModelInfo();
-    fetchCameraStatus();
-    fetchCameraConfig();
-    setInterval(fetchSummary, 2000);
-    setInterval(fetchModelInfo, 30000);
-    setInterval(fetchCameraStatus, 10000);
-    setInterval(fetchCameraConfig, 30000);
-})();
-</script>
+<script src="/yolov8-security/static/js/index-page.js"></script>
 </body>
 </html>

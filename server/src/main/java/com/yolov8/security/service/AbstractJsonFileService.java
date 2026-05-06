@@ -56,7 +56,13 @@ public abstract class AbstractJsonFileService<T> {
         try {
             Files.createDirectories(filePath.getParent());
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(tmpPath.toFile(), data);
-            Files.move(tmpPath, filePath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(tmpPath, filePath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                // Windows 上某些文件系统不支持 ATOMIC_MOVE，回退到普通移动
+                log.debug("Atomic move not supported, falling back to regular move: {}", e.getMessage());
+                Files.move(tmpPath, filePath, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
             log.error("Failed to write {}", filePath.getFileName(), e);
             try {

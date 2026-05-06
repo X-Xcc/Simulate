@@ -16,12 +16,18 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // External web assets (dev: file:web/) take priority over classpath
+        registry.addResourceHandler("/static/css/**")
+                .addResourceLocations("file:web/css/");
+        registry.addResourceHandler("/static/js/**")
+                .addResourceLocations("file:web/js/");
+        registry.addResourceHandler("/css/**")
+                .addResourceLocations("file:web/css/");
+        registry.addResourceHandler("/js/**")
+                .addResourceLocations("file:web/js/");
+        // Fallback: classpath static resources (e.g. images bundled in WAR)
         registry.addResourceHandler("/static/**")
                 .addResourceLocations("classpath:/static/");
-        registry.addResourceHandler("/css/**")
-                .addResourceLocations("file:../web/css/");
-        registry.addResourceHandler("/js/**")
-                .addResourceLocations("file:../web/js/");
     }
 
     @Override

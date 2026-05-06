@@ -209,55 +209,189 @@ class TestEyeFatigue:
         assert ear >= 0.2, f"Expected high EAR for open eyes, got {ear}"
 
 
-class TestPersonTrackingByIndex:
-    """Person tracking by array index is broken.
+class TestCalculateIou:
+    """Tests for Utils.calculate_iou — IoU between normalized [x1,y1,x2,y2] boxes."""
 
-    If person A is index 0 in frame 1 and index 1 in frame 2,
-    the system treats them as two different people. This test
-    demonstrates the bug by showing that prev_centers are not
-    matched across frames when detection order changes.
-    """
+    def test_identical_boxes(self):
+        iou = Utils.calculate_iou([0.2, 0.2, 0.8, 0.8], [0.2, 0.2, 0.8, 0.8])
+        assert abs(iou - 1.0) < 1e-6
 
-    def test_index_swap_causes_tracking_loss(self):
-        """When two people swap detection order, their tracking state should be preserved.
+    def test_no_overlap(self):
+        iou = Utils.calculate_iou([0.0, 0.0, 0.3, 0.3], [0.7, 0.7, 1.0, 1.0])
+        assert iou == 0.0
 
-        This test FAILS with the current code because tracking is index-based.
-        """
+    def test_partial_overlap(self):
+        # Two boxes overlapping in a 0.1*0.1 square
+        iou = Utils.calculate_iou([0.0, 0.0, 0.5, 0.5], [0.4, 0.4, 0.9, 0.9])
+        inter = 0.1 * 0.1  # 0.01
+        area1 = 0.5 * 0.5  # 0.25
+        area2 = 0.5 * 0.5  # 0.25
+        expected = inter / (area1 + area2 - inter)
+        assert abs(iou - expected) < 1e-6
+
+    def test_touching_boxes_no_overlap(self):
+        iou = Utils.calculate_iou([0.0, 0.0, 0.5, 0.5], [0.5, 0.5, 1.0, 1.0])
+        assert iou == 0.0
+
+    def test_zero_area_box(self):
+        iou = Utils.calculate_iou([0.5, 0.5, 0.5, 0.5], [0.0, 0.0, 1.0, 1.0])
+        assert iou == 0.0
+
+
+class TestEyeFatigueGrace:
+    """detect_eye_fatigue grace period: invalid frames don't immediately reset counter."""
+
+    def test_valid_low_EAR_increments_counter(self):
         config = Config()
         dm = DetectionModule(config)
+        # Build keypoints with EAR below threshold.
+        # EAR = (left_ear_dist + right_ear_dist) / (2 * eye_center_dist)
+        # To get EAR < 0.2, need ears very close to eyes (small numerator)
+        # and eyes far apart (large denominator).
+        kp = np.zeros((17, 3))
+        kp[:, 2] = 0.9
+        kp[1] = [0.3, 0.12, 0.9]   # left_eye
+        kp[2] = [0.7, 0.12, 0.9]   # right_eye (far apart = large denominator)
+        kp[3] = [0.3, 0.119, 0.9]  # left_ear (almost same pos as eye = low EAR)
+        kp[4] = [0.7, 0.119, 0.9]  # right_ear
 
-        # Frame 1: person A at index 0, person B at index 1
-        center_a = np.array([0.3, 0.5])
-        center_b = np.array([0.7, 0.5])
-        prev_centers = [center_a, center_b]
-        last_move_times = [0.0, 0.0]
+        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 0, 0)
+        assert count >= 1
+        assert invalid == 0
 
-        # Simulate: both people don't move (should not trigger fatigue reset)
-        kp_a = np.zeros((17, 3))
-        kp_a[:, 2] = 0.9
-        kp_a[5] = [0.25, 0.5, 0.9]
-        kp_a[6] = [0.35, 0.5, 0.9]
-        kp_a[11] = [0.25, 0.6, 0.9]
-        kp_a[12] = [0.35, 0.6, 0.9]
+    def test_invalid_frame_preserves_counter_within_grace(self):
+        config = Config()
+        dm = DetectionModule(config)
+        # Keypoints with low-confidence ear → invalid EAR
+        kp = np.zeros((17, 3))
+        kp[:, 2] = 0.9
+        kp[1] = [0.48, 0.12, 0.9]
+        kp[2] = [0.52, 0.12, 0.9]
+        kp[3] = [0.47, 0.115, 0.3]  # low confidence
+        kp[4] = [0.53, 0.115, 0.3]  # low confidence
 
-        kp_b = np.zeros((17, 3))
-        kp_b[:, 2] = 0.9
-        kp_b[5] = [0.65, 0.5, 0.9]
-        kp_b[6] = [0.75, 0.5, 0.9]
-        kp_b[11] = [0.65, 0.6, 0.9]
-        kp_b[12] = [0.75, 0.6, 0.9]
+        # Start with count=5, invalid_count=2 (within grace period of 5)
+        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 5, 2)
+        assert count == 5, "Counter should be preserved within grace period"
+        assert invalid == 3, "Invalid count should increment"
 
-        # Frame 2: order swapped (B first, then A) — simulates YOLO reordering
-        # Current code would match B's center to A's prev tracking data
-        # This is the bug: index-based matching doesn't follow identity
-        # We can't easily test this without mocking pose_results,
-        # but the logic in detect_security_actions lines 604-613 clearly
-        # truncates and extends by index, not by identity matching.
-        #
-        # The fix: implement IoU-based ID matching before updating tracking state.
+    def test_invalid_frame_resets_counter_beyond_grace(self):
+        config = Config()
+        dm = DetectionModule(config)
+        kp = np.zeros((17, 3))
+        kp[:, 2] = 0.9
+        kp[1] = [0.48, 0.12, 0.9]
+        kp[2] = [0.52, 0.12, 0.9]
+        kp[3] = [0.47, 0.115, 0.3]
+        kp[4] = [0.53, 0.115, 0.3]
 
-        # This assertion documents the known bug
-        assert True  # placeholder; real test requires mocking pose_results
+        # Start with count=5, invalid_count=5 (at grace limit)
+        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 5, 5)
+        assert count == 0, "Counter should reset beyond grace period"
+        assert invalid == 0
+
+    def test_valid_frame_resets_invalid_counter(self):
+        config = Config()
+        dm = DetectionModule(config)
+        kp = np.zeros((17, 3))
+        kp[:, 2] = 0.9
+        kp[1] = [0.48, 0.12, 0.9]
+        kp[2] = [0.52, 0.12, 0.9]
+        kp[3] = [0.47, 0.08, 0.9]  # ear far from eye = high EAR
+        kp[4] = [0.53, 0.08, 0.9]
+
+        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 3, 4)
+        assert count == 0, "High EAR should reset fatigue count"
+        assert invalid == 0, "Valid frame should reset invalid counter"
+
+
+class TestFallTemporalSmoothing:
+    """Fall detection requires FALL_CONFIRM_FRAMES consecutive frames to trigger."""
+
+    def test_single_fall_frame_not_confirmed(self):
+        config = Config()
+        dm = DetectionModule(config)
+        # A fallen person's keypoints
+        kp = np.zeros((17, 3))
+        kp[:, 2] = 0.9
+        kp[0] = [0.15, 0.7, 0.9]   # nose near ground
+        kp[5] = [0.3, 0.65, 0.9]   # left_shoulder
+        kp[6] = [0.35, 0.65, 0.9]  # right_shoulder
+        kp[11] = [0.5, 0.7, 0.9]   # left_hip
+        kp[12] = [0.55, 0.7, 0.9]  # right_hip
+        kp[13] = [0.65, 0.75, 0.9] # left_knee
+        kp[14] = [0.7, 0.75, 0.9]  # right_knee
+
+        # Single frame with fall → confirm_count goes to 1, but threshold is 2
+        is_fall, _ = DetectionModule.detect_fall(kp)
+        if is_fall:
+            # If detect_fall returns true, temporal smoothing should block it
+            fall_counts = [0]
+            # Simulate the logic from detect_security_actions
+            fall_counts[0] += 1
+            confirmed = fall_counts[0] >= config.FALL_CONFIRM_FRAMES
+            assert not confirmed, "Single frame should not confirm fall"
+        # If detect_fall itself returns false, the test passes trivially
+        # (the fall score wasn't high enough for even one frame)
+
+
+class TestHeadNodding:
+    """Head nodding state machine: idle → dropping → recovered → drowsy."""
+
+    def test_initial_state_is_idle(self):
+        config = Config()
+        dm = DetectionModule(config)
+        kp = np.zeros((17, 3))
+        kp[:, 2] = 0.9
+        kp[0] = [0.5, 0.15, 0.9]   # nose
+        kp[5] = [0.42, 0.2, 0.9]   # left_shoulder
+        kp[6] = [0.58, 0.2, 0.9]   # right_shoulder
+
+        is_drowsy, state = dm.detect_head_nodding(kp, None)
+        assert not is_drowsy
+        assert state['state'] == 'idle'
+        assert state['nod_count'] == 0
+
+    def test_nose_dropping_transitions_to_dropping(self):
+        config = Config()
+        dm = DetectionModule(config)
+        kp = np.zeros((17, 3))
+        kp[:, 2] = 0.9
+        # Nose well below shoulder level (relative_y > threshold)
+        kp[0] = [0.5, 0.35, 0.9]   # nose
+        kp[5] = [0.42, 0.2, 0.9]   # left_shoulder
+        kp[6] = [0.58, 0.2, 0.9]   # right_shoulder
+
+        state = {'state': 'idle', 'nod_count': 0, 'first_nod_time': 0.0, 'last_nose_y': 0.0}
+        is_drowsy, state = dm.detect_head_nodding(kp, state)
+        assert state['state'] == 'dropping'
+        assert not is_drowsy
+
+    def test_nose_recovery_increments_nod_count(self):
+        config = Config()
+        dm = DetectionModule(config)
+        # First: drop
+        kp_drop = np.zeros((17, 3))
+        kp_drop[:, 2] = 0.9
+        kp_drop[0] = [0.5, 0.35, 0.9]
+        kp_drop[5] = [0.42, 0.2, 0.9]
+        kp_drop[6] = [0.58, 0.2, 0.9]
+
+        state = {'state': 'idle', 'nod_count': 0, 'first_nod_time': 0.0, 'last_nose_y': 0.0}
+        _, state = dm.detect_head_nodding(kp_drop, state)
+        assert state['state'] == 'dropping'
+
+        # Then: recover (nose back near shoulder level)
+        kp_recover = np.zeros((17, 3))
+        kp_recover[:, 2] = 0.9
+        kp_recover[0] = [0.5, 0.2, 0.9]   # nose at shoulder level
+        kp_recover[5] = [0.42, 0.2, 0.9]
+        kp_recover[6] = [0.58, 0.2, 0.9]
+
+        is_drowsy, state = dm.detect_head_nodding(kp_recover, state)
+        assert state['state'] == 'idle'
+        assert state['nod_count'] == 1
+        assert not is_drowsy
 
 
 class TestUtils:

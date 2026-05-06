@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -13,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -31,6 +33,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final long DELETE_WINDOW_MS = 60_000L;
 
     private static final int MAX_ENTRIES = 10_000;
+
+    /** 受信任的代理 IP 集合（仅这些来源的 X-Forwarded-For 会被信任） */
+    private static final Set<String> TRUSTED_PROXIES = Set.of("127.0.0.1", "::1", "0:0:0:0:0:0:0:1");
 
     private static class Window {
         volatile long startMs;
@@ -66,10 +71,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         String ip = request.getRemoteAddr();
-        // Use X-Forwarded-For when behind reverse proxy
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isEmpty()) {
-            ip = xff.split(",")[0].trim();
+        // Only trust X-Forwarded-For from known proxies (prevents IP spoofing)
+        if (TRUSTED_PROXIES.contains(ip)) {
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isEmpty()) {
+                ip = xff.split(",")[0].trim();
+            }
         }
         String uri = request.getRequestURI();
         Map<String, Window> windows;
@@ -116,11 +123,26 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private void evictIfFull(Map<String, Window> windows) {
         if (windows.size() > MAX_ENTRIES) {
+            long now = System.currentTimeMillis();
+            // 移除已过期的窗口（不再活跃的 IP）
             Iterator<Map.Entry<String, Window>> it = windows.entrySet().iterator();
-            int toRemove = MAX_ENTRIES / 4;
-            while (it.hasNext() && toRemove-- > 0) {
-                it.next();
-                it.remove();
+            int removed = 0;
+            while (it.hasNext()) {
+                Map.Entry<String, Window> entry = it.next();
+                // 移除超过 2 倍窗口时间未活跃的条目
+                if (now - entry.getValue().startMs > DEFAULT_WINDOW_MS * 2) {
+                    it.remove();
+                    removed++;
+                }
+            }
+            // 如果清理后仍然超限，移除最旧的条目
+            if (windows.size() > MAX_ENTRIES) {
+                it = windows.entrySet().iterator();
+                int toRemove = MAX_ENTRIES / 4;
+                while (it.hasNext() && toRemove-- > 0) {
+                    it.next();
+                    it.remove();
+                }
             }
         }
     }

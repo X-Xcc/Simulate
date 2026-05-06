@@ -13,7 +13,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.SimpleDateFormat;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -22,6 +23,7 @@ import java.util.stream.Stream;
 public class DetectionService {
 
     private static final Logger log = LoggerFactory.getLogger(DetectionService.class);
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     /** One directory walk serves both JSON detections and frame_*.jpg listing. */
     private record DirScan(List<DetectionData> detections, List<String> imageFiles, int totalDetectionCount) {}
 
@@ -264,8 +266,7 @@ public class DetectionService {
             Map<String, Object> result = new HashMap<>();
             result.put("status", "online");
             result.put("message", "监控正常运行");
-            SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
-            result.put("update_time", sdf.format(new Date()));
+            result.put("update_time", LocalTime.now().format(TIME_FORMATTER));
             return result;
         } catch (Exception e) {
             log.error("Error getting monitor status", e);

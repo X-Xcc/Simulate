@@ -19,6 +19,7 @@ import numpy as np
 import json
 import torch
 from typing import List, Tuple, Optional
+from dataclasses import dataclass, field
 from PIL import ImageFont, ImageDraw, Image
 
 # 快速忽略警告，不进行复杂配置
@@ -82,7 +83,7 @@ class Config:
     # 多摄像头支持 - 启动时自动检测可用摄像头
     SOURCES = []  # 启动时由 detect_cameras() 填充
     RESULT_VIDEO_PATH = os.path.join(PROJECT_ROOT, "results", "security_result.mp4")
-    DATASET_DIR = os.path.join(PROJECT_ROOT, "backend", "data")
+    DATASET_DIR = os.path.join(PROJECT_ROOT, "server", "data")
 
     # 模型参数
     IMG_SIZE = 512
@@ -102,6 +103,13 @@ class Config:
     # 眼疲劳参数
     EYE_AR_THRESHOLD = 0.2  # EAR阈值，低于此值认为是闭眼
     EYE_FATIGUE_FRAMES = 30  # 连续多少帧EAR过低判定为疲劳
+    EYE_FATIGUE_GRACE_FRAMES = 5  # 关键点无效时保持计数器的宽限期帧数
+    # 点头检测参数（微睡眠检测）
+    HEAD_NOD_Y_THRESHOLD = 0.03  # 鼻子下移阈值（归一化坐标）
+    HEAD_NOD_COUNT = 3           # 60秒内点头次数阈值
+    HEAD_NOD_WINDOW = 60.0       # 点头计数窗口（秒）
+    # 跌倒检测时序平滑
+    FALL_CONFIRM_FRAMES = 2  # 连续N帧确认跌倒才触发
     # 人员聚集参数（讲稿要求：阈值3人、聚集半径<1.5m、持续≥3s）
     GATHER_THRESHOLD = 3        # 聚集人数阈值
     GATHER_RADIUS = 0.08       # 归一化聚集半径（约占画面8%，实际按像素换算）
@@ -141,8 +149,10 @@ def detect_cameras(max_index=5):
     """扫描USB设备索引0~max_index，返回可用摄像头列表"""
     available = []
     print("正在扫描可用摄像头...")
+    # Windows 上使用 DirectShow 后端，避免默认后端无法枚举设备
+    backend = cv2.CAP_DSHOW if hasattr(cv2, 'CAP_DSHOW') else cv2.CAP_ANY
     for i in range(max_index + 1):
-        cap = cv2.VideoCapture(i)
+        cap = cv2.VideoCapture(i, backend)
         if cap.isOpened():
             ret, _ = cap.read()
             if ret:
@@ -202,6 +212,8 @@ class Utils:
     _AVAILABLE_FONT_PATH = None
     # 缓存字体对象（key = font size），避免每次 draw 都重新加载字体文件
     _FONT_CACHE = {}
+    # 线程锁，保护共享缓存
+    _cache_lock = threading.Lock()
 
     # YOLOv8 Pose 关键点索引
     KEYPOINT_NAMES = {
@@ -245,16 +257,18 @@ class Utils:
 
     @staticmethod
     def _get_cached_font(size: int):
-        """Get or create a cached font for the given size"""
+        """Get or create a cached font for the given size (thread-safe)"""
         if size not in Utils._FONT_CACHE:
-            font_path = Utils._get_available_font_path()
-            if font_path is None:
-                Utils._FONT_CACHE[size] = ImageFont.load_default()
-            else:
-                try:
-                    Utils._FONT_CACHE[size] = ImageFont.truetype(font_path, size, encoding="utf-8")
-                except (OSError, IOError):
-                    Utils._FONT_CACHE[size] = ImageFont.load_default()
+            with Utils._cache_lock:
+                if size not in Utils._FONT_CACHE:
+                    font_path = Utils._get_available_font_path()
+                    if font_path is None:
+                        Utils._FONT_CACHE[size] = ImageFont.load_default()
+                    else:
+                        try:
+                            Utils._FONT_CACHE[size] = ImageFont.truetype(font_path, size, encoding="utf-8")
+                        except (OSError, IOError):
+                            Utils._FONT_CACHE[size] = ImageFont.load_default()
         return Utils._FONT_CACHE[size]
 
     # 批量文字渲染缓冲区（线程安全）
@@ -358,6 +372,19 @@ class Utils:
         return intersection / union if union > 0 else 0.0
 
     @staticmethod
+    def calculate_iou(bbox1, bbox2) -> float:
+        """计算两个归一化 [x1,y1,x2,y2] 框的 IoU（无需 img_shape）"""
+        x1 = max(float(bbox1[0]), float(bbox2[0]))
+        y1 = max(float(bbox1[1]), float(bbox2[1]))
+        x2 = min(float(bbox1[2]), float(bbox2[2]))
+        y2 = min(float(bbox1[3]), float(bbox2[3]))
+        inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        area1 = (float(bbox1[2]) - float(bbox1[0])) * (float(bbox1[3]) - float(bbox1[1]))
+        area2 = (float(bbox2[2]) - float(bbox2[0])) * (float(bbox2[3]) - float(bbox2[1]))
+        union = area1 + area2 - inter
+        return inter / union if union > 0 else 0.0
+
+    @staticmethod
     def generate_timestamp() -> str:
         """生成带毫秒的时间戳"""
         ms = int(time.time() * 1000) % 1000
@@ -368,14 +395,16 @@ class Utils:
 
     @staticmethod
     def measure_text_size(text: str, font_size: int) -> Tuple[int, int]:
-        """测量文本尺寸，避免重复代码"""
+        """测量文本尺寸（线程安全）"""
         try:
-            if Utils._scratch_img is None:
-                Utils._scratch_img = Image.new('RGB', (100, 100))
-                Utils._scratch_draw = ImageDraw.Draw(Utils._scratch_img)
+            with Utils._cache_lock:
+                if Utils._scratch_img is None:
+                    Utils._scratch_img = Image.new('RGB', (100, 100))
+                    Utils._scratch_draw = ImageDraw.Draw(Utils._scratch_img)
             font = Utils._get_cached_font(font_size)
-            text_bbox = Utils._scratch_draw.textbbox((0, 0), text, font=font)
-            return int(text_bbox[2] - text_bbox[0]), int(text_bbox[3] - text_bbox[1])
+            with Utils._cache_lock:
+                text_bbox = Utils._scratch_draw.textbbox((0, 0), text, font=font)
+                return int(text_bbox[2] - text_bbox[0]), int(text_bbox[3] - text_bbox[1])
         except (OSError, IOError, AttributeError):
             return 80, 20
 
@@ -409,6 +438,26 @@ class Utils:
 
         ear = avg_eye_height / eye_width
         return ear, True
+
+
+# ===================== 检测结果封装 =====================
+@dataclass
+class DetectionResult:
+    """detect_security_actions 的返回值封装"""
+    actions: List[str] = field(default_factory=list)
+    person_count: int = 0
+    fighting_persons: List[int] = field(default_factory=list)
+    fatigued_persons: List[int] = field(default_factory=list)
+    eye_fatigued_persons: List[int] = field(default_factory=list)
+    prev_centers: List[Optional[np.ndarray]] = field(default_factory=list)
+    last_move_times: List[float] = field(default_factory=list)
+    eye_fatigue_counts: List[int] = field(default_factory=list)
+    eye_fatigue_invalid_counts: List[int] = field(default_factory=list)
+    action_confidences: dict = field(default_factory=dict)
+    gather_start_times: dict = field(default_factory=dict)
+    prev_bboxes: list = field(default_factory=list)
+    head_nod_states: list = field(default_factory=list)
+    fall_confirm_counts: List[int] = field(default_factory=list)
 
 
 # ===================== 检测模块 =====================
@@ -581,7 +630,6 @@ class DetectionModule:
         max_dim = max(w, h)
 
         # 聚类：找出彼此距离在阈值内的人员
-        in_gather = [False] * n
         clusters = []
 
         for i, kp_i in enumerate(keypoints_list):
@@ -614,8 +662,8 @@ class DetectionModule:
         if gather_start_times is None:
             gather_start_times = {}
 
-        if all(in_gather[i] for i in best_cluster):
-            # 之前就在聚集中
+        if cluster_key in gather_start_times:
+            # 之前就在聚集中，保持开始时间不变
             pass
         else:
             # 新聚集，记录开始时间
@@ -656,39 +704,97 @@ class DetectionModule:
             last_move_time = current_time
             return False, 0.0, center, last_move_time
 
-    def detect_eye_fatigue(self, keypoints: np.ndarray, eye_fatigue_count: int) -> Tuple[bool, int]:
-        """检测眼疲劳状态
+    def detect_eye_fatigue(self, keypoints: np.ndarray, eye_fatigue_count: int,
+                           invalid_frame_count: int = 0) -> Tuple[bool, int, int]:
+        """检测眼疲劳状态（带宽限期容错）
         Returns:
-            (是否疲劳, 累计低EAR帧数)
+            (是否疲劳, 累计低EAR帧数, 连续无效帧数)
         """
         ear, is_valid = Utils.calculate_eye_aspect_ratio(keypoints)
 
         if not is_valid:
-            return False, 0
+            invalid_frame_count += 1
+            if invalid_frame_count > self.config.EYE_FATIGUE_GRACE_FRAMES:
+                return False, 0, 0  # 超过宽限期，重置
+            return False, eye_fatigue_count, invalid_frame_count  # 宽限期内保持计数器
 
+        # 有效帧：重置无效计数
         if ear < self.config.EYE_AR_THRESHOLD:
             eye_fatigue_count += 1
         else:
             eye_fatigue_count = 0
 
-        if eye_fatigue_count >= self.config.EYE_FATIGUE_FRAMES:
-            return True, eye_fatigue_count
+        is_fatigued = eye_fatigue_count >= self.config.EYE_FATIGUE_FRAMES
+        return is_fatigued, eye_fatigue_count, 0
 
-        return False, eye_fatigue_count
+    def detect_head_nodding(self, keypoints: np.ndarray, nod_state: Optional[dict]) -> Tuple[bool, dict]:
+        """检测点头（微睡眠）行为
+        跟踪鼻子Y坐标相对肩部中心的变化，检测反复低头-恢复模式。
+        Returns:
+            (是否困倦, 更新后的nod_state)
+        """
+        if nod_state is None:
+            nod_state = {'state': 'idle', 'nod_count': 0, 'first_nod_time': 0.0, 'last_nose_y': 0.0}
+
+        if len(keypoints) < 7:
+            return False, nod_state
+
+        nose_y = float(keypoints[0][1])
+        shoulder_y = (float(keypoints[5][1]) + float(keypoints[6][1])) / 2.0
+
+        # 鼻子相对肩部的偏移（正值表示鼻子低于肩部）
+        relative_y = nose_y - shoulder_y
+        threshold = self.config.HEAD_NOD_Y_THRESHOLD
+        current_time = time.time()
+
+        state = nod_state['state']
+
+        if state == 'idle':
+            # 鼻子下移超过阈值 → 进入下垂状态
+            if relative_y > threshold:
+                nod_state['state'] = 'dropping'
+                nod_state['last_nose_y'] = relative_y
+        elif state == 'dropping':
+            # 鼻子回到肩部附近 → 完成一次点头
+            if relative_y <= threshold * 0.5:
+                nod_state['state'] = 'idle'
+                nod_count = nod_state['nod_count'] + 1
+                first_time = nod_state['first_nod_time']
+
+                # 如果是窗口内的第一次点头，记录时间
+                if nod_count == 1:
+                    nod_state['first_nod_time'] = current_time
+                # 超出窗口则重置计数
+                elif current_time - first_time > self.config.HEAD_NOD_WINDOW:
+                    nod_state['nod_count'] = 1
+                    nod_state['first_nod_time'] = current_time
+                    return False, nod_state
+
+                nod_state['nod_count'] = nod_count
+
+                # 达到阈值 → 标记困倦
+                if nod_count >= self.config.HEAD_NOD_COUNT:
+                    nod_state['nod_count'] = 0
+                    nod_state['first_nod_time'] = 0.0
+                    return True, nod_state
+
+        is_drowsy = False
+        return is_drowsy, nod_state
 
     def detect_security_actions(self, pose_results: List, prev_centers: Optional[List[np.ndarray]],
                                 last_move_times: Optional[List[float]],
                                 eye_fatigue_counts: Optional[List[int]] = None,
-                                gather_start_times: Optional[dict] = None) -> Tuple[List[str], int, List[int], List[int], List[int], List[np.ndarray], List[float], List[int], dict, dict]:
-        """检测所有安全行为，支持多人检测"""
+                                gather_start_times: Optional[dict] = None,
+                                prev_bboxes: Optional[List] = None,
+                                eye_fatigue_invalid_counts: Optional[List[int]] = None,
+                                head_nod_states: Optional[List] = None,
+                                fall_confirm_counts: Optional[List[int]] = None) -> DetectionResult:
+        """检测所有安全行为，支持多人检测（IoU 跟踪 + 时序平滑）"""
         detected_actions = set()
         person_count = 0
         keypoints_list = []
         bboxes = []
         img_shape = None
-        new_prev_centers = prev_centers if prev_centers is not None else []
-        new_last_move_times = last_move_times if last_move_times is not None else []
-        new_eye_fatigue_counts = eye_fatigue_counts if eye_fatigue_counts is not None else []
         new_gather_start_times = gather_start_times if gather_start_times is not None else {}
         fighting_persons = []
         fatigued_persons = []
@@ -703,37 +809,90 @@ class DetectionModule:
             keypoints = r.keypoints.data
             person_count = len(keypoints)
 
-            # 确保跟踪数据结构大小匹配
-            new_prev_centers = new_prev_centers[:person_count]
-            new_last_move_times = new_last_move_times[:person_count]
-            new_eye_fatigue_counts = new_eye_fatigue_counts[:person_count]
-            while len(new_prev_centers) < person_count:
-                new_prev_centers.append(None)
-            while len(new_last_move_times) < person_count:
-                new_last_move_times.append(time.time())
-            while len(new_eye_fatigue_counts) < person_count:
-                new_eye_fatigue_counts.append(0)
-
-            # 收集关键点和边界框 - 优化内存管理
+            # 收集关键点和边界框
+            current_bboxes = []
             for i, kp in enumerate(keypoints):
-                # 延迟CPU转换，只在需要时进行
                 kp_np = kp.cpu().numpy() if hasattr(kp, 'cpu') else kp
                 keypoints_list.append(kp_np)
 
                 if len(r.boxes) > i:
-                    # 延迟CPU转换
                     bbox = (
                         r.boxes[i].xyxy[0].cpu().numpy()
                         if hasattr(r.boxes[i].xyxy[0], 'cpu')
                         else r.boxes[i].xyxy[0]
                     )
-                    bboxes.append(bbox / [img_shape[1], img_shape[0], img_shape[1], img_shape[0]])
+                    normalized_bbox = bbox / [img_shape[1], img_shape[0], img_shape[1], img_shape[0]]
+                    bboxes.append(normalized_bbox)
+                    current_bboxes.append(normalized_bbox)
+                else:
+                    current_bboxes.append(None)
 
-                # 跌倒检测
+            # === IoU 人体跟踪：匹配前后帧 ===
+            new_prev_centers = [None] * person_count
+            new_last_move_times = [time.time()] * person_count
+            new_eye_fatigue_counts = [0] * person_count
+            new_eye_fatigue_invalid_counts = [0] * person_count
+            new_head_nod_states = [None] * person_count
+            new_fall_confirm_counts = [0] * person_count
+            new_prev_bboxes_list = [None] * person_count
+
+            if prev_bboxes and len(prev_bboxes) > 0 and current_bboxes:
+                # 计算 IoU 矩阵
+                n_new = len(current_bboxes)
+                n_prev = len(prev_bboxes)
+                iou_matrix = np.zeros((n_new, n_prev))
+                for ni in range(n_new):
+                    if current_bboxes[ni] is None:
+                        continue
+                    for pi in range(n_prev):
+                        if prev_bboxes[pi] is None:
+                            continue
+                        iou_matrix[ni, pi] = Utils.calculate_iou(current_bboxes[ni], prev_bboxes[pi])
+
+                # 贪心匹配
+                matched_new = set()
+                matched_prev = set()
+                while len(matched_new) < n_new and len(matched_prev) < n_prev:
+                    best_iou, best_ni, best_pi = 0.0, -1, -1
+                    for ni in range(n_new):
+                        if ni in matched_new:
+                            continue
+                        for pi in range(n_prev):
+                            if pi in matched_prev:
+                                continue
+                            if iou_matrix[ni, pi] > best_iou:
+                                best_iou, best_ni, best_pi = iou_matrix[ni, pi], ni, pi
+                    if best_iou < 0.3:
+                        break
+                    matched_new.add(best_ni)
+                    matched_prev.add(best_pi)
+                    # 转移跟踪状态
+                    if prev_centers and best_pi < len(prev_centers):
+                        new_prev_centers[best_ni] = prev_centers[best_pi]
+                    if last_move_times and best_pi < len(last_move_times):
+                        new_last_move_times[best_ni] = last_move_times[best_pi]
+                    if eye_fatigue_counts and best_pi < len(eye_fatigue_counts):
+                        new_eye_fatigue_counts[best_ni] = eye_fatigue_counts[best_pi]
+                    if eye_fatigue_invalid_counts and best_pi < len(eye_fatigue_invalid_counts):
+                        new_eye_fatigue_invalid_counts[best_ni] = eye_fatigue_invalid_counts[best_pi]
+                    if head_nod_states and best_pi < len(head_nod_states):
+                        new_head_nod_states[best_ni] = head_nod_states[best_pi]
+                    if fall_confirm_counts and best_pi < len(fall_confirm_counts):
+                        new_fall_confirm_counts[best_ni] = fall_confirm_counts[best_pi]
+
+            # 逐人检测
+            for i, kp_np in enumerate(keypoints_list):
+                new_prev_bboxes_list[i] = current_bboxes[i] if i < len(current_bboxes) else None
+
+                # 跌倒检测（带时序平滑）
                 is_fall, fall_confidence = DetectionModule.detect_fall(kp_np)
                 if is_fall:
-                    detected_actions.add("跌倒")
-                    action_confidences["跌倒"] = fall_confidence
+                    new_fall_confirm_counts[i] += 1
+                    if new_fall_confirm_counts[i] >= self.config.FALL_CONFIRM_FRAMES:
+                        detected_actions.add("跌倒")
+                        action_confidences["跌倒"] = fall_confidence
+                else:
+                    new_fall_confirm_counts[i] = 0
 
                 # 疲劳检测（支持多人）
                 is_fatigue, fatigue_confidence, center, move_time = self.detect_fatigue(
@@ -743,20 +902,27 @@ class DetectionModule:
                     detected_actions.add("疲劳")
                     fatigued_persons.append(i)
                     action_confidences["疲劳"] = fatigue_confidence
-                
-                # 更新跟踪数据
                 new_prev_centers[i] = center
                 new_last_move_times[i] = move_time
 
-                # 眼疲劳检测
-                is_eye_fatigue, eye_fatigue_count = self.detect_eye_fatigue(
-                    kp_np, new_eye_fatigue_counts[i]
+                # 眼疲劳检测（带宽限期）
+                is_eye_fatigue, eye_fatigue_count, invalid_count = self.detect_eye_fatigue(
+                    kp_np, new_eye_fatigue_counts[i], new_eye_fatigue_invalid_counts[i]
                 )
                 if is_eye_fatigue:
                     detected_actions.add("疲劳")
                     eye_fatigued_persons.append(i)
                     action_confidences["疲劳"] = 1.0
                 new_eye_fatigue_counts[i] = eye_fatigue_count
+                new_eye_fatigue_invalid_counts[i] = invalid_count
+
+                # 点头检测（微睡眠）
+                is_nodding, nod_state = self.detect_head_nodding(kp_np, new_head_nod_states[i])
+                if is_nodding:
+                    detected_actions.add("疲劳")
+                    if "疲劳" not in action_confidences:
+                        action_confidences["疲劳"] = 0.8
+                new_head_nod_states[i] = nod_state
 
             # 打架检测
             if person_count >= 2 and img_shape is not None:
@@ -764,7 +930,7 @@ class DetectionModule:
                 if is_fighting:
                     detected_actions.add("打架")
                     fighting_persons = fight_persons
-                    action_confidences["打架"] = 1.0  # 简化处理
+                    action_confidences["打架"] = 1.0
 
             # 离岗检测
             if person_count == 0:
@@ -780,9 +946,22 @@ class DetectionModule:
                     detected_actions.add("人员聚集")
                     action_confidences["人员聚集"] = gather_conf
 
-        return (list(detected_actions), person_count, fighting_persons, fatigued_persons,
-                eye_fatigued_persons, new_prev_centers, new_last_move_times,
-                new_eye_fatigue_counts, action_confidences, new_gather_start_times)
+        return DetectionResult(
+            actions=list(detected_actions),
+            person_count=person_count,
+            fighting_persons=fighting_persons,
+            fatigued_persons=fatigued_persons,
+            eye_fatigued_persons=eye_fatigued_persons,
+            prev_centers=new_prev_centers,
+            last_move_times=new_last_move_times,
+            eye_fatigue_counts=new_eye_fatigue_counts,
+            eye_fatigue_invalid_counts=new_eye_fatigue_invalid_counts,
+            action_confidences=action_confidences,
+            gather_start_times=new_gather_start_times,
+            prev_bboxes=new_prev_bboxes_list,
+            head_nod_states=new_head_nod_states,
+            fall_confirm_counts=new_fall_confirm_counts,
+        )
 
 
 # ===================== 数据保存模块 =====================
@@ -852,7 +1031,7 @@ class AlertManager:
         return frame, alert_triggered
 
     def _draw_alert_banner(self, img: np.ndarray) -> np.ndarray:
-        """绘制报警横幅"""
+        """绘制报警横幅 — 使用批量文字渲染，避免重复颜色转换"""
         banner_height = self.config.BANNER_HEIGHT
         banner = np.full((banner_height, img.shape[1], 3), self.config.COLORS['danger'], dtype=np.uint8)
 
@@ -861,7 +1040,10 @@ class AlertManager:
         text_width, _ = Utils.measure_text_size(alert_text, text_size)
         text_x = (img.shape[1] - text_width) // 2
 
-        banner = Utils.draw_text_cn(banner, alert_text, (text_x, 5), text_size, (255, 255, 255))
+        # 使用批量模式，只做一次 BGR→RGB→PIL→BGR 转换
+        draw = Utils.begin_text_batch(banner)
+        Utils.draw_text_cn_batch(draw, alert_text, (text_x, 5), text_size, (255, 255, 255))
+        banner = Utils.end_text_batch(banner)
         return np.vstack((banner, img))
 
     # ===================== UI模块 =====================
@@ -1108,7 +1290,9 @@ class SecurityMonitor:
         """初始化视频源"""
         cap = None
         try:
-            cap = cv2.VideoCapture(source)
+            # Windows 上使用 DirectShow 后端，避免默认后端无法打开摄像头
+            backend = cv2.CAP_DSHOW if hasattr(cv2, 'CAP_DSHOW') else cv2.CAP_ANY
+            cap = cv2.VideoCapture(source, backend)
             if not cap.isOpened():
                 print(f"视频源 {source} 打开失败")
                 return True, None, 1280, 720
@@ -1314,6 +1498,10 @@ class SecurityMonitor:
         last_move_times = []
         eye_fatigue_counts = []
         gather_start_times = {}
+        prev_bboxes = []
+        eye_fatigue_invalid_counts = []
+        head_nod_states = []
+        fall_confirm_counts = []
         logs = deque(maxlen=20)
         prev_actions = []
         frame_count = 0
@@ -1361,9 +1549,24 @@ class SecurityMonitor:
                     )
 
                     # 3. 检测行为
-                    actions, person_num, fighting_persons, fatigued_persons, eye_fatigued_persons, prev_centers, last_move_times, eye_fatigue_counts, action_confidences, gather_start_times = self.detection_module.detect_security_actions(
-                        results, prev_centers, last_move_times, eye_fatigue_counts, gather_start_times
+                    det = self.detection_module.detect_security_actions(
+                        results, prev_centers, last_move_times, eye_fatigue_counts, gather_start_times,
+                        prev_bboxes, eye_fatigue_invalid_counts, head_nod_states, fall_confirm_counts
                     )
+                    actions = det.actions
+                    person_num = det.person_count
+                    fighting_persons = det.fighting_persons
+                    fatigued_persons = det.fatigued_persons
+                    eye_fatigued_persons = det.eye_fatigued_persons
+                    prev_centers = det.prev_centers
+                    last_move_times = det.last_move_times
+                    eye_fatigue_counts = det.eye_fatigue_counts
+                    action_confidences = det.action_confidences
+                    gather_start_times = det.gather_start_times
+                    prev_bboxes = det.prev_bboxes
+                    eye_fatigue_invalid_counts = det.eye_fatigue_invalid_counts
+                    head_nod_states = det.head_nod_states
+                    fall_confirm_counts = det.fall_confirm_counts
 
                     # 缓存结果
                     cached_results = results

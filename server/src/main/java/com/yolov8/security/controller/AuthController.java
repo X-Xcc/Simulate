@@ -4,6 +4,9 @@ import com.yolov8.security.model.LoginRequest;
 import com.yolov8.security.model.LoginResponse;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,11 +21,23 @@ import java.util.Map;
 @RequestMapping("/api")
 public class AuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
     @Value("${app.admin.username:admin}")
     private String adminUsername;
 
     @Value("${app.admin.password:admin123}")
     private String adminPassword;
+
+    @PostConstruct
+    public void init() {
+        if ("admin123".equals(adminPassword)) {
+            log.warn("⚠ 检测到默认密码 'admin123'，请在 .env 文件中设置 APP_ADMIN_PASSWORD 以提高安全性");
+        }
+        if ("admin".equals(adminUsername)) {
+            log.warn("⚠ 检测到默认用户名 'admin'，建议在 .env 文件中修改 APP_ADMIN_USERNAME");
+        }
+    }
 
     @Value("${app.jwt.secret}")
     private String jwtSecret;

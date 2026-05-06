@@ -17,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 @Component
 public class AuthFilter extends OncePerRequestFilter {
@@ -24,7 +25,8 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
     private static final String HEADER = "X-API-Key";
     private static final String[] PUBLIC_PATHS = {
-        "/", "/index", "/login", "/monitor", "/static/**", "/css/**", "/js/**", "/error", "/api/login",
+        "/", "/index", "/login", "/monitor", "/admin", "/annotate",
+        "/static/**", "/css/**", "/js/**", "/error", "/api/login",
         "/video_feed", "/api/images/**"
     };
 
@@ -84,7 +86,9 @@ public class AuthFilter extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         if (apiKey != null && !apiKey.isBlank()) {
             String key = request.getHeader(HEADER);
-            if (apiKey.equals(key)) {
+            if (key != null && MessageDigest.isEqual(
+                    apiKey.getBytes(StandardCharsets.UTF_8),
+                    key.getBytes(StandardCharsets.UTF_8))) {
                 chain.doFilter(request, response);
                 return;
             }

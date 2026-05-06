@@ -5,19 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>后台管理 - 监狱智能行为分析系统</title>
     <link rel="stylesheet" href="/yolov8-security/static/css/common.css">
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
-    .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .setting-item{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light)}
-    .setting-label{font-size:11px;font-weight:600;color:var(--text-primary)}
-    .setting-desc{font-size:9px;color:var(--text-muted);margin-top:1px}
-    .setting-val{font-size:12px;font-weight:700;color:var(--accent)}
-
-
-    @keyframes slideUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-    .card{animation:slideUp .3s ease both}
-    </style>
+    <link rel="stylesheet" href="/yolov8-security/static/css/admin-page.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div class="layout">
@@ -34,26 +23,29 @@
         </div>
     </div>
     <div class="sidebar-section">
+        <div class="sidebar-section-label">概览</div>
+        <div class="sidebar-item active" data-tab="dashboard">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></div><span>仪表盘</span>
+        </div>
+    </div>
+    <div class="sidebar-section">
         <div class="sidebar-section-label">管理</div>
-        <div class="sidebar-item active" onclick="switchTab(this,'settings')">
+        <div class="sidebar-item" data-tab="settings">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div><span>系统设置</span>
         </div>
-        <div class="sidebar-item" onclick="switchTab(this,'users')">
+        <div class="sidebar-item" data-tab="users">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>用户管理</span>
         </div>
-        <div class="sidebar-item" onclick="switchTab(this,'data')">
+        <div class="sidebar-item" data-tab="data">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div><span>数据管理</span>
         </div>
-        <div class="sidebar-item" onclick="switchTab(this,'devices')">
+        <div class="sidebar-item" data-tab="devices">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div><span>设备管理</span>
         </div>
     </div>
     <div class="sidebar-section">
         <div class="sidebar-section-label">导航</div>
-        <div class="sidebar-item" onclick="location.href='/yolov8-security/'">
-            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><span>监控大屏</span>
-        </div>
-        <div class="sidebar-item" onclick="location.href='/yolov8-security/annotate'">
+        <div class="sidebar-item" data-action="annotate">
             <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg></div><span>数据标注</span>
         </div>
     </div>
@@ -74,29 +66,185 @@
         <div class="topbar-left">
             <div class="topbar-breadcrumb">
                 <span>首页</span>
-                <span style="color:#ccc">/</span>
-                <span class="current">后台管理</span>
+                <span style="color:var(--text-muted)">/</span>
+                <span class="current" id="breadcrumbCurrent">仪表盘</span>
+            </div>
+            <div class="topbar-search" id="topbarSearch">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span>搜索功能...</span>
+                <kbd>Ctrl+K</kbd>
             </div>
         </div>
         <div class="topbar-right">
-            <button class="topbar-btn" id="themeToggle" title="切换主题" onclick="toggleTheme()">
+            <button class="topbar-btn" id="themeToggle" title="切换主题">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             </button>
-            <button class="topbar-btn" title="监控大屏" onclick="location.href='/yolov8-security/'">
+            <button class="topbar-btn" title="监控大屏" id="topbarMonitor">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </button>
+            <div class="topbar-sep"></div>
+            <div class="topbar-time" id="clock">--:--:--</div>
         </div>
     </header>
 
-    <!-- TAB: SETTINGS -->
-    <div class="page" id="tab-settings">
+    <!-- ==================== TAB: DASHBOARD ==================== -->
+    <div class="page" id="tab-dashboard">
+        <!-- Stat Cards -->
+        <div class="stat-row">
+            <div class="stat-card">
+                <div class="stat-card-top">
+                    <div class="stat-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    </div>
+                    <div class="stat-trend up" id="trendTotal">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/></svg>
+                        +12.5%
+                    </div>
+                </div>
+                <div class="stat-value" id="sTotal">--</div>
+                <div class="stat-label">今日检测总量</div>
+                <div class="stat-sub" id="sTotalSub">加载中...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-top">
+                    <div class="stat-icon red">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    </div>
+                    <div class="stat-trend down" id="trendAlert">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,18 13.5,8.5 8.5,13.5 1,6"/></svg>
+                        -8.3%
+                    </div>
+                </div>
+                <div class="stat-value" id="sAlerts">--</div>
+                <div class="stat-label">今日告警事件</div>
+                <div class="stat-sub" id="sAlertsSub">加载中...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-top">
+                    <div class="stat-icon green">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                    <div class="stat-trend up">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/></svg>
+                        <span id="sOnlineRate">--</span>
+                    </div>
+                </div>
+                <div class="stat-value" id="sDevices">--</div>
+                <div class="stat-label">设备在线</div>
+                <div class="stat-sub">全部运行中</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-top">
+                    <div class="stat-icon orange">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+                    </div>
+                    <div class="stat-trend up">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/></svg>
+                        <span id="sModelDevice">--</span>
+                    </div>
+                </div>
+                <div class="stat-value" id="sModel">--</div>
+                <div class="stat-label">AI 模型</div>
+                <div class="stat-sub" id="sModelSub">加载中...</div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid-3">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--text-muted)"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+                        检测趋势
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-primary" data-range="day">日</button>
+                        <button class="btn btn-sm" data-range="week">周</button>
+                        <button class="btn btn-sm" data-range="month">月</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--text-muted)"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+                        行为分布
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-wrap"><canvas id="doughnutChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity + Detection Table -->
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--text-muted)"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+                        最近活动
+                    </div>
+                    <button class="btn btn-sm" data-action="refreshDashboard">刷新</button>
+                </div>
+                <div class="card-body">
+                    <div class="activity-list" id="activityList">
+                        <div class="activity-item"><div class="activity-dot info"></div><div class="activity-content"><div class="activity-title">系统启动</div><div class="activity-desc">等待检测数据...</div><div class="activity-time">--</div></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--text-muted)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        检测记录
+                    </div>
+                    <button class="btn btn-sm" data-action="viewAll">查看全部</button>
+                </div>
+                <div class="card-body" style="padding:0">
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>时间</th><th>行为类型</th><th>置信度</th><th>状态</th></tr></thead>
+                            <tbody id="dashTableBody">
+                                <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:20px">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Device Status -->
+        <div class="grid-full">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--text-muted)"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        设备状态
+                    </div>
+                    <button class="btn btn-sm" data-action="manageDevices">管理设备</button>
+                </div>
+                <div class="card-body">
+                    <div class="device-grid" id="deviceGrid">
+                        <div class="device-card"><div class="device-card-top"><span class="device-card-name">加载中...</span></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== TAB: SETTINGS ==================== -->
+    <div class="page" id="tab-settings" style="display:none">
         <div class="page-title-row">
             <div><div class="page-title">系统设置</div><div class="page-desc">检测参数、告警规则、AI模型配置</div></div>
-            <button class="btn btn-primary" onclick="saveSettings()">💾 保存设置</button>
+            <button class="btn btn-primary" id="saveSettingsBtn">保存设置</button>
         </div>
 
         <div class="card">
-            <div class="card-header"><div class="card-title">🔍 检测参数</div></div>
+            <div class="card-header"><div class="card-title">检测参数</div></div>
             <div class="card-body">
                 <div class="form-row">
                     <div class="form-group">
@@ -124,7 +272,7 @@
         </div>
 
         <div class="card">
-            <div class="card-header"><div class="card-title">🚨 告警规则</div></div>
+            <div class="card-header"><div class="card-title">告警规则</div></div>
             <div class="card-body">
                 <div class="form-row">
                     <div class="form-group">
@@ -158,7 +306,7 @@
         </div>
 
         <div class="card">
-            <div class="card-header"><div class="card-title">🤖 AI模型配置</div></div>
+            <div class="card-header"><div class="card-title">AI模型配置</div></div>
             <div class="card-body">
                 <div class="settings-grid">
                     <div class="setting-item">
@@ -182,34 +330,33 @@
         </div>
     </div>
 
-    <!-- TAB: USERS -->
+    <!-- ==================== TAB: USERS ==================== -->
     <div class="page" id="tab-users" style="display:none">
         <div class="page-title-row">
             <div><div class="page-title">用户管理</div><div class="page-desc">系统用户账号管理</div></div>
-            <button class="btn btn-primary" onclick="showAddUserModal()">+ 添加用户</button>
+            <button class="btn btn-primary" id="addUserBtn">+ 添加用户</button>
         </div>
         <div class="card">
             <div class="card-header">
-                <div class="card-title">👤 用户列表</div>
+                <div class="card-title">用户列表</div>
                 <span class="badge badge-gray" id="userCount">0 个用户</span>
             </div>
             <div style="overflow-x:auto">
                 <table>
                     <thead><tr><th>用户名</th><th>姓名</th><th>角色</th><th>状态</th><th>最后登录</th><th>操作</th></tr></thead>
-                    <tbody id="userTableBody">
-                    </tbody>
+                    <tbody id="userTableBody"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- TAB: DATA -->
+    <!-- ==================== TAB: DATA ==================== -->
     <div class="page" id="tab-data" style="display:none">
         <div class="page-title-row">
             <div><div class="page-title">数据管理</div><div class="page-desc">检测数据、截图、存储管理</div></div>
         </div>
         <div class="card">
-            <div class="card-header"><div class="card-title">📊 数据统计</div></div>
+            <div class="card-header"><div class="card-title">数据统计</div></div>
             <div class="card-body">
                 <div class="settings-grid">
                     <div class="setting-item">
@@ -232,51 +379,37 @@
             </div>
         </div>
         <div class="card">
-            <div class="card-header"><div class="card-title">🔧 数据操作</div></div>
+            <div class="card-header"><div class="card-title">数据操作</div></div>
             <div class="card-body">
                 <div class="btn-group" style="gap:10px">
-                    <button class="btn btn-success" onclick="exportAllData()">📤 导出全部数据 (CSV)</button>
-                    <button class="btn" onclick="openDataFolder()">📂 打开数据目录</button>
-                    <button class="btn btn-danger" onclick="confirmClearData()">🗑 清空所有数据</button>
+                    <button class="btn btn-success" data-action="exportAll">导出全部数据 (CSV)</button>
+                    <button class="btn" data-action="openFolder">打开数据目录</button>
+                    <button class="btn btn-danger" data-action="clearData">清空所有数据</button>
                 </div>
-                <div style="margin-top:12px;font-size:10px;color:var(--text-muted)">⚠ 清空操作将删除所有检测记录和截图，不可恢复</div>
+                <div style="margin-top:12px;font-size:10px;color:var(--text-muted)">清空操作将删除所有检测记录和截图，不可恢复</div>
             </div>
         </div>
     </div>
 
-    <!-- TAB: DEVICES -->
+    <!-- ==================== TAB: DEVICES ==================== -->
     <div class="page" id="tab-devices" style="display:none">
         <div class="page-title-row">
             <div><div class="page-title">设备管理</div><div class="page-desc">摄像头和检测设备管理</div></div>
-            <button class="btn btn-primary" onclick="showAddDeviceModal()">+ 添加设备</button>
+            <button class="btn btn-primary" id="addDeviceBtn">+ 添加设备</button>
         </div>
         <div class="card">
-            <div class="card-header"><div class="card-title">📹 摄像头设备</div></div>
+            <div class="card-header"><div class="card-title">摄像头设备</div></div>
             <div style="overflow-x:auto">
                 <table>
                     <thead><tr><th>编号</th><th>名称</th><th>类型</th><th>地址</th><th>区域</th><th>状态</th><th>操作</th></tr></thead>
                     <tbody id="deviceTableBody">
-                        <tr>
-                            <td>CAM-001</td><td>主摄像头</td><td>USB</td><td>设备索引 0</td><td>主监控区</td>
-                            <td><span class="badge badge-green badge-dot">在线</span></td>
-                            <td><button class="btn btn-sm" onclick="editDevice(0)">编辑</button></td>
-                        </tr>
-                        <tr>
-                            <td>CAM-002</td><td>走廊摄像头</td><td>RTSP</td><td>rtsp://192.168.1.100:554/stream1</td><td>A区走廊</td>
-                            <td><span class="badge badge-gray badge-dot">未连接</span></td>
-                            <td><button class="btn btn-sm" onclick="editDevice(1)">编辑</button></td>
-                        </tr>
-                        <tr>
-                            <td>CAM-003</td><td>操场摄像头</td><td>RTSP</td><td>rtsp://192.168.1.101:554/stream1</td><td>B区操场</td>
-                            <td><span class="badge badge-gray badge-dot">未连接</span></td>
-                            <td><button class="btn btn-sm" onclick="editDevice(2)">编辑</button></td>
-                        </tr>
+                        <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px">加载中...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
         <div class="card">
-            <div class="card-header"><div class="card-title">ℹ 设备说明</div></div>
+            <div class="card-header"><div class="card-title">设备说明</div></div>
             <div class="card-body" style="font-size:11px;color:var(--text-secondary);line-height:1.8">
                 <p><strong>USB摄像头</strong>: 使用设备索引（0, 1, 2...）连接本地摄像头</p>
                 <p><strong>RTSP流</strong>: 使用RTSP地址连接网络摄像头，格式: rtsp://IP:端口/路径</p>
@@ -297,305 +430,14 @@
     <div class="modal">
         <div class="modal-header">
             <div class="modal-title" id="modalTitle">提示</div>
-            <button class="modal-close" onclick="closeModal()">×</button>
+            <button class="modal-close">&times;</button>
         </div>
         <div class="modal-body" id="modalBody"></div>
         <div class="modal-footer" id="modalFooter"></div>
     </div>
 </div>
 
-<script>
-const API_BASE = '/yolov8-security';
-
-function setTxt(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val;
-}
-
-async function authFetch(url, opts={}) {
-    const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
-    const headers = {...(opts.headers||{})};
-    if (token) headers['Authorization'] = 'Bearer ' + token;
-    const res = await fetch(url, {...opts, headers});
-    if (res.status === 401) { sessionStorage.removeItem('auth_token'); localStorage.removeItem('auth_token'); window.location.href = API_BASE + '/login'; }
-    return res;
-}
-
-/* THEME */
-function initTheme() {
-    const saved = localStorage.getItem('theme') || 'light';
-    document.documentElement.setAttribute('data-theme', saved);
-    updateThemeIcon(saved);
-}
-function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme') || 'light';
-    const next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    updateThemeIcon(next);
-}
-function updateThemeIcon(theme) {
-    const btn = document.getElementById('themeToggle');
-    if (btn) btn.textContent = theme === 'dark' ? '☀' : '🌙';
-}
-initTheme();
-
-/* NAV */
-function switchTab(el, tab) {
-    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-    if (el) el.classList.add('active');
-    document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
-    const target = document.getElementById('tab-' + tab);
-    if (target) target.style.display = 'block';
-}
-
-/* TOAST */
-function toast(msg, type='info') {
-    const c = document.getElementById('toastContainer');
-    const t = document.createElement('div');
-    const icons = {success:'✅',error:'❌',info:'ℹ️',warning:'⚠'};
-    t.className = 'toast '+(type||'info');
-    t.innerHTML = (icons[type]||'ℹ️')+' '+msg;
-    c.appendChild(t);
-    setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300)},3500);
-}
-
-/* MODAL */
-function openModal(title, body, footer) {
-    document.getElementById('modalTitle').textContent = title;
-    document.getElementById('modalBody').innerHTML = body;
-    document.getElementById('modalFooter').innerHTML = footer||'';
-    document.getElementById('modalOverlay').classList.add('show');
-}
-function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
-document.getElementById('modalOverlay').addEventListener('click', e=>{if(e.target===document.getElementById('modalOverlay'))closeModal()});
-
-/* SETTINGS */
-function saveSettings() {
-    const settings = {
-        confidence: document.getElementById('setConfidence').value,
-        iou: document.getElementById('setIou').value,
-        interval: document.getElementById('setInterval').value,
-        maxPeople: document.getElementById('setMaxPeople').value,
-        fallSensitivity: document.getElementById('setFallSensitivity').value,
-        fightSensitivity: document.getElementById('setFightSensitivity').value,
-        alertCooldown: document.getElementById('setAlertCooldown').value,
-        fatigueThreshold: document.getElementById('setFatigueThreshold').value
-    };
-    localStorage.setItem('detection_settings', JSON.stringify(settings));
-    toast('设置已保存', 'success');
-}
-
-function loadSettings() {
-    const saved = localStorage.getItem('detection_settings');
-    if (saved) {
-        try {
-            const s = JSON.parse(saved);
-            if (s.confidence) document.getElementById('setConfidence').value = s.confidence;
-            if (s.iou) document.getElementById('setIou').value = s.iou;
-            if (s.interval) document.getElementById('setInterval').value = s.interval;
-            if (s.maxPeople) document.getElementById('setMaxPeople').value = s.maxPeople;
-            if (s.fallSensitivity) document.getElementById('setFallSensitivity').value = s.fallSensitivity;
-            if (s.fightSensitivity) document.getElementById('setFightSensitivity').value = s.fightSensitivity;
-            if (s.alertCooldown) document.getElementById('setAlertCooldown').value = s.alertCooldown;
-            if (s.fatigueThreshold) document.getElementById('setFatigueThreshold').value = s.fatigueThreshold;
-        } catch(e) {}
-    }
-}
-
-/* USERS */
-const DEFAULT_USERS = [
-    { username:'xx', name:'陈明', role:'超级管理员', status:'在线', lastLogin:'2026-05-04 10:30:00' },
-    { username:'operator1', name:'张伟', role:'操作员', status:'离线', lastLogin:'2026-05-03 18:00:00' },
-    { username:'guard1', name:'李强', role:'值班员', status:'离线', lastLogin:'2026-05-03 08:00:00' }
-];
-
-function getUsers() {
-    const saved = localStorage.getItem('system_users');
-    if (saved) { try { return JSON.parse(saved) } catch(e) {} }
-    return DEFAULT_USERS;
-}
-
-function saveUsers(users) {
-    localStorage.setItem('system_users', JSON.stringify(users));
-}
-
-function renderUsers() {
-    const users = getUsers();
-    const tbody = document.getElementById('userTableBody');
-    if (!tbody) return;
-    setTxt('userCount', users.length + ' 个用户');
-    tbody.innerHTML = users.map((u, i) => `<tr>
-        <td style="font-weight:600">${u.username}</td>
-        <td>${u.name}</td>
-        <td><span class="badge ${u.role==='超级管理员'?'badge-blue':'badge-green'}">${u.role}</span></td>
-        <td><span class="badge ${u.status==='在线'?'badge-green':'badge-gray'} badge-dot">${u.status}</span></td>
-        <td style="font-size:10px;font-family:monospace">${u.lastLogin}</td>
-        <td>
-            <button class="btn btn-sm" onclick="editUser(${i})">编辑</button>
-            ${u.username!=='xx'?`<button class="btn btn-sm btn-danger" onclick="deleteUser(${i})">删除</button>`:''}
-        </td>
-    </tr>`).join('');
-}
-
-function showAddUserModal() {
-    openModal('添加用户', `
-        <div class="form-group"><label class="form-label">用户名</label><input type="text" class="form-input" id="newUsername" placeholder="登录用户名"></div>
-        <div class="form-group"><label class="form-label">姓名</label><input type="text" class="form-input" id="newName" placeholder="真实姓名"></div>
-        <div class="form-group"><label class="form-label">密码</label><input type="password" class="form-input" id="newPassword" placeholder="登录密码"></div>
-        <div class="form-group"><label class="form-label">角色</label><select class="form-select" id="newRole"><option value="操作员">操作员</option><option value="值班员">值班员</option><option value="管理员">管理员</option></select></div>
-    `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="addUser()">添加</button>`);
-}
-
-function addUser() {
-    const username = document.getElementById('newUsername').value.trim();
-    const name = document.getElementById('newName').value.trim();
-    const password = document.getElementById('newPassword').value;
-    const role = document.getElementById('newRole').value;
-    if (!username || !name) { toast('请填写用户名和姓名', 'error'); return; }
-    const users = getUsers();
-    if (users.find(u => u.username === username)) { toast('用户名已存在', 'error'); return; }
-    users.push({ username, name, role, status:'离线', lastLogin:'--', password });
-    saveUsers(users);
-    renderUsers();
-    closeModal();
-    toast('用户 ' + name + ' 已添加', 'success');
-}
-
-function editUser(index) {
-    const users = getUsers();
-    const u = users[index];
-    openModal('编辑用户', `
-        <div class="form-group"><label class="form-label">用户名</label><input type="text" class="form-input" value="${u.username}" disabled style="opacity:.6"></div>
-        <div class="form-group"><label class="form-label">姓名</label><input type="text" class="form-input" id="editName" value="${u.name}"></div>
-        <div class="form-group"><label class="form-label">角色</label><select class="form-select" id="editRole">
-            <option value="超级管理员" ${u.role==='超级管理员'?'selected':''}>超级管理员</option>
-            <option value="管理员" ${u.role==='管理员'?'selected':''}>管理员</option>
-            <option value="操作员" ${u.role==='操作员'?'selected':''}>操作员</option>
-            <option value="值班员" ${u.role==='值班员'?'selected':''}>值班员</option>
-        </select></div>
-        <div class="form-group"><label class="form-label">新密码 (留空不修改)</label><input type="password" class="form-input" id="editPassword" placeholder="留空则不修改"></div>
-    `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveUser(${index})">保存</button>`);
-}
-
-function saveUser(index) {
-    const users = getUsers();
-    users[index].name = document.getElementById('editName').value.trim();
-    users[index].role = document.getElementById('editRole').value;
-    const pw = document.getElementById('editPassword').value;
-    if (pw) users[index].password = pw;
-    saveUsers(users);
-    renderUsers();
-    closeModal();
-    toast('用户信息已更新', 'success');
-}
-
-function deleteUser(index) {
-    const users = getUsers();
-    const u = users[index];
-    openModal('确认删除', `<div style="text-align:center;padding:8px 0"><div style="font-size:28px;margin-bottom:8px">⚠</div><div style="font-size:13px;font-weight:600">确定删除用户 "${u.name}" 吗？</div></div>`,
-        `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-danger" onclick="confirmDeleteUser(${index})">确认删除</button>`);
-}
-
-function confirmDeleteUser(index) {
-    const users = getUsers();
-    users.splice(index, 1);
-    saveUsers(users);
-    renderUsers();
-    closeModal();
-    toast('用户已删除', 'success');
-}
-
-/* DATA */
-async function loadDataStats() {
-    try {
-        const res = await authFetch(API_BASE + '/api/stats');
-        if (res.ok) {
-            const data = await res.json();
-            setTxt('dataTotalDetections', (data.totalDetections || 0) + ' 条');
-            setTxt('dataTotalImages', (data.totalImages || 0) + ' 张');
-        }
-        const sysRes = await authFetch(API_BASE + '/api/system_info');
-        if (sysRes.ok) {
-            const s = await sysRes.json();
-            if (s.status === 'success') {
-                setTxt('dataStorageSize', s.dataDirSizeMb + ' MB');
-            }
-        }
-    } catch(e) {}
-}
-
-function exportAllData() {
-    toast('正在导出数据...', 'info');
-    // Trigger download via the dashboard's export
-    location.href = API_BASE + '/index';
-}
-
-function openDataFolder() {
-    authFetch(API_BASE + '/api/open_folder', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({folder: 'data'})
-    }).then(res => {
-        if (res.ok) toast('已打开数据目录', 'success');
-        else toast('打开失败（可能在服务器环境）', 'error');
-    }).catch(() => toast('打开失败', 'error'));
-}
-
-function confirmClearData() {
-    openModal('确认清空', `<div style="text-align:center;padding:8px 0"><div style="font-size:28px;margin-bottom:8px">⚠</div><div style="font-size:13px;font-weight:600;margin-bottom:6px">确定要清空所有检测数据吗？</div><div style="font-size:11px;color:var(--text-muted)">此操作不可恢复</div></div>`,
-        `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-danger" onclick="clearAllData()">确认清空</button>`);
-}
-
-async function clearAllData() {
-    try {
-        const res = await authFetch(API_BASE + '/api/delete_all_images', {method:'DELETE'});
-        if (res.ok) { toast('数据已清空', 'success'); closeModal(); loadDataStats(); }
-        else toast('清空失败: ' + res.status, 'error');
-    } catch(e) { toast('清空失败', 'error'); }
-}
-
-/* DEVICES */
-function showAddDeviceModal() {
-    openModal('添加设备', `
-        <div class="form-group"><label class="form-label">设备名称</label><input type="text" class="form-input" id="devName" placeholder="如: 走廊摄像头"></div>
-        <div class="form-group"><label class="form-label">设备类型</label><select class="form-select" id="devType"><option value="USB">USB摄像头</option><option value="RTSP">RTSP网络摄像头</option><option value="FILE">视频文件</option></select></div>
-        <div class="form-group"><label class="form-label">设备地址</label><input type="text" class="form-input" id="devAddress" placeholder="设备索引(0) 或 RTSP地址"></div>
-        <div class="form-group"><label class="form-label">监控区域</label><input type="text" class="form-input" id="devArea" placeholder="如: A区走廊"></div>
-    `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="toast('设备已添加（需重启Python服务生效）','success');closeModal()">添加</button>`);
-}
-
-function editDevice(index) {
-    toast('设备编辑功能 - 修改后需重启Python服务', 'info');
-}
-
-/* MODEL INFO */
-async function fetchModelStatus() {
-    try {
-        const [modelRes, aiRes] = await Promise.allSettled([
-            authFetch(API_BASE + '/api/model_info'),
-            authFetch(API_BASE + '/api/ai/status')
-        ]);
-        if (modelRes.status === 'fulfilled' && modelRes.value.ok) {
-            const m = await modelRes.value.json();
-            setTxt('modelDeviceSetting', m.device || 'N/A');
-            setTxt('modelPrecisionSetting', m.precision || 'N/A');
-        }
-        if (aiRes.status === 'fulfilled' && aiRes.value.ok) {
-            const a = await aiRes.value.json();
-            setTxt('qwenStatus', a.status === 'online' ? '已连接' : '未启动');
-        }
-    } catch(e) {}
-}
-
-/* INIT */
-loadSettings();
-renderUsers();
-loadDataStats();
-fetchModelStatus();
-
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
-</script>
 <script src="/yolov8-security/static/js/common.js"></script>
+<script src="/yolov8-security/static/js/admin-page.js"></script>
 </body>
 </html>

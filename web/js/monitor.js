@@ -268,6 +268,29 @@
   });
 
   // ============================================================
+  // TOPBAR BUTTONS
+  // ============================================================
+  /* 全屏按钮 — 进入/退出全屏模式 */
+  var fullscreenBtn = document.getElementById('fullscreenBtn');
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', function() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        document.documentElement.requestFullscreen().catch(function() {});
+      }
+    });
+  }
+
+  /* 后台管理按钮 — 跳转到管理页面 */
+  var adminBtn = document.getElementById('adminBtn');
+  if (adminBtn) {
+    adminBtn.addEventListener('click', function() {
+      location.href = API_BASE + '/admin';
+    });
+  }
+
+  // ============================================================
   // INIT
   // ============================================================
   renderCameras();
