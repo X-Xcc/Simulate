@@ -40,3 +40,25 @@ models/*.pt
 
 # Environment
 .env
+.venv/
+
+# Claude Code / gstack
+.claude/
+.gstack/
+.superpowers/
+
+# Maven wrapper
+.mvn/
+maven-wrapper/
+
+# GPU test scripts
+check_gpu.py
+download_torch_gpu.py
+install_gpu_torch.py
+test_gpu.py
+
+# Test snapshots
+test_snapshot*.jpg
+
+# Superpowers docs (local plans/specs)
+docs/superpowers/
