@@ -26,7 +26,7 @@ openjdk/
 Thumbs.db
 
 # Data (auto-generated)
-backend/data/
+server/data/
 
 # Videos (auto-generated)
 results/
@@ -62,6 +62,3 @@ test_snapshot*.jpg
 
 # Superpowers docs (local plans/specs)
 docs/superpowers/
-
-# Backend ai-models duplicate
-backend/ai-models/
