@@ -62,3 +62,6 @@ test_snapshot*.jpg
 
 # Superpowers docs (local plans/specs)
 docs/superpowers/
+
+# Backend ai-models duplicate
+backend/ai-models/
