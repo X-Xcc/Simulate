@@ -30,8 +30,8 @@ public class DetectionService {
     private final AppConfig appConfig;
     private final ObjectMapper objectMapper;
 
-    private DirScan scanCache;
-    private long scanCacheTimeMs;
+    private volatile DirScan scanCache;
+    private volatile long scanCacheTimeMs;
     private static final long SCAN_CACHE_TTL_MS = 2000L;
 
     public DetectionService(AppConfig appConfig, ObjectMapper objectMapper) {
@@ -69,7 +69,7 @@ public class DetectionService {
         List<Path> jsonPaths = new ArrayList<>();
         List<Path> jpgPaths = new ArrayList<>();
 
-        try (Stream<Path> paths = Files.walk(dataDir.toPath())) {
+        try (Stream<Path> paths = Files.list(dataDir.toPath())) {
             paths.filter(Files::isRegularFile).forEach(p -> {
                 String name = p.getFileName().toString();
                 if (name.startsWith("detection_") && name.endsWith(".json")) {
@@ -237,7 +237,9 @@ public class DetectionService {
 
                 if (files != null) {
                     for (File file : files) {
-                        file.delete();
+                        if (!file.delete()) {
+                            log.warn("Failed to delete file: {}", file.getAbsolutePath());
+                        }
                     }
                 }
             }
@@ -296,11 +298,10 @@ public class DetectionService {
                 folder.mkdirs();
             }
 
-            java.awt.Desktop.getDesktop().open(folder);
-
             Map<String, Object> result = new HashMap<>();
             result.put("status", "success");
-            result.put("message", "Opened " + folderPath);
+            result.put("path", folder.getAbsolutePath());
+            result.put("message", "Folder path: " + folder.getAbsolutePath());
             return result;
         } catch (Exception e) {
             log.error("Error opening folder", e);
@@ -312,9 +313,8 @@ public class DetectionService {
     }
 
     private DetectionData loadDetectionFile(Path path) {
-        try {
-            // 使用UTF-8编码读取JSON文件
-            return objectMapper.readValue(Files.newBufferedReader(path, StandardCharsets.UTF_8), DetectionData.class);
+        try (var reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            return objectMapper.readValue(reader, DetectionData.class);
         } catch (IOException e) {
             log.error("Error loading detection file: {}", path, e);
             return null;
