@@ -34,7 +34,7 @@ public class DetectionService {
 
     private volatile DirScan scanCache;
     private volatile long scanCacheTimeMs;
-    private static final long SCAN_CACHE_TTL_MS = 2000L;
+    private static final long SCAN_CACHE_TTL_MS = 5000L;
 
     public DetectionService(AppConfig appConfig, ObjectMapper objectMapper) {
         this.appConfig = appConfig;

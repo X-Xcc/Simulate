@@ -3,6 +3,7 @@ package com.yolov8.security.controller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,8 +26,17 @@ public class VideoStreamController {
 
     private static final Logger log = LoggerFactory.getLogger(VideoStreamController.class);
 
-    /** Multi-camera frame storage: camId -> latest frame */
-    private final Map<String, BufferedImage> latestFrames = new ConcurrentHashMap<>();
+    @Value("${app.video.stream-poll-interval-ms:16}")
+    private int streamPollIntervalMs;
+
+    @Value("${app.video.no-frame-poll-interval-ms:200}")
+    private int noFramePollIntervalMs;
+
+    @Value("${app.video.frame-ttl-ms:30000}")
+    private long frameTtlMs;
+
+    /** Multi-camera frame storage: camId -> latest frame bytes (JPEG) */
+    private final Map<String, byte[]> latestFrameBytes = new ConcurrentHashMap<>();
     private final Map<String, Long> lastFrameIds = new ConcurrentHashMap<>();
 
     /** Test frame cache per camera */
@@ -38,12 +48,18 @@ public class VideoStreamController {
     private static final String DEFAULT_CAM = "0";
 
     /**
-     * Update frame for a specific camera.
+     * Update frame for a specific camera. Converts to JPEG bytes immediately.
      */
     public void updateFrame(BufferedImage frame, String camId) {
         String id = (camId != null && !camId.isEmpty()) ? camId : DEFAULT_CAM;
-        latestFrames.put(id, frame);
-        lastFrameIds.put(id, System.currentTimeMillis());
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(frame, "jpg", baos);
+            latestFrameBytes.put(id, baos.toByteArray());
+            lastFrameIds.put(id, System.currentTimeMillis());
+        } catch (IOException e) {
+            log.error("Error encoding frame for cam={}", id, e);
+        }
     }
 
     /**
@@ -65,17 +81,29 @@ public class VideoStreamController {
         response.setHeader("Pragma", "no-cache");
 
         try (OutputStream out = response.getOutputStream()) {
+            byte[] lastSentFrame = null;
             while (!Thread.currentThread().isInterrupted()) {
                 try {
-                    byte[] frameBytes = getCurrentFrameBytes(cam);
-                    if (frameBytes.length > 0) {
-                        writeFrame(out, frameBytes);
+                    byte[] frameBytes = getFrameBytes(cam);
+                    if (frameBytes != null && frameBytes.length > 0) {
+                        if (!java.util.Arrays.equals(frameBytes, lastSentFrame)) {
+                            writeFrame(out, frameBytes);
+                            lastSentFrame = frameBytes;
+                            Thread.sleep(streamPollIntervalMs);
+                        } else {
+                            Thread.sleep(streamPollIntervalMs / 2);
+                        }
+                    } else {
+                        byte[] testFrame = getTestFrameBytes(cam);
+                        if (testFrame.length > 0) {
+                            writeFrame(out, testFrame);
+                        }
+                        Thread.sleep(noFramePollIntervalMs);
                     }
                 } catch (IOException e) {
                     log.debug("Client disconnected during frame write (cam={})", cam);
                     break;
                 }
-                Thread.sleep(100);
             }
         } catch (IOException e) {
             log.debug("Client disconnected (cam={})", cam);
@@ -92,24 +120,29 @@ public class VideoStreamController {
     public Map<String, Object> getCameras() {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("status", "success");
-        result.put("cameras", latestFrames.keySet());
-        result.put("count", latestFrames.size());
+        result.put("cameras", latestFrameBytes.keySet());
+        result.put("count", latestFrameBytes.size());
         return result;
     }
 
-    private byte[] getCurrentFrameBytes(String cam) {
-        BufferedImage frameToUse = latestFrames.get(cam);
-
-        if (frameToUse == null) {
-            frameToUse = getOrCreateCachedTestFrame(cam);
+    private byte[] getFrameBytes(String cam) {
+        // Check TTL — expire stale frames
+        Long ts = lastFrameIds.get(cam);
+        if (ts != null && System.currentTimeMillis() - ts > frameTtlMs) {
+            latestFrameBytes.remove(cam);
+            lastFrameIds.remove(cam);
+            return null;
         }
+        return latestFrameBytes.get(cam);
+    }
 
+    private byte[] getTestFrameBytes(String cam) {
+        BufferedImage testFrame = getOrCreateCachedTestFrame(cam);
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            ImageIO.write(frameToUse, "jpg", baos);
+            ImageIO.write(testFrame, "jpg", baos);
             return baos.toByteArray();
         } catch (IOException e) {
-            log.error("Error encoding frame (cam={})", cam);
             return new byte[0];
         }
     }
