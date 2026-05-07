@@ -72,4 +72,24 @@ public class AuthController {
     private static boolean constantTimeEquals(String a, String b) {
         return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(401).body(Map.of("error", "未登录"));
+        }
+        try {
+            String token = authHeader.substring(7);
+            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+            String username = Jwts.parser().verifyWith(key).build()
+                    .parseSignedClaims(token).getPayload().getSubject();
+            return ResponseEntity.ok(Map.of(
+                "username", username,
+                "name", username,
+                "role", "超级管理员"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(Map.of("error", "令牌无效"));
+        }
+    }
 }

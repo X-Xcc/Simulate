@@ -525,7 +525,7 @@
         } catch (e) {
             console.warn('fetchData error:', e);
             DetectionModule.updateDetTable(null);
-            Common.toast('\u6570\u636E\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u670D\u52A1\u72B6\u6001', 'error');
+            Common.throttledErrorToast('\u6570\u636E\u52A0\u8F7D\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u670D\u52A1\u72B6\u6001');
         }
     }
     /* 暴露给其他模块调用（如告警模块触发数据刷新） */

@@ -85,6 +85,20 @@
         }, 3500);
     }
 
+    // 节流错误 toast — 防止轮询失败时弹出大量重复 toast
+    var _errorToastCount = 0;
+    var _errorToastTimer = null;
+    function throttledErrorToast(msg) {
+        _errorToastCount++;
+        if (_errorToastCount <= 2) {
+            toast(msg, 'error');
+        } else if (_errorToastCount === 3) {
+            toast('连接异常，正在自动重试...', 'error');
+        }
+        clearTimeout(_errorToastTimer);
+        _errorToastTimer = setTimeout(function() { _errorToastCount = 0; }, 30000);
+    }
+
     function openModal(title, bodyEl, footerEl) {
         var overlay = document.getElementById('modalOverlay');
         if (!overlay) return;
@@ -153,6 +167,17 @@
         }
     }
 
+    // 从 API 加载当前用户信息并更新侧边栏
+    async function loadUserInfo() {
+        try {
+            var user = await authFetch(API_BASE + '/api/me');
+            var avatarEl = document.getElementById('userAvatarInitial');
+            var nameEl = document.getElementById('userName');
+            if (avatarEl) avatarEl.textContent = (user.name || user.username || '?').charAt(0);
+            if (nameEl) nameEl.textContent = user.name || user.username;
+        } catch (e) { /* 静默 */ }
+    }
+
     // Export to window.Common
     window.Common = {
         API_BASE: API_BASE,
@@ -161,15 +186,21 @@
         setTxt: setTxt,
         authFetch: authFetch,
         toast: toast,
+        throttledErrorToast: throttledErrorToast,
         openModal: openModal,
         closeModal: closeModal,
         onEvent: onEvent,
         initTheme: initTheme,
         themeToggle: themeToggle,
         startClock: startClock,
-        initSidebarToggle: initSidebarToggle
+        initSidebarToggle: initSidebarToggle,
+        loadUserInfo: loadUserInfo
     };
 
     // Auto-init theme on load
     initTheme();
+    // Auto-load user info when token exists
+    if (sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token')) {
+        loadUserInfo();
+    }
 })();

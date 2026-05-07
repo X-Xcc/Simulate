@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -51,11 +51,14 @@
     </div>
     <div class="sidebar-footer">
         <div class="sidebar-user">
-            <div class="sidebar-avatar">陈</div>
+            <div class="sidebar-avatar" id="userAvatarInitial">?</div>
             <div>
-                <div class="sidebar-user-name">陈明</div>
+                <div class="sidebar-user-name" id="userName">加载中...</div>
                 <div class="sidebar-user-role">超级管理员</div>
             </div>
+        </div>
+        <div class="sidebar-item" data-action="logout" style="margin-top:4px;color:var(--red)">
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></div><span>退出登录</span>
         </div>
     </div>
 </aside>
@@ -76,10 +79,10 @@
             </div>
         </div>
         <div class="topbar-right">
-            <button class="topbar-btn" id="themeToggle" title="切换主题">
+            <button class="topbar-btn" id="themeToggle" title="切换主题" aria-label="切换主题">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             </button>
-            <button class="topbar-btn" title="监控大屏" id="topbarMonitor">
+            <button class="topbar-btn" title="监控大屏" aria-label="监控大屏" id="topbarMonitor">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </button>
             <div class="topbar-sep"></div>
@@ -426,11 +429,11 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- MODAL -->
-<div class="modal-overlay" id="modalOverlay">
+<div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal">
         <div class="modal-header">
             <div class="modal-title" id="modalTitle">提示</div>
-            <button class="modal-close">&times;</button>
+            <button class="modal-close" aria-label="关闭">&times;</button>
         </div>
         <div class="modal-body" id="modalBody"></div>
         <div class="modal-footer" id="modalFooter"></div>
