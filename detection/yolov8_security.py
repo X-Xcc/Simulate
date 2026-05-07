@@ -21,6 +21,7 @@ import torch
 from typing import List, Tuple, Optional
 from dataclasses import dataclass, field
 from PIL import ImageFont, ImageDraw, Image
+import math
 
 # 快速忽略警告，不进行复杂配置
 import warnings
@@ -104,6 +105,7 @@ class Config:
     EYE_AR_THRESHOLD = 0.2  # EAR阈值，低于此值认为是闭眼
     EYE_FATIGUE_FRAMES = 30  # 连续多少帧EAR过低判定为疲劳
     EYE_FATIGUE_GRACE_FRAMES = 5  # 关键点无效时保持计数器的宽限期帧数
+    USE_HEAD_TILT_FOR_FATIGUE = True  # 使用头部倾斜替代 EAR 检测（EAR 无法真正检测眨眼）
     # 点头检测参数（微睡眠检测）
     HEAD_NOD_Y_THRESHOLD = 0.03  # 鼻子下移阈值（归一化坐标）
     HEAD_NOD_COUNT = 3           # 60秒内点头次数阈值
@@ -439,6 +441,34 @@ class Utils:
         ear = avg_eye_height / eye_width
         return ear, True
 
+    @staticmethod
+    def detect_head_tilt(keypoints: np.ndarray) -> Tuple[bool, float]:
+        """通过头部倾斜角度检测困倦状态（替代眼疲劳检测）
+
+        使用 left_eye(1)、right_eye(2) 计算眼部连线与水平线的夹角，
+        夹角过大表示头部侧倾，可能处于困倦状态。
+        """
+        if len(keypoints) < 17:
+            return False, 0.0
+
+        left_eye = keypoints[1]
+        right_eye = keypoints[2]
+        nose = keypoints[0]
+
+        if left_eye[2] < 0.5 or right_eye[2] < 0.5 or nose[2] < 0.5:
+            return False, 0.0
+
+        dy = right_eye[1] - left_eye[1]
+        dx = right_eye[0] - left_eye[0]
+        if dx == 0:
+            return False, 0.0
+
+        angle = abs(math.degrees(math.atan2(dy, dx)))
+        is_tilted = angle > 20.0
+        confidence = min(angle / 45.0, 1.0)
+
+        return is_tilted, confidence
+
 
 # ===================== 检测结果封装 =====================
 @dataclass
@@ -512,8 +542,8 @@ class DetectionModule:
         trunk_angle = np.arccos(
             np.clip(-trunk_vector[1] / trunk_norm, -1.0, 1.0)) * 180 / np.pi if trunk_norm > 0 else 0
 
-        # 7. 头部与地面的相对位置（新增特征）
-        head_ground_ratio = head_y / max_y
+        # 7. 头部与地面的相对位置（归一化坐标中 head_y 本身就是比例）
+        head_ground_ratio = head_y
 
         # 8. 关键点置信度加权（新增特征）
         confidence_score = np.mean(keypoints[:, 2])
@@ -522,11 +552,11 @@ class DetectionModule:
         fall_score = 0
         required_features = 0
 
-        # 特征1：长宽比（调整为更合理的值）
-        if aspect_ratio > 1.0:
+        # 特征1：长宽比（归一化坐标下，站立者 ~0.3-0.5，躺卧者 >0.7）
+        if aspect_ratio > 0.7:
             fall_score += 0.25
             required_features += 1
-        elif aspect_ratio > 0.8:
+        elif aspect_ratio > 0.55:
             fall_score += 0.1
 
         # 特征2：头部低于臀部（调整阈值）
@@ -553,8 +583,8 @@ class DetectionModule:
             fall_score += 0.15
             required_features += 1
 
-        # 特征7：头部接近地面
-        if head_ground_ratio > 0.7:
+        # 特征7：头部接近地面（归一化坐标）
+        if head_ground_ratio > 0.65:
             fall_score += 0.1
 
         # 特征8：关键点置信度
@@ -650,6 +680,8 @@ class DetectionModule:
             clusters.append(cluster)
 
         # 取最大聚集簇
+        if not clusters:
+            return False, 0, 0.0
         best_cluster = max(clusters, key=len)
         gather_count = len(best_cluster)
 
@@ -710,6 +742,17 @@ class DetectionModule:
         Returns:
             (是否疲劳, 累计低EAR帧数, 连续无效帧数)
         """
+        # 优先使用头部倾斜检测（EAR 使用耳朵关键点，无法真正检测眨眼）
+        if self.config.USE_HEAD_TILT_FOR_FATIGUE:
+            is_tilted, _ = Utils.detect_head_tilt(keypoints)
+            if is_tilted:
+                eye_fatigue_count += 1
+            else:
+                eye_fatigue_count = 0
+            is_fatigued = eye_fatigue_count >= self.config.EYE_FATIGUE_FRAMES
+            return is_fatigued, eye_fatigue_count, 0
+
+        # 原有 EAR 逻辑保留作为后备
         ear, is_valid = Utils.calculate_eye_aspect_ratio(keypoints)
 
         if not is_valid:
@@ -966,42 +1009,69 @@ class DetectionModule:
 
 # ===================== 数据保存模块 =====================
 class DataSaver:
-    """数据保存模块"""
+    """数据保存模块 - 批量写入优化"""
 
     def __init__(self, config: Config):
         self.config = config
-        # 创建必要的目录
         os.makedirs(os.path.dirname(config.RESULT_VIDEO_PATH), exist_ok=True)
         os.makedirs(config.DATASET_DIR, exist_ok=True)
+        self._pending_detections = []
+        self._last_flush_time = time.time()
+        self._flush_interval = 5.0  # 每 5 秒批量写入一次
 
     def save_detection_data(self, actions: List[str], person_count: int, fps: float, frame_count: int) -> str:
-        """保存检测数据为JSON文件，返回时间戳"""
-        # 生成时间戳文件名
+        """保存检测数据（跳过无检测结果的帧），返回时间戳"""
         timestamp = Utils.generate_timestamp()
 
-        # 构建检测数据
+        if not actions:
+            return timestamp
+
         detection_data = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "person_count": person_count,
             "actions": actions,
             "frame_count": frame_count,
             "fps": fps,
-            "image_filename": f"frame_{timestamp}.jpg"  # 关联的图片文件名
+            "image_filename": f"frame_{timestamp}.jpg"
         }
 
-        # 保存JSON文件
-        json_path = os.path.join(self.config.DATASET_DIR, f"detection_{timestamp}.json")
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(detection_data, f, ensure_ascii=False, indent=2)
+        self._pending_detections.append((timestamp, detection_data))
+
+        now = time.time()
+        if now - self._last_flush_time >= self._flush_interval:
+            self._flush()
 
         return timestamp
+
+    def _flush(self):
+        """批量写入待处理的检测数据"""
+        if not self._pending_detections:
+            return
+
+        for timestamp, data in self._pending_detections:
+            try:
+                json_path = os.path.join(self.config.DATASET_DIR,
+                                        f"detection_{timestamp}.json")
+                with open(json_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except OSError as e:
+                print(f"保存检测数据失败: {e}")
+
+        self._pending_detections.clear()
+        self._last_flush_time = time.time()
 
     def save_frame_image(self, frame: np.ndarray, actions: List[str], timestamp: str) -> None:
         """保存帧图像（仅当检测到行为时）"""
         if actions and self.config.SAVE_IMAGE_ON_ACTION:
-            frame_path = os.path.join(self.config.DATASET_DIR, f"frame_{timestamp}.jpg")
-            # type: ignore[arg-type]
-            cv2.imwrite(frame_path, frame)
+            try:
+                frame_path = os.path.join(self.config.DATASET_DIR, f"frame_{timestamp}.jpg")
+                cv2.imwrite(frame_path, frame)
+            except OSError as e:
+                print(f"保存帧图像失败: {e}")
+
+    def flush_remaining(self):
+        """进程退出前刷新所有待写数据"""
+        self._flush()
 
 
 # ===================== 报警模块 =====================

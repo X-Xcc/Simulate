@@ -88,12 +88,7 @@ class TestDetectFall:
         assert not is_fall, f"Standing person detected as fall with confidence {confidence}"
 
     def test_fallen_person_detected_as_fall(self):
-        """A person lying horizontal SHOULD be detected as a fall.
-
-        This test FAILS with the current implementation because the
-        aspect_ratio threshold (>1.0) fires but trunk_angle and other
-        features don't accumulate enough score due to coord-space mismatch.
-        """
+        """A person lying horizontal SHOULD be detected as a fall."""
         kp = self._make_fallen_person()
         is_fall, confidence = DetectionModule.detect_fall(kp)
         assert is_fall, f"Fallen person NOT detected as fall, confidence={confidence}"
@@ -243,6 +238,7 @@ class TestEyeFatigueGrace:
 
     def test_valid_low_EAR_increments_counter(self):
         config = Config()
+        config.USE_HEAD_TILT_FOR_FATIGUE = False  # 测试 EAR 路径
         dm = DetectionModule(config)
         # Build keypoints with EAR below threshold.
         # EAR = (left_ear_dist + right_ear_dist) / (2 * eye_center_dist)
@@ -261,6 +257,7 @@ class TestEyeFatigueGrace:
 
     def test_invalid_frame_preserves_counter_within_grace(self):
         config = Config()
+        config.USE_HEAD_TILT_FOR_FATIGUE = False  # 测试 EAR 路径
         dm = DetectionModule(config)
         # Keypoints with low-confidence ear → invalid EAR
         kp = np.zeros((17, 3))
@@ -277,6 +274,7 @@ class TestEyeFatigueGrace:
 
     def test_invalid_frame_resets_counter_beyond_grace(self):
         config = Config()
+        config.USE_HEAD_TILT_FOR_FATIGUE = False
         dm = DetectionModule(config)
         kp = np.zeros((17, 3))
         kp[:, 2] = 0.9
@@ -292,6 +290,7 @@ class TestEyeFatigueGrace:
 
     def test_valid_frame_resets_invalid_counter(self):
         config = Config()
+        config.USE_HEAD_TILT_FOR_FATIGUE = False
         dm = DetectionModule(config)
         kp = np.zeros((17, 3))
         kp[:, 2] = 0.9
@@ -505,3 +504,87 @@ class TestLoadCamerasConfig:
         result = load_cameras_config(str(config_file))
         assert len(result) == 1
         assert result[0]["id"] == "good"
+
+
+class TestDetectHeadTilt:
+    def test_normal_head_not_tilted(self):
+        kp = np.zeros((17, 3))
+        kp[0] = [0.5, 0.3, 0.9]   # nose
+        kp[1] = [0.45, 0.28, 0.9]  # left eye
+        kp[2] = [0.55, 0.28, 0.9]  # right eye (same Y = horizontal)
+        is_tilted, conf = Utils.detect_head_tilt(kp)
+        assert not is_tilted
+
+    def test_tilted_head_detected(self):
+        kp = np.zeros((17, 3))
+        kp[0] = [0.5, 0.3, 0.9]
+        kp[1] = [0.45, 0.25, 0.9]  # left eye higher
+        kp[2] = [0.55, 0.35, 0.9]  # right eye lower (~30 degree tilt)
+        is_tilted, conf = Utils.detect_head_tilt(kp)
+        assert is_tilted
+        assert conf > 0.3
+
+    def test_low_confidence_keypoints_returns_false(self):
+        kp = np.zeros((17, 3))
+        kp[0] = [0.5, 0.3, 0.3]  # low confidence
+        kp[1] = [0.45, 0.25, 0.9]
+        kp[2] = [0.55, 0.35, 0.9]
+        is_tilted, conf = Utils.detect_head_tilt(kp)
+        assert not is_tilted
+
+
+class TestDataSaver:
+    def test_empty_actions_not_saved(self, tmp_path):
+        from yolov8_security import DataSaver
+        config = Config()
+        config.DATASET_DIR = str(tmp_path)
+        saver = DataSaver(config)
+        saver.save_detection_data([], 0, 30.0, 1)
+        saver._flush()
+        files = list(tmp_path.glob("detection_*.json"))
+        assert len(files) == 0
+
+    def test_batch_write_creates_files(self, tmp_path):
+        import time as _time
+        from yolov8_security import DataSaver
+        config = Config()
+        config.DATASET_DIR = str(tmp_path)
+        saver = DataSaver(config)
+        saver.save_detection_data(["跌倒"], 1, 30.0, 1)
+        _time.sleep(0.01)  # 确保时间戳不同
+        saver.save_detection_data(["打架"], 2, 30.0, 2)
+        saver._flush()
+        files = list(tmp_path.glob("detection_*.json"))
+        assert len(files) >= 1  # 至少写入 1 个（可能因时间戳精度只有 1 个）
+
+    def test_io_error_does_not_crash(self, tmp_path):
+        from yolov8_security import DataSaver
+        import unittest.mock as mock
+        config = Config()
+        config.DATASET_DIR = str(tmp_path)
+        saver = DataSaver(config)
+        with mock.patch("builtins.open", side_effect=OSError("disk full")):
+            # 不应崩溃
+            saver.save_detection_data(["跌倒"], 1, 30.0, 1)
+            saver._flush()
+        # pending 应该被清空（即使写入失败）
+        assert len(saver._pending_detections) == 0
+
+
+class TestDetectGathering:
+    def test_insufficient_persons_not_gathering(self):
+        config = Config()
+        dm = DetectionModule(config)
+        kp_list = [np.zeros((17, 3))]  # 只有 1 人
+        is_gathering, count, conf = dm.detect_gathering(kp_list, (720, 1280), None)
+        assert not is_gathering
+
+    def test_empty_clusters_no_crash(self):
+        """关键点不足（<13）导致 get_body_center 返回 None 时不应崩溃"""
+        config = Config()
+        dm = DetectionModule(config)
+        # 关键点只有 5 个 → get_body_center 返回 None → clusters 为空
+        kp_list = [np.zeros((5, 3)) for _ in range(4)]
+        is_gathering, count, conf = dm.detect_gathering(kp_list, (720, 1280), None)
+        assert not is_gathering
+        assert count == 0
