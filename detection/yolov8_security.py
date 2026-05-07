@@ -1205,7 +1205,7 @@ class UIManager:
         # 日志文字
         Utils.draw_text_cn_batch(draw, "最近日志", (20, 360), 18, self.config.COLORS['text'])
         log_y = 390
-        for log in logs[-5:]:
+        for log in list(logs)[-5:]:
             Utils.draw_text_cn_batch(draw, log, (25, log_y - 5), 14, self.config.COLORS['text'])
             log_y += 30
 
@@ -1640,21 +1640,24 @@ class SecurityMonitor:
                 is_alarm = "跌倒" in actions or "打架" in actions
                 frame_out = self._draw_ui(frame_out, is_alarm, actions, logs, action_confidences, person_num, fps)
 
-                # 13. 显示
-                cv2.imshow(window_name, frame_out)
+                # 13. 显示（仅在前台终端模式时显示GUI）
+                show_gui = os.isatty(0)
+                if show_gui:
+                    cv2.imshow(window_name, frame_out)
 
-                # 14. 保存检测数据（仅摄像头0负责，避免重复）
-                if cam_str == "0" and frame_count % self.config.SAVE_INTERVAL == 0:
+                # 14. 保存检测数据（仅第一个摄像头负责，避免重复）
+                if cam_str == self.config.SOURCES[0]["id"] and frame_count % self.config.SAVE_INTERVAL == 0:
                     timestamp = self.data_saver.save_detection_data(actions, person_num, fps, frame_count)
                     if actions:
                         self.data_saver.save_frame_image(frame, actions, timestamp)
 
-                # 15. 检查退出（任意窗口按Enter退出全部）
-                key = cv2.waitKey(1) & 0xFF
-                if key == 13:
-                    print(f"[摄像头 {cam_str}] 收到退出信号，停止所有摄像头...")
-                    self._stop_event.set()
-                    break
+                # 15. 检查退出（仅在前台终端模式时）
+                if show_gui:
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == 13:
+                        print(f"[摄像头 {cam_str}] 收到退出信号，停止所有摄像头...")
+                        self._stop_event.set()
+                        break
 
         except Exception as e:
             print(f"[摄像头 {cam_str}] 线程异常: {e}")
