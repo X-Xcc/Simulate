@@ -143,9 +143,20 @@
         var parent = btn.parentElement;
         parent.querySelectorAll('.btn').forEach(function(b) { b.classList.remove('btn-primary'); });
         btn.classList.add('btn-primary');
-        Common.toast('切换到' + (range==='day'?'日':range==='week'?'周':'月') + '视图', 'info');
+        loadTrendData(range);
     }
     window.setTrendRange = setTrendRange;
+
+    async function loadTrendData(range) {
+        try {
+            var resp = await Common.authFetch(API_BASE + '/api/stats/trend?range=' + (range || 'day'));
+            if (resp && resp.data && trendChart) {
+                trendChart.data.labels = resp.labels;
+                trendChart.data.datasets[0].data = resp.data;
+                trendChart.update();
+            }
+        } catch (e) { console.warn('加载趋势数据失败:', e); }
+    }
 
     /**
      * 加载仪表盘数据 — 并行请求统计数据、摄像头列表、模型信息、AI 状态
@@ -204,8 +215,9 @@
                     var dotMap = {fall:'alert',fight:'alert',fatigue:'warning',absent:'alert',gather:'info',eye_fatigue:'warning'};
                     activityList.innerHTML = recent.slice(0, 5).map(function(d) {
                         var bMap = {fall:'跌倒检测',fight:'打架检测',fatigue:'疲劳检测',absent:'离岗检测',gather:'人员聚集',eye_fatigue:'眼疲劳'};
-                        var label = bMap[d.behavior] || d.behavior || '未知';
-                        var dot = dotMap[d.behavior] || 'info';
+                        var bKey = d.behaviorType || d.type || d.behavior || 'unknown';
+                        var label = bMap[bKey] || bKey || '未知';
+                        var dot = dotMap[bKey] || 'info';
                         var conf = d.confidence ? '置信度 ' + (d.confidence*100).toFixed(1) + '%' : '';
                         var time = d.timestamp ? new Date(d.timestamp).toLocaleTimeString('zh-CN',{hour12:false}) : '--';
                         var desc = d.camera ? d.camera + ' 检测到' + label : '检测到' + label;
@@ -216,12 +228,13 @@
 
             /* 更新摄像头设备卡片 */
             if (camerasRes.status === 'fulfilled') {
-                var cameras = camerasRes.value;
+                var camerasRaw = camerasRes.value;
+                var camList = Array.isArray(camerasRaw) ? camerasRaw : (camerasRaw && camerasRaw.cameras ? (Array.isArray(camerasRaw.cameras) ? camerasRaw.cameras : Array.from(camerasRaw.cameras)) : []);
                 var grid = document.getElementById('deviceGrid');
-                if (Array.isArray(cameras) && cameras.length > 0) {
-                    Common.setTxt('sDevices', cameras.length + '/' + cameras.length);
+                if (camList.length > 0) {
+                    Common.setTxt('sDevices', camList.length + '/' + camList.length);
                     Common.setTxt('sOnlineRate', '100%');
-                    grid.innerHTML = cameras.map(function(cam) {
+                    grid.innerHTML = camList.map(function(cam) {
                         var name = cam.name || cam.id || 'Camera';
                         var type = cam.type || 'USB';
                         var addr = cam.source !== undefined ? cam.source : '';
@@ -506,10 +519,46 @@
         } catch(e) {}
     }
 
-    /** 导出全部数据 */
+    /** 导出全部数据 — 支持 JSON/CSV 格式选择 */
     function exportAllData() {
-        Common.toast('正在导出数据...', 'info');
-        location.href = API_BASE + '/';
+        var body = document.createElement('div');
+        body.innerHTML = '<p style="margin-bottom:12px">选择导出格式：</p>';
+        var footer = document.createElement('div');
+        var jsonBtn = document.createElement('button');
+        jsonBtn.className = 'btn btn-primary';
+        jsonBtn.textContent = 'JSON';
+        jsonBtn.addEventListener('click', function() { Common.closeModal(); doExportJson(); });
+        var csvBtn = document.createElement('button');
+        csvBtn.className = 'btn';
+        csvBtn.textContent = 'CSV';
+        csvBtn.addEventListener('click', function() { Common.closeModal(); doExportCsv(); });
+        footer.appendChild(jsonBtn);
+        footer.appendChild(csvBtn);
+        Common.openModal('导出数据', body, footer);
+    }
+    function doExportJson() {
+        Common.toast('正在导出 JSON...', 'info');
+        Common.authFetch(API_BASE + '/api/stats').then(function(data) {
+            var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'detections_export_' + new Date().toISOString().slice(0,10) + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            Common.toast('导出完成', 'success');
+        }).catch(function() { Common.toast('导出失败', 'error'); });
+    }
+    function doExportCsv() {
+        Common.toast('正在导出 CSV...', 'info');
+        var token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
+        var url = API_BASE + '/api/export/csv';
+        if (token) url += '?token=' + encodeURIComponent(token);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'detections_export_' + new Date().toISOString().slice(0,10) + '.csv';
+        a.click();
+        setTimeout(function() { Common.toast('导出完成', 'success'); }, 1000);
     }
     window.exportAllData = exportAllData;
 
@@ -566,7 +615,7 @@
     /** 加载设备列表 */
     async function loadDevices() {
         try {
-            var cameras = await Common.authFetch(API_BASE + '/api/cameras');
+            var cameras = await Common.authFetch(API_BASE + '/api/devices');
             var tbody = document.getElementById('deviceTableBody');
             if (Array.isArray(cameras) && cameras.length > 0) {
                 tbody.innerHTML = '';
@@ -639,7 +688,22 @@
         var addBtn = document.createElement('button');
         addBtn.className = 'btn btn-primary';
         addBtn.textContent = '添加';
-        addBtn.addEventListener('click', function() { Common.toast('设备已添加（需重启Python服务生效）', 'success'); Common.closeModal(); });
+        addBtn.addEventListener('click', function() {
+            var devName = document.getElementById('devName').value.trim();
+            var devType = document.getElementById('devType').value;
+            var devAddress = document.getElementById('devAddress').value.trim();
+            var devArea = document.getElementById('devArea').value.trim();
+            if (!devName) { Common.toast('请填写设备名称', 'error'); return; }
+            Common.authFetch(API_BASE + '/api/devices', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: devName, type: devType, address: devAddress, area: devArea })
+            }).then(function() {
+                Common.toast('设备已添加', 'success');
+                Common.closeModal();
+                loadDevices();
+            }).catch(function() { Common.toast('添加失败', 'error'); });
+        });
         footer.appendChild(cancelBtn);
         footer.appendChild(addBtn);
         Common.openModal('添加设备', body, footer);
@@ -738,7 +802,17 @@
     if (addDeviceBtn) addDeviceBtn.addEventListener('click', showAddDeviceModal);
 
     /* 弹窗关闭按钮 */
-    document.querySelector('.modal-close').addEventListener('click', Common.closeModal);
+    var modalCloseBtn = document.querySelector('.modal-close');
+    if (modalCloseBtn) modalCloseBtn.addEventListener('click', Common.closeModal);
+
+    /* 退出登录按钮 */
+    document.querySelectorAll('[data-action="logout"]').forEach(function(item) {
+        item.addEventListener('click', function() {
+            sessionStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_token');
+            window.location.href = API_BASE + '/login';
+        });
+    });
 
     /* ============================================================
        页面初始化 — 加载所有模块数据

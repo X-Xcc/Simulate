@@ -22,8 +22,11 @@ import org.springframework.web.bind.annotation.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
 
 @RestController
 @RequestMapping("/api")
@@ -226,5 +229,49 @@ public class StatsController {
             log.error("Error getting system info", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    @GetMapping("/export/csv")
+    public ResponseEntity<byte[]> exportCsv() {
+        try {
+            List<DetectionData> detections = detectionService.getDetections();
+            StringBuilder csv = new StringBuilder();
+            csv.append("timestamp,person_count,actions,fps,image_filename\n");
+            for (DetectionData det : detections) {
+                csv.append(String.format("\"%s\",%d,\"%s\",%.1f,\"%s\"\n",
+                    det.getTimestamp(),
+                    det.getPersonCount(),
+                    det.getActions() != null ? String.join(";", det.getActions()) : "",
+                    det.getFps(),
+                    det.getImageFilename() != null ? det.getImageFilename() : ""
+                ));
+            }
+            byte[] bytes = csv.toString().getBytes(StandardCharsets.UTF_8);
+            return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=detections.csv")
+                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
+                .body(bytes);
+        } catch (Exception e) {
+            log.error("导出CSV失败", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/stats/trend")
+    public ResponseEntity<Map<String, Object>> getTrendStats(@RequestParam(defaultValue = "day") String range) {
+        int dataPoints = "week".equals(range) ? 7 : "month".equals(range) ? 30 : 24;
+        String format = "day".equals(range) ? "HH:00" : "MM-dd";
+
+        List<String> labels = new ArrayList<>();
+        List<Integer> data = new ArrayList<>();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        for (int i = dataPoints - 1; i >= 0; i--) {
+            java.time.LocalDateTime point = now.minusHours("day".equals(range) ? i : i * 24L);
+            labels.add(point.format(java.time.format.DateTimeFormatter.ofPattern(format)));
+            data.add(0); // TODO: 从检测数据聚合
+        }
+
+        return ResponseEntity.ok(Map.of("labels", labels, "data", data));
     }
 }
