@@ -32,7 +32,8 @@ public class AuthFilter extends OncePerRequestFilter {
 
     // GET-only public API paths (monitor dashboard data)
     private static final String[] PUBLIC_GET_API_PATHS = {
-        "/api/stats", "/api/stats/summary", "/api/camera_config", "/api/cameras"
+        "/api/stats", "/api/stats/summary", "/api/stats/trend",
+        "/api/camera_config", "/api/cameras"
     };
 
     @Value("${app.api-key:}")
