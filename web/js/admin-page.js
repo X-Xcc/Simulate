@@ -552,13 +552,23 @@
     function doExportCsv() {
         Common.toast('正在导出 CSV...', 'info');
         var token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
-        var url = API_BASE + '/api/export/csv';
-        if (token) url += '?token=' + encodeURIComponent(token);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'detections_export_' + new Date().toISOString().slice(0,10) + '.csv';
-        a.click();
-        setTimeout(function() { Common.toast('导出完成', 'success'); }, 1000);
+        var headers = {};
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        fetch(API_BASE + '/api/export/csv', { headers: headers })
+            .then(function(resp) {
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                return resp.blob();
+            })
+            .then(function(blob) {
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'detections_export_' + new Date().toISOString().slice(0,10) + '.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                Common.toast('导出完成', 'success');
+            })
+            .catch(function() { Common.toast('导出失败', 'error'); });
     }
     window.exportAllData = exportAllData;
 

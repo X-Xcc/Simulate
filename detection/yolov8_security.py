@@ -748,9 +748,12 @@ class DetectionModule:
             if is_tilted:
                 eye_fatigue_count += 1
             else:
-                eye_fatigue_count = 0
+                invalid_frame_count += 1
+                if invalid_frame_count > self.config.EYE_FATIGUE_GRACE_FRAMES:
+                    eye_fatigue_count = 0  # 超过宽限期，重置
+                # 宽限期内保持计数器不变
             is_fatigued = eye_fatigue_count >= self.config.EYE_FATIGUE_FRAMES
-            return is_fatigued, eye_fatigue_count, 0
+            return is_fatigued, eye_fatigue_count, invalid_frame_count if not is_tilted else 0
 
         # 原有 EAR 逻辑保留作为后备
         ear, is_valid = Utils.calculate_eye_aspect_ratio(keypoints)

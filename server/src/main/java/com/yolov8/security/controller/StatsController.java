@@ -260,18 +260,38 @@ public class StatsController {
     @GetMapping("/stats/trend")
     public ResponseEntity<Map<String, Object>> getTrendStats(@RequestParam(defaultValue = "day") String range) {
         int dataPoints = "week".equals(range) ? 7 : "month".equals(range) ? 30 : 24;
-        String format = "day".equals(range) ? "HH:00" : "MM-dd";
+        String labelFormat = "day".equals(range) ? "HH:00" : "MM-dd";
+        java.time.format.DateTimeFormatter labelFmt = java.time.format.DateTimeFormatter.ofPattern(labelFormat);
+        java.time.format.DateTimeFormatter parseFmt = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-        List<String> labels = new ArrayList<>();
-        List<Integer> data = new ArrayList<>();
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
 
+        // Initialize buckets
+        List<String> labels = new ArrayList<>();
+        java.util.Map<String, Integer> bucketCounts = new java.util.LinkedHashMap<>();
         for (int i = dataPoints - 1; i >= 0; i--) {
             java.time.LocalDateTime point = now.minusHours("day".equals(range) ? i : i * 24L);
-            labels.add(point.format(java.time.format.DateTimeFormatter.ofPattern(format)));
-            data.add(0); // TODO: 从检测数据聚合
+            String label = point.format(labelFmt);
+            labels.add(label);
+            bucketCounts.put(label, 0);
         }
 
-        return ResponseEntity.ok(Map.of("labels", labels, "data", data));
+        // Aggregate detections into buckets
+        try {
+            List<com.yolov8.security.model.DetectionData> detections = detectionService.getDetections();
+            for (com.yolov8.security.model.DetectionData det : detections) {
+                try {
+                    java.time.LocalDateTime detTime = java.time.LocalDateTime.parse(det.getTimestamp(), parseFmt);
+                    String bucket = detTime.format(labelFmt);
+                    if (detTime.isAfter(now.minusHours("day".equals(range) ? dataPoints : dataPoints * 24L))) {
+                        bucketCounts.merge(bucket, 1, Integer::sum);
+                    }
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception e) {
+            log.warn("Failed to aggregate trend data", e);
+        }
+
+        return ResponseEntity.ok(Map.of("labels", labels, "data", new ArrayList<>(bucketCounts.values())));
     }
 }
