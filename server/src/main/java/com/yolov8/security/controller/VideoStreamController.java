@@ -56,7 +56,7 @@ public class VideoStreamController {
     /**
      * MJPEG video feed endpoint. Supports ?cam=0, ?cam=1, etc.
      */
-    @GetMapping(value = "/video_feed", produces = "multipart/x-mixed-replace;boundary=frame")
+    @GetMapping(value = "/video_feed")
     public void getVideoFeed(@RequestParam(required = false, defaultValue = DEFAULT_CAM) String cam,
                              HttpServletResponse response) {
         response.setContentType("multipart/x-mixed-replace;boundary=frame");
