@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
-import java.util.Map;
 
 public class StatsResponse {
 
@@ -13,7 +12,7 @@ public class StatsResponse {
     private BehaviorCounts behaviorCounts;
     private List<DetectionData> allDetections;
     private List<DetectionData> recentDetections;
-    private Map<String, Integer> cameraPersonCounts;
+    private int personCount;
 
     public StatsResponse() {
     }
@@ -32,14 +31,14 @@ public class StatsResponse {
     public BehaviorCounts getBehaviorCounts() { return behaviorCounts; }
     public List<DetectionData> getAllDetections() { return allDetections; }
     public List<DetectionData> getRecentDetections() { return recentDetections; }
+    public int getPersonCount() { return personCount; }
 
     public void setTotalDetections(int totalDetections) { this.totalDetections = totalDetections; }
     public void setTotalImages(int totalImages) { this.totalImages = totalImages; }
     public void setBehaviorCounts(BehaviorCounts behaviorCounts) { this.behaviorCounts = behaviorCounts; }
     public void setAllDetections(List<DetectionData> allDetections) { this.allDetections = allDetections; }
     public void setRecentDetections(List<DetectionData> recentDetections) { this.recentDetections = recentDetections; }
-    public Map<String, Integer> getCameraPersonCounts() { return cameraPersonCounts; }
-    public void setCameraPersonCounts(Map<String, Integer> cameraPersonCounts) { this.cameraPersonCounts = cameraPersonCounts; }
+    public void setPersonCount(int personCount) { this.personCount = personCount; }
 
     public static class BehaviorCounts {
         @JsonProperty("跌倒")

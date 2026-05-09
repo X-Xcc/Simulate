@@ -185,11 +185,9 @@ public class DetectionService {
                 }
             }
 
-            Map<String, Integer> personCounts = new HashMap<>();
             if (!allDetections.isEmpty()) {
-                personCounts.put("default", allDetections.get(0).getPersonCount());
+                stats.setPersonCount(allDetections.get(0).getPersonCount());
             }
-            stats.setCameraPersonCounts(personCounts);
 
             return stats;
         } catch (Exception e) {
