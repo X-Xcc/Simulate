@@ -182,6 +182,7 @@ public class StatsController {
             ByteArrayInputStream bais = new ByteArrayInputStream(frame.getBytes());
             BufferedImage frameImg = ImageIO.read(bais);
             videoStreamController.updateFrame(frameImg, cam);
+            SystemMetricsController.notifyFrameReceived();
 
             Map<String, Object> result = Map.of(
                 "status", "success",
@@ -190,6 +191,20 @@ public class StatsController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error updating frame", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/gpu_status")
+    public ResponseEntity<Map<String, Object>> updateGpuStatus(@RequestBody Map<String, Object> gpuData) {
+        try {
+            Object gpuPercent = gpuData.get("gpuPercent");
+            if (gpuPercent instanceof Number) {
+                SystemMetricsController.updateGpuPercent(((Number) gpuPercent).doubleValue());
+            }
+            return ResponseEntity.ok(Map.of("status", "success"));
+        } catch (Exception e) {
+            log.error("Error updating GPU status", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

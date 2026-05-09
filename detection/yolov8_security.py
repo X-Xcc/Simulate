@@ -68,6 +68,14 @@ except ImportError:
     HAS_REQUESTS = False
     print("警告: 未安装 requests 库，无法发送视频流到 web 面板")
 
+# GPU 使用率上报
+try:
+    import pynvml
+    pynvml.nvmlInit()
+    _GPU_AVAILABLE = True
+except Exception:
+    _GPU_AVAILABLE = False
+
 # Web 服务器配置
 WEB_SERVER_URL = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000/yolov8-security")
 SEND_FRAME_INTERVAL = 1  # 每1帧发送一次（实时）
@@ -144,6 +152,33 @@ class Config:
         'card_bg': (50, 50, 50),
         'card_border': (60, 60, 60)
     }
+
+
+# ===================== GPU 上报 =====================
+_gpu_session = requests.Session() if HAS_REQUESTS else None
+
+def report_gpu_status():
+    """上报 GPU 使用率到 Java 后端"""
+    if not _GPU_AVAILABLE or not _gpu_session:
+        return
+    try:
+        handle = pynvml.nvmlDeviceGetHandle(0)
+        gpu_percent = pynvml.nvmlDeviceGetUtilizationRates(handle).gpu
+        memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        gpu_name = pynvml.nvmlDeviceGetName(handle)
+        if isinstance(gpu_name, bytes):
+            gpu_name = gpu_name.decode('utf-8')
+        _gpu_session.post(
+            f"{WEB_SERVER_URL}/api/gpu_status",
+            json={
+                "gpuPercent": gpu_percent,
+                "gpuMemoryMb": memory_info.used // (1024 * 1024),
+                "gpuName": gpu_name
+            },
+            timeout=1.0
+        )
+    except Exception:
+        pass
 
 
 # ===================== 摄像头自动检测 =====================
@@ -1708,6 +1743,10 @@ class SecurityMonitor:
                 if cam_str == "0" and now - last_model_info_time > 60:
                     self.report_model_info()
                     last_model_info_time = now
+
+                # 11b. 每5秒上报GPU使用率（仅摄像头0负责）
+                if cam_str == "0" and frame_count % (max(1, int(fps)) * 5) == 0:
+                    report_gpu_status()
 
                 # 12. 绘制UI
                 is_alarm = "跌倒" in actions or "打架" in actions

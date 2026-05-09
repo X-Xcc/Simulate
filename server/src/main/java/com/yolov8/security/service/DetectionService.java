@@ -2,6 +2,7 @@ package com.yolov8.security.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.model.Alert;
 import com.yolov8.security.model.DetectionData;
 import com.yolov8.security.model.StatsResponse;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -31,14 +33,17 @@ public class DetectionService {
 
     private final AppConfig appConfig;
     private final ObjectMapper objectMapper;
+    private final AlertService alertService;
+    private final Set<String> alertedImageFilenames = ConcurrentHashMap.newKeySet();
 
     private volatile DirScan scanCache;
     private volatile long scanCacheTimeMs;
     private static final long SCAN_CACHE_TTL_MS = 5000L;
 
-    public DetectionService(AppConfig appConfig, ObjectMapper objectMapper) {
+    public DetectionService(AppConfig appConfig, ObjectMapper objectMapper, AlertService alertService) {
         this.appConfig = appConfig;
         this.objectMapper = objectMapper;
+        this.alertService = alertService;
     }
 
     /** Call after bulk deletes so the next read sees an empty / updated folder. */
@@ -157,6 +162,35 @@ public class DetectionService {
                     .limit(50)
                     .collect(Collectors.toList()));
 
+            // Auto-create alerts for detections with actions
+            for (DetectionData det : allDetections) {
+                if (det.getActions() != null && !det.getActions().isEmpty()
+                        && det.getImageFilename() != null
+                        && alertedImageFilenames.add(det.getImageFilename())) {
+                    for (String action : det.getActions()) {
+                        try {
+                            Alert alert = new Alert();
+                            alert.setType(action);
+                            alert.setLevel(mapSeverity(action));
+                            alert.setTime(det.getTimestamp());
+                            alert.setSnapshotUrl("/api/images/" + det.getImageFilename());
+                            alert.setStatus("pending");
+                            alert.setConfidence(95.0);
+                            alert.setMessage("自动检测：" + action);
+                            alertService.addAlert(alert);
+                        } catch (Exception e) {
+                            log.warn("Failed to auto-create alert for action: {}", action, e);
+                        }
+                    }
+                }
+            }
+
+            Map<String, Integer> personCounts = new HashMap<>();
+            if (!allDetections.isEmpty()) {
+                personCounts.put("default", allDetections.get(0).getPersonCount());
+            }
+            stats.setCameraPersonCounts(personCounts);
+
             return stats;
         } catch (Exception e) {
             log.error("Error getting stats", e);
@@ -247,6 +281,7 @@ public class DetectionService {
             }
 
             invalidateScanCache();
+            alertedImageFilenames.clear();
 
             Map<String, Object> result = new HashMap<>();
             result.put("status", "success");
@@ -358,5 +393,15 @@ public class DetectionService {
             info.put("message", e.getMessage());
         }
         return info;
+    }
+
+    private String mapSeverity(String action) {
+        return switch (action) {
+            case "跌倒", "打架" -> "critical";
+            case "离岗" -> "high";
+            case "疲劳" -> "medium";
+            case "人员聚集" -> "low";
+            default -> "medium";
+        };
     }
 }

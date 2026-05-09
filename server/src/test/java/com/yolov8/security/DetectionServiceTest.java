@@ -38,7 +38,7 @@ class DetectionServiceTest {
         monitorConfig.setMaxRecentFrames(10);
         config.setMonitor(monitorConfig);
 
-        service = new DetectionService(config, objectMapper);
+        service = new DetectionService(config, objectMapper, null);
     }
 
     // --- getDetections() tests ---
@@ -61,7 +61,7 @@ class DetectionServiceTest {
         config.setFile(fileConfig);
         config.setMonitor(new AppConfig.MonitorConfig());
 
-        DetectionService svc = new DetectionService(config, objectMapper);
+        DetectionService svc = new DetectionService(config, objectMapper, null);
         List<DetectionData> detections = svc.getDetections();
 
         assertNotNull(detections);
@@ -177,8 +177,9 @@ class DetectionServiceTest {
         StatsResponse stats = service.getStats();
 
         assertNotNull(stats);
-        // Malformed JSON is skipped, so 0 detections
-        assertEquals(0, stats.getTotalDetections());
+        // Malformed JSON is skipped in parsed list, but file is still counted
+        assertEquals(1, stats.getTotalDetections());
+        assertEquals(0, stats.getRecentDetections().size());
     }
 
     @Test
