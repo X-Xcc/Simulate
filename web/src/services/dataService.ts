@@ -218,6 +218,13 @@ function transformSystemMetrics(raw: any): SystemStatus {
     gpuUsage: raw.gpuPercent ?? 0,
     version: raw.version ?? "unknown",
     lastUpdate: new Date().toLocaleString(),
+    engine: raw.engine,
+    onlineDevices: raw.onlineDevices,
+    totalDevices: raw.totalDevices,
+    activeModels: raw.activeModels,
+    totalModels: raw.totalModels,
+    dataDirSizeMb: raw.dataDirSizeMb,
+    detectionCount: raw.detectionCount,
     services: (raw.services ?? []).map((s: any) => ({
       name: s.name ?? s.serviceName ?? "Unknown",
       uptime: s.uptime ?? "-",

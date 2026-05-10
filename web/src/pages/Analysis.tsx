@@ -19,8 +19,8 @@ import {
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
-import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData, fetchModelInfo } from "../services/dataService";
-import { Alert, SystemStatus } from "../types";
+import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData, fetchModelInfo, fetchRegionalStats } from "../services/dataService";
+import { Alert, SystemStatus, RegionalStat } from "../types";
 
 export default function Analysis() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -28,12 +28,14 @@ export default function Analysis() {
   const [stats, setStats] = useState<any>(null);
   const [modelInfo, setModelInfo] = useState<any>(null);
   const [trendData, setTrendData] = useState<{ name: string; alerts: number }[]>([]);
+  const [regionalData, setRegionalData] = useState<RegionalStat[]>([]);
 
   useEffect(() => {
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStatus = subscribeToSystemStatus(setStatus);
     fetchStats().then(setStats).catch(console.error);
     fetchModelInfo().then(setModelInfo).catch(console.error);
+    fetchRegionalStats().then(setRegionalData).catch(console.error);
     fetchTrendData("week").then(data => {
       if (data?.labels && data?.data) {
         setTrendData(data.labels.map((label: string, i: number) => ({
@@ -49,7 +51,8 @@ export default function Analysis() {
   }, []);
 
   const totalAlerts = alerts.length;
-  const accuracy = modelInfo?.status === "online" ? "98.2" : "N/A";
+  const confirmedAlerts = alerts.filter(a => a.status === "confirmed").length;
+  const accuracy = totalAlerts > 0 ? (confirmedAlerts / totalAlerts * 100).toFixed(1) : "N/A";
   const cpuUsage = status?.cpuUsage ?? 0;
 
   // Radar data from behaviorCounts
@@ -62,9 +65,6 @@ export default function Analysis() {
     { subject: '疲劳', A: behaviorCounts["疲劳"] ?? 0, fullMark: maxVal },
     { subject: '人员聚集', A: behaviorCounts["人员聚集"] ?? 0, fullMark: maxVal },
   ];
-
-  // Regional data - empty (no data source)
-  const regionalData: { name: string; value: number; color: string }[] = [];
 
   return (
     <div className="space-y-xl max-w-[1600px] mx-auto pb-xl">
@@ -187,7 +187,7 @@ export default function Analysis() {
                   <p className="text-[22px] font-mono font-bold text-detect-purple">{totalAlerts} <span className="text-[10px] text-success-green">总告警</span></p>
                </div>
                <div className="pt-md border-t border-outline-variant/20 opacity-50">
-                  <p className="text-[9px] font-bold flex items-center gap-1 uppercase"><Activity size={10} /> Model: YOLOv8-Prison-v3.2</p>
+                  <p className="text-[9px] font-bold flex items-center gap-1 uppercase"><Activity size={10} /> Model: {status?.version ?? "YOLOv8"}</p>
                </div>
             </div>
           </div>

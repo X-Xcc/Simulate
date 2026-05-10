@@ -67,6 +67,13 @@ export interface SystemStatus {
   gpuUsage: number;
   version: string;
   lastUpdate: string;
+  engine?: string;
+  onlineDevices?: number;
+  totalDevices?: number;
+  activeModels?: number;
+  totalModels?: number;
+  dataDirSizeMb?: number;
+  detectionCount?: number;
   services: {
     name: string;
     uptime: string;

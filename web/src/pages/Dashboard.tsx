@@ -29,19 +29,21 @@ import {
   Cell
 } from "recharts";
 import { cn } from "../lib/utils";
-import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData } from "../services/dataService";
-import { Alert, SystemStatus, AlertType } from "../types";
+import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData, fetchStatsCompare } from "../services/dataService";
+import { Alert, SystemStatus, AlertType, StatsCompare } from "../types";
 
 export default function Dashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [trendData, setTrendData] = useState<{ name: string; current: number }[]>([]);
+  const [compare, setCompare] = useState<StatsCompare | null>(null);
 
   useEffect(() => {
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStatus = subscribeToSystemStatus(setStatus);
     fetchStats().then(setStats).catch(console.error);
+    fetchStatsCompare().then(setCompare).catch(console.error);
     fetchTrendData("day").then(data => {
       if (data?.labels && data?.data) {
         setTrendData(data.labels.map((label: string, i: number) => ({
@@ -74,6 +76,12 @@ export default function Dashboard() {
 
   const totalBehaviors = Object.values(behaviorCounts as Record<string, number>).reduce((a, b) => a + b, 0);
 
+  const getChange = (behavior: string): string => {
+    if (!compare?.[behavior]) return "—";
+    const c = compare[behavior].change;
+    return c > 0 ? `+${c}%` : c < 0 ? `${c}%` : "稳定";
+  };
+
   return (
     <div className="space-y-xl max-w-[1600px] mx-auto pb-xl">
       <header className="flex justify-between items-end">
@@ -86,7 +94,7 @@ export default function Dashboard() {
             <Calendar size={18} />
             过去24小时
           </button>
-          <button className="px-lg py-sm bg-primary text-white rounded-xl font-semibold flex items-center gap-sm hover:opacity-90 transition-opacity text-[13px] shadow-lg active:scale-95">
+          <button onClick={() => window.open("/api/export/csv", "_blank")} className="px-lg py-sm bg-primary text-white rounded-xl font-semibold flex items-center gap-sm hover:opacity-90 transition-opacity text-[13px] shadow-lg active:scale-95">
             <Download size={18} />
             导出报告
           </button>
@@ -95,37 +103,37 @@ export default function Dashboard() {
 
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-4 gap-xl">
-        <MetricCard 
-          icon={<ShieldAlert size={20} />} 
-          label="打架事件" 
-          value={alertCounts[AlertType.FIGHT]} 
-          change="+12%" 
-          color="danger-red" 
-          bg="bg-error-container" 
+        <MetricCard
+          icon={<ShieldAlert size={20} />}
+          label="打架事件"
+          value={alertCounts[AlertType.FIGHT]}
+          change={getChange("打架")}
+          color="danger-red"
+          bg="bg-error-container"
         />
-        <MetricCard 
-          icon={<Accessibility size={20} />} 
-          label="人员跌倒" 
-          value={alertCounts[AlertType.FALL]} 
-          change="-4%" 
-          color="warning-orange" 
-          bg="bg-warning-orange/10" 
+        <MetricCard
+          icon={<Accessibility size={20} />}
+          label="人员跌倒"
+          value={alertCounts[AlertType.FALL]}
+          change={getChange("跌倒")}
+          color="warning-orange"
+          bg="bg-warning-orange/10"
         />
-        <MetricCard 
-          icon={<UserMinus size={20} />} 
-          label="违规离岗" 
-          value={alertCounts[AlertType.ABSENCE]} 
-          change="稳定" 
-          color="info-cyan" 
-          bg="bg-info-cyan/10" 
+        <MetricCard
+          icon={<UserMinus size={20} />}
+          label="违规离岗"
+          value={alertCounts[AlertType.ABSENCE]}
+          change={getChange("离岗")}
+          color="info-cyan"
+          bg="bg-info-cyan/10"
         />
-        <MetricCard 
-          icon={<User size={20} />} 
-          label="人员独身" 
-          value={alertCounts[AlertType.CROWD]} 
-          change="+2%" 
-          color="detect-purple" 
-          bg="bg-detect-purple/10" 
+        <MetricCard
+          icon={<User size={20} />}
+          label="人员独身"
+          value={alertCounts[AlertType.CROWD]}
+          change={getChange("人员聚集")}
+          color="detect-purple"
+          bg="bg-detect-purple/10"
         />
       </div>
 
@@ -219,9 +227,8 @@ export default function Dashboard() {
             <span className="px-md py-1 bg-success-green/10 text-success-green rounded-full text-[11px] font-bold">正常运行</span>
           </div>
           <div className="space-y-[28px] mt-md">
-            <StatusProgress label="计算核心负载" value={status?.cpuUsage || 42} color="bg-primary" />
-            <StatusProgress label="存储空间 (256TB)" value={status?.storageUsage || 89} color="bg-warning-orange" />
-            <StatusProgress label="网络带宽 (10Gbps)" value={15} color="bg-info-cyan" />
+            <StatusProgress label="计算核心负载" value={status?.cpuUsage ?? 0} color="bg-primary" />
+            <StatusProgress label="存储空间" value={status?.storageUsage ?? 0} color="bg-warning-orange" />
           </div>
 
           <div className="mt-auto pt-xl border-t border-outline-variant">
@@ -229,15 +236,15 @@ export default function Dashboard() {
               <div>
                 <p className="text-outline font-bold text-[11px] uppercase mb-1">在线设备</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-on-surface font-mono">1,024</span>
-                  <span className="text-[11px] text-outline font-mono">/ 1,028</span>
+                  <span className="text-2xl font-bold text-on-surface font-mono">{status?.onlineDevices ?? "—"}</span>
+                  <span className="text-[11px] text-outline font-mono">/ {status?.totalDevices ?? "—"}</span>
                 </div>
               </div>
               <div>
                 <p className="text-outline font-bold text-[11px] uppercase mb-1">活跃AI模型</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-on-surface font-mono">12</span>
-                  <span className="text-[11px] text-outline font-mono">/ 15</span>
+                  <span className="text-2xl font-bold text-on-surface font-mono">{status?.activeModels ?? "—"}</span>
+                  <span className="text-[11px] text-outline font-mono">/ {status?.totalModels ?? "—"}</span>
                 </div>
               </div>
             </div>
