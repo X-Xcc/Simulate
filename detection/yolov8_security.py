@@ -77,7 +77,7 @@ except Exception:
     _GPU_AVAILABLE = False
 
 # Web 服务器配置
-WEB_SERVER_URL = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000/yolov8-security")
+WEB_SERVER_URL = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000")
 SEND_FRAME_INTERVAL = 1  # 每1帧发送一次（实时）
 JPEG_QUALITY = 50  # 降低JPEG质量以减少传输时间（极致性能）
 
@@ -1723,7 +1723,7 @@ class SecurityMonitor:
                         if can_submit:
                             self._pending_frames += 1
                     if can_submit:
-                        future = self._frame_executor.submit(self._send_frame_session, frame.copy(), cam_str, session)
+                        future = self._frame_executor.submit(self._send_frame_session, frame.copy(), cam_str, session, person_num)
                         future.add_done_callback(lambda _: self._release_frame_slot())
 
                 # 9. 日志
@@ -1785,7 +1785,7 @@ class SecurityMonitor:
         with self._frame_lock:
             self._pending_frames = max(0, self._pending_frames - 1)
 
-    def _send_frame_session(self, frame, cam, session):
+    def _send_frame_session(self, frame, cam, session, person_count=0):
         """使用指定会话发送帧到web服务器（支持 GPU resize）"""
         try:
             if HAS_CV2_CUDA:
@@ -1801,7 +1801,7 @@ class SecurityMonitor:
             session.post(
                 f"{WEB_SERVER_URL}/api/update_frame",
                 files={'frame': ('frame.jpg', img_encoded.tobytes(), 'image/jpeg')},
-                data={'cam': cam},
+                data={'cam': cam, 'person_count': str(person_count)},
                 timeout=0.5
             )
         except Exception:

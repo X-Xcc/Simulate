@@ -1,0 +1,165 @@
+export enum UserRole {
+  SUPER_ADMIN = "超级管理员",
+  PRISON_ADMIN = "监狱管理员",
+  ON_DUTY_OFFICER = "值班干警",
+}
+
+export enum CameraStatus {
+  ONLINE = "online",
+  OFFLINE = "offline",
+  SIGNAL_LOST = "signal_lost",
+}
+
+export interface Camera {
+  id: string;
+  name: string;
+  sn: string;
+  status: CameraStatus;
+  streamUrl: string;
+  lastOnline: string;
+  personCount: number;
+  location: string;
+}
+
+export enum AlertLevel {
+  CRITICAL = "high",
+  WARNING = "medium",
+  INFO = "low",
+}
+
+export enum AlertType {
+  FIGHT = "打架",
+  FALL = "跌倒",
+  CROWD = "人员聚集",
+  ABSENCE = "离岗",
+  INTRUSION = "非法闯入",
+}
+
+export interface Alert {
+  id: string;
+  cameraId: string;
+  cameraName: string;
+  type: AlertType;
+  level: AlertLevel;
+  time: string;
+  snapshotUrl: string;
+  status: "pending" | "confirmed" | "ignored";
+  confidence: number;
+  duration?: string;
+  message?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  operatorId: string;
+  operatorName: string;
+  category: string;
+  action: string;
+  riskLevel: "high" | "medium" | "low";
+  status: boolean;
+}
+
+export interface SystemStatus {
+  cpuUsage: number;
+  memoryUsage: number;
+  storageUsage: number;
+  gpuUsage: number;
+  version: string;
+  lastUpdate: string;
+  services: {
+    name: string;
+    uptime: string;
+    status: string;
+    health: 'healthy' | 'warning' | 'error';
+  }[];
+}
+
+export interface UserAccount {
+  uid: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  createdAt: string;
+  lastLogin: string;
+}
+
+export interface UserCredentials {
+  uid: string;
+  username: string;
+  password: string; // In a real app, this would be hashed
+}
+
+export interface PageResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface TrendData {
+  labels: string[];
+  data: number[];
+}
+
+export interface RegionalStat {
+  name: string;
+  value: number;
+  color?: string;
+}
+
+export interface EvidenceStats {
+  total: number;
+  archived: number;
+  critical: number;
+  onlineRate: number;
+}
+
+export interface StatsCompare {
+  [behavior: string]: { today: number; yesterday: number; change: number };
+}
+
+export interface AiSensitivity {
+  fightDetection: number;
+  fallDetection: number;
+  climbingDetection: number;
+  crowdGathering: number;
+}
+
+export interface AppNotifications {
+  email: boolean;
+  sms: boolean;
+  centralAlarm: boolean;
+}
+
+export interface StorageSettings {
+  autoOverwrite: boolean;
+}
+
+export interface Settings {
+  confidence: number;
+  iou: number;
+  interval: number;
+  maxPeople: number;
+  cooldown: number;
+  fatigueThreshold: number;
+  aiSensitivity: AiSensitivity;
+  notifications: AppNotifications;
+  storage: StorageSettings;
+}
+
+export interface AlertFilterParams {
+  type?: string;
+  status?: string;
+  since?: string;
+  page?: number;
+  size?: number;
+}
+
+export interface AuditFilterParams {
+  search?: string;
+  category?: string;
+  riskLevel?: string;
+  page?: number;
+  size?: number;
+}
