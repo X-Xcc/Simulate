@@ -1,5 +1,7 @@
 package com.yolov8.security.model;
 
+import java.util.List;
+
 public class ApiResponse<T> {
     
     private String status;
@@ -45,5 +47,28 @@ public class ApiResponse<T> {
 
     public static <T> ApiResponse<T> error(String message) {
         return new ApiResponse<T>("error", message, null);
+    }
+
+    public static class PageData<T> {
+        private List<T> items;
+        private long total;
+        private int page;
+        private int size;
+
+        public PageData(List<T> items, long total, int page, int size) {
+            this.items = items;
+            this.total = total;
+            this.page = page;
+            this.size = size;
+        }
+
+        public List<T> getItems() { return items; }
+        public long getTotal() { return total; }
+        public int getPage() { return page; }
+        public int getSize() { return size; }
+    }
+
+    public static <T> ApiResponse<PageData<T>> paged(List<T> items, long total, int page, int size) {
+        return new ApiResponse<>("success", null, new PageData<>(items, total, page, size));
     }
 }
