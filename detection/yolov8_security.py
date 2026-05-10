@@ -234,6 +234,9 @@ def load_cameras_config(config_path=None):
         if "type" not in cam or "address" not in cam:
             print(f"警告: 跳过无效摄像头配置（缺少 type 或 address）: {cam}")
             continue
+        # 跳过RTSP — 由Java MJPEG代理处理，Python只管USB
+        if cam.get("type") == "rtsp":
+            continue
         # 确保有 id 和 name 默认值
         cam.setdefault("id", f"cam{len(valid)}")
         cam.setdefault("name", str(cam["address"]))
