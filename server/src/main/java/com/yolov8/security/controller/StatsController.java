@@ -1,8 +1,12 @@
 package com.yolov8.security.controller;
 
+import com.yolov8.security.model.Alert;
+import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.DetectionData;
 import com.yolov8.security.model.StatsResponse;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.service.AlertService;
+import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.DetectionService;
 import com.yolov8.security.service.ModelInfoService;
 import org.slf4j.Logger;
@@ -37,19 +41,25 @@ public class StatsController {
     private final ModelInfoService modelInfoService;
     private final VideoStreamController videoStreamController;
     private final AppConfig appConfig;
+    private final AlertService alertService;
+    private final CameraConfigService cameraConfigService;
 
-    public StatsController(DetectionService detectionService, ModelInfoService modelInfoService, VideoStreamController videoStreamController, AppConfig appConfig) {
+    public StatsController(DetectionService detectionService, ModelInfoService modelInfoService,
+                           VideoStreamController videoStreamController, AppConfig appConfig,
+                           AlertService alertService, CameraConfigService cameraConfigService) {
         this.detectionService = detectionService;
         this.modelInfoService = modelInfoService;
         this.videoStreamController = videoStreamController;
         this.appConfig = appConfig;
+        this.alertService = alertService;
+        this.cameraConfigService = cameraConfigService;
     }
 
     @GetMapping("/stats/summary")
-    public ResponseEntity<Map<String, Object>> getStatsSummary() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getStatsSummary() {
         try {
             Map<String, Object> summary = detectionService.getStatsSummary();
-            return ResponseEntity.ok(summary);
+            return ResponseEntity.ok(ApiResponse.success(summary));
         } catch (Exception e) {
             log.error("Error getting stats summary", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -57,10 +67,10 @@ public class StatsController {
     }
 
     @GetMapping("/stats")
-    public ResponseEntity<StatsResponse> getStats() {
+    public ResponseEntity<ApiResponse<StatsResponse>> getStats() {
         try {
             StatsResponse stats = detectionService.getStats();
-            return ResponseEntity.ok(stats);
+            return ResponseEntity.ok(ApiResponse.success(stats));
         } catch (Exception e) {
             log.error("Error getting stats", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -141,10 +151,10 @@ public class StatsController {
     }
 
     @GetMapping("/monitor_status")
-    public ResponseEntity<Map<String, Object>> getMonitorStatus() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getMonitorStatus() {
         try {
             Map<String, Object> status = detectionService.getMonitorStatus();
-            return ResponseEntity.ok(status);
+            return ResponseEntity.ok(ApiResponse.success(status));
         } catch (Exception e) {
             log.error("Error getting monitor status", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -177,11 +187,12 @@ public class StatsController {
     @PostMapping("/update_frame")
     public ResponseEntity<Map<String, Object>> updateFrame(
             @RequestParam("frame") MultipartFile frame,
-            @RequestParam(value = "cam", required = false, defaultValue = "0") String cam) {
+            @RequestParam(value = "cam", required = false, defaultValue = "0") String cam,
+            @RequestParam(value = "person_count", required = false, defaultValue = "0") int personCount) {
         try {
             ByteArrayInputStream bais = new ByteArrayInputStream(frame.getBytes());
             BufferedImage frameImg = ImageIO.read(bais);
-            videoStreamController.updateFrame(frameImg, cam);
+            videoStreamController.updateFrame(frameImg, cam, personCount);
             SystemMetricsController.notifyFrameReceived();
 
             Map<String, Object> result = Map.of(
@@ -225,10 +236,10 @@ public class StatsController {
     }
 
     @GetMapping("/model_info")
-    public ResponseEntity<Map<String, Object>> getModelInfo() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getModelInfo() {
         try {
             Map<String, Object> modelInfo = modelInfoService.getModelInfo();
-            return ResponseEntity.ok(modelInfo);
+            return ResponseEntity.ok(ApiResponse.success(modelInfo));
         } catch (Exception e) {
             log.error("Error getting model info", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -236,10 +247,10 @@ public class StatsController {
     }
 
     @GetMapping("/system_info")
-    public ResponseEntity<Map<String, Object>> getSystemInfo() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getSystemInfo() {
         try {
             Map<String, Object> info = detectionService.getSystemInfo();
-            return ResponseEntity.ok(info);
+            return ResponseEntity.ok(ApiResponse.success(info));
         } catch (Exception e) {
             log.error("Error getting system info", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -273,7 +284,7 @@ public class StatsController {
     }
 
     @GetMapping("/stats/trend")
-    public ResponseEntity<Map<String, Object>> getTrendStats(@RequestParam(defaultValue = "day") String range) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTrendStats(@RequestParam(defaultValue = "day") String range) {
         int dataPoints = "week".equals(range) ? 7 : "month".equals(range) ? 30 : 24;
         String labelFormat = "day".equals(range) ? "HH:00" : "MM-dd";
         java.time.format.DateTimeFormatter labelFmt = java.time.format.DateTimeFormatter.ofPattern(labelFormat);
@@ -307,6 +318,78 @@ public class StatsController {
             log.warn("Failed to aggregate trend data", e);
         }
 
-        return ResponseEntity.ok(Map.of("labels", labels, "data", new ArrayList<>(bucketCounts.values())));
+        return ResponseEntity.ok(ApiResponse.success(Map.of("labels", labels, "data", new ArrayList<>(bucketCounts.values()))));
+    }
+
+    @GetMapping("/stats/regional")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getRegionalStats() {
+        try {
+            List<Alert> alerts = alertService.getAllAlerts();
+            Map<String, Long> counts = new LinkedHashMap<>();
+            for (Alert a : alerts) {
+                String name = a.getCameraName() != null ? a.getCameraName() : "未知";
+                counts.merge(name, 1L, Long::sum);
+            }
+            List<Map<String, Object>> result = new ArrayList<>();
+            String[] colors = {"#0051ae", "#0058be", "#bf8700", "#7c4dff", "#c2c6d6"};
+            int i = 0;
+            for (var entry : counts.entrySet()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", entry.getKey());
+                item.put("value", entry.getValue());
+                item.put("color", colors[i % colors.length]);
+                result.add(item);
+                i++;
+            }
+            return ResponseEntity.ok(ApiResponse.success(result));
+        } catch (Exception e) {
+            log.error("Error getting regional stats", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/stats/compare")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getStatsCompare() {
+        try {
+            Map<String, Object> compare = detectionService.getCompareData();
+            return ResponseEntity.ok(ApiResponse.success(compare));
+        } catch (Exception e) {
+            log.error("Error getting compare data", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/evidence/stats")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getEvidenceStats() {
+        try {
+            List<Alert> alerts = alertService.getAllAlerts();
+            int total = 0;
+            int archived = 0;
+            int critical = 0;
+            for (Alert a : alerts) {
+                if (a.getSnapshotUrl() != null && !a.getSnapshotUrl().isEmpty()) total++;
+                if ("confirmed".equals(a.getStatus())) archived++;
+                if ("critical".equals(a.getLevel())) critical++;
+            }
+            int onlineDevices = 0, totalDevices = 0;
+            try {
+                var cameras = cameraConfigService.getAllCameras();
+                totalDevices = cameras.size();
+                onlineDevices = (int) cameras.stream()
+                    .filter(c -> (System.currentTimeMillis() - SystemMetricsController.getLastFrameUpdate()) < 30000)
+                    .count();
+            } catch (Exception ignored) {}
+            double onlineRate = totalDevices > 0 ? Math.round((double) onlineDevices / totalDevices * 1000.0) / 10.0 : 0;
+
+            Map<String, Object> stats = new LinkedHashMap<>();
+            stats.put("total", total);
+            stats.put("archived", archived);
+            stats.put("critical", critical);
+            stats.put("onlineRate", onlineRate);
+            return ResponseEntity.ok(ApiResponse.success(stats));
+        } catch (Exception e) {
+            log.error("Error getting evidence stats", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 }

@@ -393,6 +393,50 @@ public class DetectionService {
         return info;
     }
 
+    public Map<String, Object> getCompareData() {
+        try {
+            DirScan scan = getOrScanUploadDir();
+            String today = java.time.LocalDate.now().toString();
+            String yesterday = java.time.LocalDate.now().minusDays(1).toString();
+
+            Map<String, Integer> todayCounts = new LinkedHashMap<>();
+            Map<String, Integer> yesterdayCounts = new LinkedHashMap<>();
+            String[] behaviors = {"跌倒", "打架", "离岗", "疲劳", "人员聚集"};
+            for (String b : behaviors) {
+                todayCounts.put(b, 0);
+                yesterdayCounts.put(b, 0);
+            }
+
+            for (DetectionData det : scan.detections()) {
+                if (det.getTimestamp() == null || det.getActions() == null) continue;
+                String date = det.getTimestamp().substring(0, 10);
+                for (String action : det.getActions()) {
+                    if (today.equals(date)) {
+                        todayCounts.merge(action, 1, Integer::sum);
+                    } else if (yesterday.equals(date)) {
+                        yesterdayCounts.merge(action, 1, Integer::sum);
+                    }
+                }
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (String b : behaviors) {
+                int t = todayCounts.getOrDefault(b, 0);
+                int y = yesterdayCounts.getOrDefault(b, 0);
+                double change = y > 0 ? ((double)(t - y) / y * 100) : (t > 0 ? 100.0 : 0.0);
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("today", t);
+                item.put("yesterday", y);
+                item.put("change", Math.round(change * 10.0) / 10.0);
+                result.put(b, item);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Error getting compare data", e);
+            return Map.of();
+        }
+    }
+
     private String mapSeverity(String action) {
         return switch (action) {
             case "跌倒", "打架" -> "critical";
