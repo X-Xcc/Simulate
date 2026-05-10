@@ -23,21 +23,27 @@ public class SseController {
 
     private final Set<SseEmitter> emitters = ConcurrentHashMap.newKeySet();
     private final ObjectMapper objectMapper;
+    private final ObjectMapper compactMapper;
     private final CameraConfigService cameraConfigService;
     private final AlertService alertService;
     private final AuditLogService auditLogService;
+    private final VideoStreamController videoStreamController;
 
     public SseController(ObjectMapper objectMapper, CameraConfigService cameraConfigService,
-                         AlertService alertService, AuditLogService auditLogService) {
+                         AlertService alertService, AuditLogService auditLogService,
+                         VideoStreamController videoStreamController) {
         this.objectMapper = objectMapper;
+        this.compactMapper = objectMapper.copy();
+        this.compactMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
         this.cameraConfigService = cameraConfigService;
         this.alertService = alertService;
         this.auditLogService = auditLogService;
+        this.videoStreamController = videoStreamController;
 
         // Subscribe to event bus
         KanbanEventBus.subscribe((eventType, data) -> broadcast(eventType, data));
 
-        // Periodic system_metrics push (5s)
+        // Periodic system_metrics + camera_stats push (2s)
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "sse-metrics-pusher");
             t.setDaemon(true);
@@ -47,8 +53,9 @@ public class SseController {
             try {
                 var metrics = collectSystemMetrics();
                 broadcast("system_metrics", metrics);
+                broadcast("camera_stats", videoStreamController.getCameraStats());
             } catch (Exception ignored) {}
-        }, 5, 5, TimeUnit.SECONDS);
+        }, 2, 2, TimeUnit.SECONDS);
     }
 
     @GetMapping(value = "/api/sse/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -75,7 +82,7 @@ public class SseController {
     private void broadcast(String eventType, Object data) {
         String json;
         try {
-            json = objectMapper.writeValueAsString(data);
+            json = compactMapper.writeValueAsString(data);
         } catch (Exception e) {
             return;
         }
@@ -89,7 +96,7 @@ public class SseController {
     }
 
     private void sendEvent(SseEmitter emitter, String eventType, Object data) throws IOException {
-        String json = objectMapper.writeValueAsString(data);
+        String json = compactMapper.writeValueAsString(data);
         emitter.send(SseEmitter.event().name(eventType).data(json));
     }
 

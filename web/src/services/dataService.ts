@@ -38,8 +38,9 @@ export function subscribeToCameras(callback: (cameras: Camera[]) => void): () =>
 }
 
 export function subscribeToAlerts(callback: (alerts: Alert[]) => void): () => void {
-  apiGet<any[]>("/api/alerts").then((data) => {
-    callback(Array.isArray(data) ? data : []);
+  apiGet<any>("/api/alerts").then((data) => {
+    const alerts = data?.items ?? (Array.isArray(data) ? data : []);
+    callback(alerts);
   }).catch(console.error);
 
   return createSseConnection({
@@ -58,8 +59,9 @@ export function subscribeToSystemStatus(callback: (status: SystemStatus) => void
 }
 
 export function subscribeToAuditLogs(callback: (logs: AuditLog[]) => void): () => void {
-  apiGet<any[]>("/api/audit_logs").then((data) => {
-    callback(Array.isArray(data) ? data : []);
+  apiGet<any>("/api/audit_logs").then((data) => {
+    const logs = data?.items ?? (Array.isArray(data) ? data : []);
+    callback(logs);
   }).catch(console.error);
 
   return createSseConnection({
