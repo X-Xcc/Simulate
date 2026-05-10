@@ -1,9 +1,11 @@
 package com.yolov8.security.controller;
 
+import com.yolov8.security.model.ApiResponse;
+import com.yolov8.security.service.CameraConfigService;
+import com.yolov8.security.service.DetectionService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.util.*;
 
@@ -13,6 +15,14 @@ public class SystemMetricsController {
 
     private static volatile double latestGpuPercent = 0;
     private static volatile long lastFrameUpdate = 0;
+
+    private final CameraConfigService cameraConfigService;
+    private final DetectionService detectionService;
+
+    public SystemMetricsController(CameraConfigService cameraConfigService, DetectionService detectionService) {
+        this.cameraConfigService = cameraConfigService;
+        this.detectionService = detectionService;
+    }
 
     public static void updateGpuPercent(double gpuPercent) {
         latestGpuPercent = gpuPercent;
@@ -26,7 +36,7 @@ public class SystemMetricsController {
     public static long getLastFrameUpdate() { return lastFrameUpdate; }
 
     @GetMapping("/system_metrics")
-    public Map<String, Object> getMetrics() {
+    public ApiResponse<Map<String, Object>> getMetrics() {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
             com.sun.management.OperatingSystemMXBean os =
@@ -35,7 +45,7 @@ public class SystemMetricsController {
             long total = os.getTotalPhysicalMemorySize();
             long free = os.getFreePhysicalMemorySize();
             m.put("memoryPercent", Math.round((double)(total - free) / total * 100));
-            File root = new File(".");
+            java.io.File root = new java.io.File(".");
             long totalD = root.getTotalSpace();
             m.put("diskPercent", Math.round((double)(totalD - root.getUsableSpace()) / totalD * 100));
         } catch (Exception e) {
@@ -53,6 +63,42 @@ public class SystemMetricsController {
         m.put("services", services);
         m.put("version", "v2.4.1-stable");
         m.put("engine", "YOLOv8n-Pose");
-        return m;
+        m.put("coreEngine", "TensorRT 8.6");
+
+        // Uptime
+        long uptimeMs = ManagementFactory.getRuntimeMXBean().getUptime();
+        long days = uptimeMs / 86400000;
+        long hours = (uptimeMs % 86400000) / 3600000;
+        long minutes = (uptimeMs % 3600000) / 60000;
+        m.put("uptime", days + "d " + hours + "h " + minutes + "m");
+
+        // Camera stats
+        try {
+            var cameras = cameraConfigService.getAllCameras();
+            m.put("totalDevices", cameras.size());
+            long onlineCount = cameras.stream()
+                .filter(c -> (System.currentTimeMillis() - lastFrameUpdate) < 30000)
+                .count();
+            m.put("onlineDevices", (int) onlineCount);
+        } catch (Exception e) {
+            m.put("totalDevices", 0);
+            m.put("onlineDevices", 0);
+        }
+        m.put("activeModels", 1);
+        m.put("totalModels", 1);
+
+        // Detection stats
+        try {
+            Map<String, Object> sysInfo = detectionService.getSystemInfo();
+            m.put("dataDirSizeMb", sysInfo.get("dataDirSizeMb"));
+            m.put("detectionCount", sysInfo.get("detectionCount"));
+            m.put("imageCount", sysInfo.get("imageCount"));
+        } catch (Exception e) {
+            m.put("dataDirSizeMb", 0);
+            m.put("detectionCount", 0);
+            m.put("imageCount", 0);
+        }
+
+        return ApiResponse.success(m);
     }
 }
