@@ -26,6 +26,12 @@ public class DetectionData {
 
     private List<Map<String, Object>> boxes;
 
+    @JsonProperty("camera_name")
+    private String cameraName;
+
+    @JsonProperty("camera_id")
+    private String cameraId;
+
     public DetectionData() {
     }
 
@@ -62,4 +68,8 @@ public class DetectionData {
     public void setFrameCount(int frameCount) { this.frameCount = frameCount; }
     public void setFps(double fps) { this.fps = fps; }
     public void setBoxes(List<Map<String, Object>> boxes) { this.boxes = boxes; }
+    public String getCameraName() { return cameraName; }
+    public void setCameraName(String cameraName) { this.cameraName = cameraName; }
+    public String getCameraId() { return cameraId; }
+    public void setCameraId(String cameraId) { this.cameraId = cameraId; }
 }

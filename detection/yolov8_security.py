@@ -1060,20 +1060,20 @@ class DataSaver:
         self._last_flush_time = time.time()
         self._flush_interval = 5.0  # 每 5 秒批量写入一次
 
-    def save_detection_data(self, actions: List[str], person_count: int, fps: float, frame_count: int) -> str:
-        """保存检测数据（跳过无检测结果的帧），返回时间戳"""
+    def save_detection_data(self, actions: List[str], person_count: int, fps: float, frame_count: int,
+                            camera_name: str = None, camera_id: str = None) -> str:
+        """保存检测数据（始终写入，保证趋势图有数据），返回时间戳"""
         timestamp = Utils.generate_timestamp()
-
-        if not actions:
-            return timestamp
 
         detection_data = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "person_count": person_count,
-            "actions": actions,
+            "actions": actions or [],
             "frame_count": frame_count,
             "fps": fps,
-            "image_filename": f"frame_{timestamp}.jpg"
+            "image_filename": f"frame_{timestamp}.jpg" if actions else None,
+            "camera_name": camera_name,
+            "camera_id": camera_id
         }
 
         self._pending_detections.append((timestamp, detection_data))
@@ -1762,7 +1762,8 @@ class SecurityMonitor:
 
                 # 14. 保存检测数据（仅第一个摄像头负责，避免重复）
                 if cam_str == self.config.SOURCES[0]["id"] and frame_count % self.config.SAVE_INTERVAL == 0:
-                    timestamp = self.data_saver.save_detection_data(actions, person_num, fps, frame_count)
+                    timestamp = self.data_saver.save_detection_data(actions, person_num, fps, frame_count,
+                                                                     camera_name=cam_name, camera_id=cam_str)
                     if actions:
                         self.data_saver.save_frame_image(frame, actions, timestamp)
 

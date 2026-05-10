@@ -177,6 +177,8 @@ public class DetectionService {
                             alert.setStatus("pending");
                             alert.setConfidence(95.0);
                             alert.setMessage("自动检测：" + action);
+                            alert.setCameraName(det.getCameraName());
+                            alert.setCameraId(det.getCameraId());
                             alertService.addAlert(alert);
                         } catch (Exception e) {
                             log.warn("Failed to auto-create alert for action: {}", action, e);
