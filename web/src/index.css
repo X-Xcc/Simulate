@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0051ae;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #0969da;
+  --color-on-primary-container: #ecefff;
+  --color-primary-fixed: #dce1ff;
+  --color-primary-fixed-dim: #b8c4ff;
+  
+  --color-secondary: #0058be;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #2170e4;
+  --color-on-secondary-container: #fefcff;
+  --color-secondary-fixed: #d6e3ff;
+  --color-secondary-fixed-dim: #acc7ff;
+  
+  --color-tertiary: #ba1a1a;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #ffdad6;
+  --color-on-tertiary-container: #410002;
+  --color-tertiary-fixed: #ffb4ab;
+
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #410002;
+  
+  --color-surface: #f9f9ff;
+  --color-surface-dim: #d8d9e3;
+  --color-surface-container: #ecedf7;
+  --color-surface-container-low: #f2f3fd;
+  --color-surface-container-high: #e6e8f1;
+  --color-surface-container-highest: #e1e2ec;
+  --color-surface-container-lowest: #ffffff;
+  
+  --color-on-surface: #191c22;
+  --color-on-surface-variant: #424753;
+  --color-outline: #727785;
+  --color-outline-variant: #c2c6d6;
+  
+  --color-background: #f9f9ff;
+  --color-on-background: #191c22;
+
+  --color-dark-bg: #080c14;
+  --color-dark-sidebar: #0e1525;
+  --color-login-bg: #060a14;
+  
+  --color-success-green: #1a7f37;
+  --color-danger-red: #cf222e;
+  --color-warning-orange: #bf8700;
+  --color-detect-purple: #8250df;
+  --color-info-cyan: #0550ae;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --spacing-unit: 4px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 32px;
+  --spacing-grid-gap: 12px;
+
+  --font-size-caption: 12px;
+  --font-size-body-sm: 14px;
+  --font-size-body: 16px;
+  --font-size-body-lg: 20px;
+  --font-size-heading: 24px;
+  --font-size-title: 32px;
+  --font-size-display: 40px;
+}
+
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-sans antialiased;
+  }
+}
+
+.video-hud {
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+}
+
+.chart-grid {
+  background-image: linear-gradient(to right, rgba(114, 119, 133, 0.1) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(114, 119, 133, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.sidebar-mask {
+  mask-image: linear-gradient(to bottom, black 90%, transparent);
+}
+
