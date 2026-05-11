@@ -58,6 +58,7 @@ export default function Analysis() {
   // Radar data from behaviorCounts
   const behaviorCounts = stats?.behaviorCounts ?? {};
   const maxVal = Math.max(...Object.values(behaviorCounts as Record<string, number>), 1);
+  const maxRegionalValue = regionalData.length > 0 ? Math.max(...regionalData.map(d => d.value)) : 1;
   const radarData = [
     { subject: '打架', A: behaviorCounts["打架"] ?? 0, fullMark: maxVal },
     { subject: '跌倒', A: behaviorCounts["跌倒"] ?? 0, fullMark: maxVal },
@@ -71,13 +72,13 @@ export default function Analysis() {
       <header className="flex justify-between items-end">
         <div>
            <h2 className="text-title-lg font-black tracking-tight">分析看板与报表</h2>
-           <p className="text-on-surface-variant text-[14px] opacity-70">监区安全数据综合分析视图（v.3.2）</p>
+           <p className="text-on-surface-variant text-body-lg opacity-70">监区安全数据综合分析视图（v.3.2）</p>
         </div>
         <div className="flex gap-sm">
-           <button className="bg-white border border-outline-variant px-lg py-sm rounded-lg font-bold text-[13px] flex items-center gap-2">
+           <button className="bg-white border border-outline-variant px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2">
              <Calendar size={18} /> 近7天数据
            </button>
-           <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-[13px] flex items-center gap-2 shadow-sm">
+           <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-sm">
              <Download size={18} /> 导出分析报告
            </button>
         </div>
@@ -93,14 +94,14 @@ export default function Analysis() {
          ].map((s, i) => (
            <div key={i} className="bg-white p-lg border border-outline-variant rounded-xl shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
              <div className="flex justify-between items-start mb-md">
-                <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest">{s.label}</span>
+                <span className="text-body-lg font-bold text-on-surface-variant uppercase tracking-widest">{s.label}</span>
                 <div className={cn("p-sm rounded-lg transition-transform group-hover:scale-110", s.bg)}>
                   <s.icon className={s.color} size={20} />
                 </div>
              </div>
              <div className="flex items-baseline gap-2">
-                <span className="text-[26px] font-bold font-mono tracking-tighter">{s.value}</span>
-                <span className={cn("text-[10px] font-black", s.trend === "up" ? "text-error" : s.trend === "down" ? "text-success-green" : "text-outline")}>
+                <span className="text-title font-bold font-mono tracking-tighter">{s.value}</span>
+                <span className={cn("text-body-lg font-black", s.trend === "up" ? "text-error" : s.trend === "down" ? "text-success-green" : "text-outline")}>
                   {s.change}
                 </span>
              </div>
@@ -114,7 +115,7 @@ export default function Analysis() {
         <section className="col-span-2 bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col h-[500px]">
           <header className="px-lg py-md border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
             <h3 className="font-bold flex items-center gap-2"><MapIcon size={18} className="text-outline" /> 监区异常活动热力图</h3>
-            <span className="text-[10px] font-bold text-success-green uppercase bg-success-green/10 px-sm py-unit rounded ring-1 ring-success-green/20">Real-time Feed</span>
+            <span className="text-body-sm font-bold text-success-green uppercase bg-success-green/10 px-sm py-unit rounded ring-1 ring-success-green/20">Real-time Feed</span>
           </header>
           <div className="flex-1 relative bg-surface-container-low p-md">
             <div 
@@ -130,9 +131,9 @@ export default function Analysis() {
                
                {/* Legend */}
                <div className="absolute bottom-md right-md bg-white/90 backdrop-blur-md border border-outline-variant p-sm rounded-lg shadow-xl">
-                 <p className="text-[10px] font-bold text-on-surface-variant uppercase mb-xs">活动密度</p>
+                 <p className="text-body-lg font-bold text-on-surface-variant uppercase mb-xs">活动密度</p>
                  <div className="w-[120px] h-2 bg-gradient-to-r from-success-green via-warning-orange to-danger-red rounded-full mb-1" />
-                 <div className="flex justify-between text-[9px] font-bold font-mono opacity-50 uppercase"><span>Low</span><span>High</span></div>
+                 <div className="flex justify-between text-body-lg font-bold font-mono opacity-50 uppercase"><span>Low</span><span>High</span></div>
                </div>
             </div>
           </div>
@@ -152,7 +153,7 @@ export default function Analysis() {
                     <stop offset="95%" stopColor="#0051ae" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#727785' }} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 13, fill: '#727785' }} />
                 <Tooltip />
                 <Area type="monotone" dataKey="alerts" stroke="#0051ae" strokeWidth={3} fillOpacity={1} fill="url(#colorAlert)" />
               </AreaChart>
@@ -172,22 +173,29 @@ export default function Analysis() {
               <ResponsiveContainer width="100%" height="100%">
                 <RadarChart data={radarData}>
                   <PolarGrid stroke="#e1e2ec" />
-                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fontWeight: 700, fill: '#191c22' }} />
+                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 13, fontWeight: 700, fill: '#191c22' }} />
                   <Radar name="Precision" dataKey="A" stroke="#0051ae" fill="#0051ae" fillOpacity={0.15} />
                 </RadarChart>
               </ResponsiveContainer>
             </div>
             <div className="col-span-2 space-y-lg border-l border-outline-variant/30 pl-lg">
                <div>
-                  <p className="text-[11px] font-bold text-outline uppercase mb-xs">总检测数</p>
-                  <p className="text-[22px] font-mono font-bold text-primary">{stats?.totalDetections ?? 0} <span className="text-[10px] text-success-green">总检测</span></p>
+                  <p className="text-body-lg font-bold text-outline uppercase mb-xs">总检测数</p>
+                  <p className="text-title font-mono font-bold text-primary">{stats?.totalDetections ?? 0} <span className="text-body-lg text-success-green">总检测</span></p>
                </div>
                <div>
-                  <p className="text-[11px] font-bold text-outline uppercase mb-xs">总告警数</p>
-                  <p className="text-[22px] font-mono font-bold text-detect-purple">{totalAlerts} <span className="text-[10px] text-success-green">总告警</span></p>
+                  <p className="text-body-lg font-bold text-outline uppercase mb-xs">总告警数</p>
+                  <p className="text-title font-mono font-bold text-detect-purple">{totalAlerts} <span className="text-body-lg text-success-green">总告警</span></p>
                </div>
                <div className="pt-md border-t border-outline-variant/20 opacity-50">
-                  <p className="text-[9px] font-bold flex items-center gap-1 uppercase"><Activity size={10} /> Model: {status?.version ?? "YOLOv8"}</p>
+                  <p className="text-body-lg font-bold flex items-center gap-1 uppercase">
+                    <Activity size={10} /> Model: {modelInfo?.model_size_mb ? `YOLOv8 (${modelInfo.model_size_mb}MB)` : status?.version ?? "YOLOv8"}
+                  </p>
+                  {modelInfo?.device && (
+                    <p className="text-body-lg font-bold flex items-center gap-1 uppercase mt-1">
+                      Device: {modelInfo.device} | Precision: {modelInfo.precision ?? "fp16"}
+                    </p>
+                  )}
                </div>
             </div>
           </div>
@@ -200,21 +208,21 @@ export default function Analysis() {
           </header>
           <div className="p-xl flex-1 flex flex-col justify-center">
             {regionalData.length === 0 ? (
-              <p className="text-center text-on-surface-variant text-[14px] opacity-50">暂无监区分布数据</p>
+              <p className="text-center text-on-surface-variant text-body-lg opacity-50">暂无监区分布数据</p>
             ) : (
             regionalData.map(item => (
               <div key={item.name} className="flex items-center gap-md mb-md last:mb-0">
-                <span className="w-16 text-[11px] font-bold text-right text-on-surface-variant">{item.name}</span>
+                <span className="w-16 text-body-lg font-bold text-right text-on-surface-variant">{item.name}</span>
                 <div className="flex-1 h-3 bg-surface-container-highest rounded-full overflow-hidden">
                    <motion.div 
                     initial={{ width: 0 }}
-                    animate={{ width: `${(item.value / 342) * 100}%` }}
+                    animate={{ width: `${(item.value / maxRegionalValue) * 100}%` }}
                     transition={{ duration: 1.5, ease: "easeOut" }}
                     className="h-full rounded-full"
                     style={{ backgroundColor: item.color }} 
                    />
                 </div>
-                <span className="w-12 text-[12px] font-mono font-black text-on-surface">{item.value}</span>
+                <span className="w-12 text-body-lg font-mono font-black text-on-surface">{item.value}</span>
               </div>
             ))
             )}
