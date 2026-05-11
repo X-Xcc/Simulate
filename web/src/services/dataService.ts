@@ -1,5 +1,5 @@
-import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, StatsCompare, AlertFilterParams, AuditFilterParams } from "../types";
-import { apiGet, apiPost, apiPatch, apiDelete, createSseConnection, setToken, clearToken } from "../lib/api";
+import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, StatsCompare, AlertFilterParams, AuditFilterParams, FpsStats } from "../types";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
 
 // --- Auth ---
 
@@ -103,6 +103,11 @@ export async function fetchStats(): Promise<any> {
   return apiGet("/api/stats");
 }
 
+/** Lightweight: returns behaviorCounts + totals only, no detection list. */
+export async function fetchStatsSummary(): Promise<any> {
+  return apiGet("/api/stats/summary");
+}
+
 export async function fetchTrendData(range: "day" | "week" | "month" = "day"): Promise<{ labels: string[]; data: number[] }> {
   return apiGet(`/api/stats/trend?range=${range}`);
 }
@@ -121,8 +126,16 @@ export async function addCamera(camera: any) {
   await apiPost("/api/camera_config", camera);
 }
 
+export async function updateCamera(cameraId: string, camera: any) {
+  await apiPut(`/api/camera_config/${cameraId}`, camera);
+}
+
 export async function deleteCamera(cameraId: string) {
   await apiDelete(`/api/camera_config/${cameraId}`);
+}
+
+export async function testCamera(camera: { type: string; address: string | number; user?: string; password?: string }): Promise<{ reachable: boolean; message: string }> {
+  return apiPost("/api/camera_config/test", camera);
 }
 
 export async function addAuditLog(log: Omit<AuditLog, "id" | "timestamp">) {
@@ -156,7 +169,7 @@ export function exportAlerts(params?: AlertFilterParams): void {
   if (params?.type) query.set("type", params.type);
   if (params?.status) query.set("status", params.status);
   if (params?.since) query.set("since", params.since);
-  window.open(`/api/alerts/export?${query.toString()}`, "_blank");
+  apiDownload(`/api/alerts/export?${query.toString()}`);
 }
 
 // --- Paged Audit Logs ---
@@ -180,7 +193,7 @@ export function exportAuditLogs(params?: AuditFilterParams): void {
   if (params?.search) query.set("search", params.search);
   if (params?.category) query.set("category", params.category);
   if (params?.riskLevel) query.set("riskLevel", params.riskLevel);
-  window.open(`/api/audit_logs/export?${query.toString()}`, "_blank");
+  apiDownload(`/api/audit_logs/export?${query.toString()}`);
 }
 
 // --- Regional / Evidence / Compare ---
@@ -197,18 +210,31 @@ export async function fetchStatsCompare(): Promise<StatsCompare> {
   return apiGet("/api/stats/compare");
 }
 
+export async function fetchFpsStats(): Promise<FpsStats> {
+  return apiGet("/api/stats/fps");
+}
+
+export async function fetchAutomationRate(): Promise<{ rate: number }> {
+  return apiGet("/api/audit_logs/automation_rate");
+}
+
+export function exportCsv(): void {
+  apiDownload("/api/export/csv");
+}
+
 // --- Transformers ---
 
 function transformCamera(raw: any): Camera {
   return {
     id: raw.id || "",
     name: raw.name || "未命名",
-    sn: raw.id || "",
-    status: CameraStatus.ONLINE,
+    type: raw.type || "usb",
+    address: raw.address ?? "",
+    user: raw.user,
+    password: raw.password,
+    status: raw.status ?? CameraStatus.OFFLINE,
     streamUrl: raw.id ? `/video_feed?cam=${raw.id}` : "",
-    lastOnline: new Date().toISOString(),
     personCount: raw.personCount ?? 0,
-    location: raw.type || "未分类",
   };
 }
 

@@ -19,7 +19,7 @@ import {
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
-import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData, fetchModelInfo, fetchRegionalStats } from "../services/dataService";
+import { subscribeToAlerts, subscribeToSystemStatus, fetchStatsSummary, fetchTrendData, fetchModelInfo, fetchRegionalStats } from "../services/dataService";
 import { Alert, SystemStatus, RegionalStat } from "../types";
 
 export default function Analysis() {
@@ -33,7 +33,7 @@ export default function Analysis() {
   useEffect(() => {
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStatus = subscribeToSystemStatus(setStatus);
-    fetchStats().then(setStats).catch(console.error);
+    fetchStatsSummary().then(setStats).catch(console.error);
     fetchModelInfo().then(setModelInfo).catch(console.error);
     fetchRegionalStats().then(setRegionalData).catch(console.error);
     fetchTrendData("week").then(data => {

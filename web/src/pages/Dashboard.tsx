@@ -29,7 +29,7 @@ import {
   Cell
 } from "recharts";
 import { cn } from "../lib/utils";
-import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData, fetchStatsCompare, exportCsv } from "../services/dataService";
+import { subscribeToAlerts, subscribeToSystemStatus, fetchStatsSummary, fetchTrendData, fetchStatsCompare, exportCsv } from "../services/dataService";
 import { Alert, SystemStatus, AlertType, StatsCompare } from "../types";
 
 export default function Dashboard() {
@@ -42,7 +42,7 @@ export default function Dashboard() {
   useEffect(() => {
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStatus = subscribeToSystemStatus(setStatus);
-    fetchStats().then(setStats).catch(console.error);
+    fetchStatsSummary().then(setStats).catch(console.error);
     fetchStatsCompare().then(setCompare).catch(console.error);
     fetchTrendData("day").then(data => {
       if (data?.labels && data?.data) {

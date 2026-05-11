@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { subscribeToCameras, subscribeToAlerts, subscribeToCameraStats, fetchStats, subscribeToSystemStatus, fetchFpsStats, getCurrentUser } from "../services/dataService";
+import { subscribeToCameras, subscribeToAlerts, subscribeToCameraStats, fetchStatsSummary, subscribeToSystemStatus, fetchFpsStats, getCurrentUser } from "../services/dataService";
 import { Camera, Alert, AlertLevel, CameraStatus, SystemStatus } from "../types";
 
 export default function MonitorBigScreen() {
@@ -37,7 +37,7 @@ export default function MonitorBigScreen() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
 
     // Fetch total detections
-    fetchStats().then((s) => {
+    fetchStatsSummary().then((s) => {
       const counts = s?.behaviorCounts || {};
       setTotalDetections(Object.values(counts).reduce((a: number, b: any) => a + (b as number), 0));
     }).catch(() => {});
