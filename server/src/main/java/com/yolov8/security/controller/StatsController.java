@@ -5,6 +5,7 @@ import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.DetectionData;
 import com.yolov8.security.model.StatsResponse;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.config.DataCleanupTask;
 import com.yolov8.security.service.AlertService;
 import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.DetectionService;
@@ -43,16 +44,19 @@ public class StatsController {
     private final AppConfig appConfig;
     private final AlertService alertService;
     private final CameraConfigService cameraConfigService;
+    private final DataCleanupTask dataCleanupTask;
 
     public StatsController(DetectionService detectionService, ModelInfoService modelInfoService,
                            VideoStreamController videoStreamController, AppConfig appConfig,
-                           AlertService alertService, CameraConfigService cameraConfigService) {
+                           AlertService alertService, CameraConfigService cameraConfigService,
+                           DataCleanupTask dataCleanupTask) {
         this.detectionService = detectionService;
         this.modelInfoService = modelInfoService;
         this.videoStreamController = videoStreamController;
         this.appConfig = appConfig;
         this.alertService = alertService;
         this.cameraConfigService = cameraConfigService;
+        this.dataCleanupTask = dataCleanupTask;
     }
 
     @GetMapping("/stats/summary")
@@ -169,6 +173,18 @@ public class StatsController {
         } catch (Exception e) {
             log.error("Error deleting images", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/cleanup")
+    public ResponseEntity<Map<String, Object>> cleanupOldFiles() {
+        try {
+            dataCleanupTask.cleanOldFiles();
+            return ResponseEntity.ok(Map.of("status", "success", "message", "Cleanup triggered"));
+        } catch (Exception e) {
+            log.error("Manual cleanup failed", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", "error", "message", e.getMessage()));
         }
     }
 
@@ -355,6 +371,17 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(compare));
         } catch (Exception e) {
             log.error("Error getting compare data", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/stats/fps")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getFpsStats() {
+        try {
+            Map<String, Object> fps = detectionService.getFpsStats();
+            return ResponseEntity.ok(ApiResponse.success(fps));
+        } catch (Exception e) {
+            log.error("Error getting FPS stats", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

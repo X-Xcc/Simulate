@@ -31,20 +31,23 @@ export default function Analysis() {
   const [regionalData, setRegionalData] = useState<RegionalStat[]>([]);
 
   useEffect(() => {
+    const ac = new AbortController();
+    const s = ac.signal;
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStatus = subscribeToSystemStatus(setStatus);
-    fetchStatsSummary().then(setStats).catch(console.error);
-    fetchModelInfo().then(setModelInfo).catch(console.error);
-    fetchRegionalStats().then(setRegionalData).catch(console.error);
-    fetchTrendData("week").then(data => {
+    fetchStatsSummary(s).then(setStats).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchModelInfo(s).then(setModelInfo).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchRegionalStats(s).then(setRegionalData).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchTrendData("week", s).then(data => {
       if (data?.labels && data?.data) {
         setTrendData(data.labels.map((label: string, i: number) => ({
           name: label,
           alerts: data.data[i] ?? 0,
         })));
       }
-    }).catch(console.error);
+    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
     return () => {
+      ac.abort();
       unsubAlerts();
       unsubStatus();
     };

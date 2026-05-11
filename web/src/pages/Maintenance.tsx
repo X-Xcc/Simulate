@@ -40,9 +40,10 @@ export default function Maintenance() {
   const [modelInfo, setModelInfo] = useState<any>(null);
 
   useEffect(() => {
+    const ac = new AbortController();
     const unsub = subscribeToSystemStatus(setStatus);
-    fetchModelInfo().then(setModelInfo).catch(console.error);
-    return () => unsub();
+    fetchModelInfo(ac.signal).then(setModelInfo).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    return () => { ac.abort(); unsub(); };
   }, []);
 
   if (!status) {

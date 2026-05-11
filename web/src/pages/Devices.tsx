@@ -55,13 +55,15 @@ export default function Devices() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const ac = new AbortController();
+    const s = ac.signal;
     const unsub = subscribeToCameras((list) => {
       setCameras(list);
       setLoading(false);
     });
-    fetchSettings().then(setSettings).catch(console.error);
-    apiGet<any>("/api/system_info").then(d => setDataDirSizeMb(d.dataDirSizeMb ?? 0)).catch(() => {});
-    return () => unsub();
+    fetchSettings(s).then(setSettings).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    apiGet<any>("/api/system_info", s).then(d => setDataDirSizeMb(d.dataDirSizeMb ?? 0)).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    return () => { ac.abort(); unsub(); };
   }, []);
 
   const openAdd = () => {

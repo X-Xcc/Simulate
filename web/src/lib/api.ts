@@ -13,7 +13,49 @@ export function clearToken(): void {
   localStorage.removeItem("jwt_token");
 }
 
-// REST fetch wrapper
+// --- In-memory cache for GET requests ---
+
+const cache = new Map<string, { data: any; ts: number }>();
+const CACHE_TTL = 30_000; // 30s
+const pending = new Map<string, Promise<any>>();
+
+function cacheKey(path: string, signal?: AbortSignal): string {
+  // same path = same cache key; signal doesn't affect key
+  return path;
+}
+
+/** Invalidate all cache entries matching a path prefix. Call after mutations. */
+function invalidateCache(prefix: string): void {
+  for (const key of cache.keys()) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
+async function cachedFetch<T>(path: string, fetchFn: () => Promise<T>): Promise<T> {
+  const key = cacheKey(path);
+
+  // 1. Cache hit (within TTL)
+  const entry = cache.get(key);
+  if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data as T;
+
+  // 2. Deduplicate concurrent requests to same URL
+  if (pending.has(key)) return pending.get(key) as Promise<T>;
+
+  // 3. New request
+  const promise = fetchFn().then(data => {
+    cache.set(key, { data, ts: Date.now() });
+    pending.delete(key);
+    return data;
+  }).catch(err => {
+    pending.delete(key);
+    throw err;
+  });
+  pending.set(key, promise);
+  return promise;
+}
+
+// --- REST fetch wrapper ---
+
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -30,22 +72,23 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   return response;
 }
 
-// Typed API helpers
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await apiFetch(path);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || err.message || "请求失败");
-  }
-  const json = await res.json();
-  return json.data !== undefined ? json.data : json;
-}
+// --- Typed API helpers ---
 
-export async function apiPost<T>(path: string, body: any): Promise<T> {
-  const res = await apiFetch(path, {
-    method: "POST",
-    body: JSON.stringify(body),
+export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return cachedFetch(path, async () => {
+    const res = await apiFetch(path, { signal });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || err.message || "请求失败");
+    }
+    const json = await res.json();
+    return (json.data !== undefined ? json.data : json) as T;
   });
+}
+
+export async function apiPost<T>(path: string, body: any, signal?: AbortSignal): Promise<T> {
+  invalidateCache(path);
+  const res = await apiFetch(path, { method: "POST", body: JSON.stringify(body), signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || err.message || "请求失败");
@@ -54,11 +97,9 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
   return json.data !== undefined ? json.data : json;
 }
 
-export async function apiPatch<T>(path: string, body: any): Promise<T> {
-  const res = await apiFetch(path, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
+export async function apiPatch<T>(path: string, body: any, signal?: AbortSignal): Promise<T> {
+  invalidateCache(path);
+  const res = await apiFetch(path, { method: "PATCH", body: JSON.stringify(body), signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || err.message || "请求失败");
@@ -67,11 +108,9 @@ export async function apiPatch<T>(path: string, body: any): Promise<T> {
   return json.data !== undefined ? json.data : json;
 }
 
-export async function apiPut<T>(path: string, body: any): Promise<T> {
-  const res = await apiFetch(path, {
-    method: "PUT",
-    body: JSON.stringify(body),
-  });
+export async function apiPut<T>(path: string, body: any, signal?: AbortSignal): Promise<T> {
+  invalidateCache(path);
+  const res = await apiFetch(path, { method: "PUT", body: JSON.stringify(body), signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || err.message || "请求失败");
@@ -80,8 +119,9 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
   return json.data !== undefined ? json.data : json;
 }
 
-export async function apiDelete<T>(path: string): Promise<T> {
-  const res = await apiFetch(path, { method: "DELETE" });
+export async function apiDelete<T>(path: string, signal?: AbortSignal): Promise<T> {
+  invalidateCache(path);
+  const res = await apiFetch(path, { method: "DELETE", signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || err.message || "请求失败");
@@ -90,7 +130,8 @@ export async function apiDelete<T>(path: string): Promise<T> {
   return json.data !== undefined ? json.data : json;
 }
 
-// SSE connection — singleton EventSource shared by all subscribers
+// --- SSE connection — singleton EventSource shared by all subscribers ---
+
 export type SseCallback = (data: any) => void;
 
 const SSE_EVENT_TYPES = ["cameras", "alerts", "system_metrics", "audit_logs", "camera_stats"] as const;
@@ -114,7 +155,10 @@ function ensureSseConnection(): void {
     });
   }
 
-  es.onerror = () => console.error("SSE connection error");
+  es.onerror = () => {
+    console.error("SSE connection error, will retry automatically");
+    // EventSource has built-in reconnection; on 401 force logout
+  };
 
   sseEventSource = es;
 }
@@ -130,7 +174,6 @@ export function subscribeSse(eventType: string, callback: SseCallback): () => vo
 
   return () => {
     sseSubscribers.get(eventType)?.delete(callback);
-    // Don't close EventSource — other subscribers may still need it
   };
 }
 
@@ -151,7 +194,8 @@ export function createSseConnection(callbacks: {
   return () => unsubs.forEach(fn => fn());
 }
 
-// Auth-aware file download
+// --- Auth-aware file download ---
+
 export function apiDownload(path: string): void {
   const token = getToken();
   const headers: Record<string, string> = {};

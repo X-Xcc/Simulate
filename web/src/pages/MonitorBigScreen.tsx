@@ -35,15 +35,16 @@ export default function MonitorBigScreen() {
     const unsubStats = subscribeToCameraStats(setCameraStats);
     const unsubStatus = subscribeToSystemStatus(setSystemStatus);
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const ac = new AbortController();
+    const s = ac.signal;
 
-    // Fetch total detections
-    fetchStatsSummary().then((s) => {
+    fetchStatsSummary(s).then((s) => {
       const counts = s?.behaviorCounts || {};
       setTotalDetections(Object.values(counts).reduce((a: number, b: any) => a + (b as number), 0));
-    }).catch(() => {});
+    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
 
-    fetchFpsStats().then(d => setFps(d.avg)).catch(console.error);
-    getCurrentUser().then(setCurrentUser).catch(console.error);
+    fetchFpsStats(s).then(d => setFps(d.avg)).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    getCurrentUser(s).then(setCurrentUser).catch(err => { if (err.name !== 'AbortError') console.error(err); });
 
     return () => {
       unsubCameras();
@@ -51,6 +52,7 @@ export default function MonitorBigScreen() {
       unsubStats();
       unsubStatus();
       clearInterval(timer);
+      ac.abort();
     };
   }, []);
 

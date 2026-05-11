@@ -20,16 +20,20 @@ export default function Alerts() {
   const [currentPage, setCurrentPage] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
 
-  const loadAlerts = useCallback(() => {
+  const loadAlerts = useCallback((signal?: AbortSignal) => {
     fetchAlertsPage({
       type: filterType || undefined,
       status: filterStatus || undefined,
       page: currentPage,
       size: 20
-    }).then(setAlertsPage).catch(console.error);
+    }, signal).then(setAlertsPage).catch(err => { if (err.name !== 'AbortError') console.error(err); });
   }, [filterType, filterStatus, currentPage]);
 
-  useEffect(() => { loadAlerts(); }, [loadAlerts]);
+  useEffect(() => {
+    const ac = new AbortController();
+    loadAlerts(ac.signal);
+    return () => ac.abort();
+  }, [loadAlerts]);
 
   // SSE — 标记dirty不直接覆盖
   useEffect(() => {

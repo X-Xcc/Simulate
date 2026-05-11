@@ -40,19 +40,22 @@ export default function Dashboard() {
   const [compare, setCompare] = useState<StatsCompare | null>(null);
 
   useEffect(() => {
+    const ac = new AbortController();
+    const s = ac.signal;
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStatus = subscribeToSystemStatus(setStatus);
-    fetchStatsSummary().then(setStats).catch(console.error);
-    fetchStatsCompare().then(setCompare).catch(console.error);
-    fetchTrendData("day").then(data => {
+    fetchStatsSummary(s).then(setStats).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchStatsCompare(s).then(setCompare).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchTrendData("day", s).then(data => {
       if (data?.labels && data?.data) {
         setTrendData(data.labels.map((label: string, i: number) => ({
           name: label,
           current: data.data[i] ?? 0,
         })));
       }
-    }).catch(console.error);
+    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
     return () => {
+      ac.abort();
       unsubAlerts();
       unsubStatus();
     };

@@ -21,10 +21,12 @@ export default function Evidence() {
   const [compare, setCompare] = useState<StatsCompare | null>(null);
 
   useEffect(() => {
+    const ac = new AbortController();
+    const s = ac.signal;
     const unsub = subscribeToAlerts(setAlerts);
-    fetchEvidenceStats().then(setEvStats).catch(console.error);
-    fetchStatsCompare().then(setCompare).catch(console.error);
-    return () => unsub();
+    fetchEvidenceStats(s).then(setEvStats).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchStatsCompare(s).then(setCompare).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    return () => { ac.abort(); unsub(); };
   }, []);
 
   const filteredAlerts = activeTab === 1 ? alerts.filter(a => a.level === AlertLevel.CRITICAL) : alerts;

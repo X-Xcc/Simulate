@@ -33,20 +33,24 @@ export default function Audit() {
 
   // Load trend data
   useEffect(() => {
-    fetchAuditTrend("week").then(data => {
+    const ac = new AbortController();
+    const s = ac.signal;
+    fetchAuditTrend("week", s).then(data => {
       if (data?.labels && data?.data) {
         setAuditTrend(data.labels.map((l: string, i: number) => ({ name: l, value: data.data[i] ?? 0 })));
       }
-    }).catch(console.error);
-    fetchAutomationRate().then(d => setAutomationRate(d.rate)).catch(console.error);
+    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchAutomationRate(s).then(d => setAutomationRate(d.rate)).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    return () => ac.abort();
   }, []);
 
   // Search with debounce
   useEffect(() => {
+    const ac = new AbortController();
     const timer = setTimeout(() => {
-      fetchAuditLogsPage({ search: searchTerm || undefined, page: 0, size: 20 }).then(setAuditPage);
+      fetchAuditLogsPage({ search: searchTerm || undefined, page: 0, size: 20 }, ac.signal).then(setAuditPage).catch(err => { if (err.name !== 'AbortError') console.error(err); });
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); ac.abort(); };
   }, [searchTerm]);
 
   // SSE live updates

@@ -25,15 +25,21 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
     private static final String HEADER = "X-API-Key";
     private static final String[] PUBLIC_PATHS = {
-        "/", "/index", "/login", "/monitor", "/admin", "/annotate",
-        "/static/**", "/css/**", "/js/**", "/error", "/api/login",
-        "/video_feed", "/api/images/**"
+        "/", "/index",
+        "/static/**", "/error", "/api/login", "/api/cleanup",
+        "/video_feed", "/api/images/**",
+        "/dashboard", "/monitor", "/alerts", "/devices",
+        "/evidence", "/analysis", "/maintenance", "/audit",
+        "/monitor/**", "/assets/**"
     };
 
     // GET-only public API paths (monitor dashboard data)
     private static final String[] PUBLIC_GET_API_PATHS = {
         "/api/stats", "/api/stats/summary", "/api/stats/trend",
-        "/api/camera_config", "/api/cameras"
+        "/api/camera_config", "/api/cameras",
+        "/api/model_info", "/api/ai/status", "/api/system_metrics",
+        "/api/system_info", "/api/devices", "/api/me",
+        "/api/alerts", "/api/audit_logs", "/api/sse/stream"
     };
 
     @Value("${app.api-key:}")
@@ -66,18 +72,13 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.isEmpty()) {
             path = "/";
         }
-        for (String pub : PUBLIC_PATHS) {
-            if (matcher.match(pub, path)) {
-                return true;
-            }
-        }
-        // GET-only public API paths for monitor dashboard
+        // All GET requests are public
         if ("GET".equalsIgnoreCase(request.getMethod())) {
-            for (String pub : PUBLIC_GET_API_PATHS) {
-                if (path.equals(pub)) {
-                    return true;
-                }
-            }
+            return true;
+        }
+        // POST /api/login and /api/cleanup are public
+        for (String p : PUBLIC_PATHS) {
+            if (matcher.match(p, path)) return true;
         }
         return false;
     }
@@ -112,8 +113,6 @@ public class AuthFilter extends OncePerRequestFilter {
 
         log.warn("Unauthorized access {} from {}", request.getRequestURI(), request.getRemoteAddr());
 
-        // All unauthorized requests return 401 JSON
-        // Client-side JS (authFetch) handles redirect to login for browser requests
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write("{\"status\":\"error\",\"message\":\"Unauthorized\"}");

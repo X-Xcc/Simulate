@@ -16,14 +16,16 @@ export default function Monitor() {
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
+    const ac = new AbortController();
 
     const unsubCameras = subscribeToCameras(setCameras);
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStats = subscribeToCameraStats(setCameraStats);
-    fetchFpsStats().then(setFps).catch(console.error);
+    fetchFpsStats(ac.signal).then(setFps).catch(err => { if (err.name !== 'AbortError') console.error(err); });
 
     return () => {
       clearInterval(timer);
+      ac.abort();
       unsubCameras();
       unsubAlerts();
       unsubStats();

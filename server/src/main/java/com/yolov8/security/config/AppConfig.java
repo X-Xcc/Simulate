@@ -17,6 +17,9 @@ public class AppConfig {
     // Python configuration
     private PythonConfig python = new PythonConfig();
     
+    // Cleanup configuration
+    private CleanupConfig cleanup = new CleanupConfig();
+
     // Qwen VL configuration
     private QwenVLConfig qwenVl = new QwenVLConfig();
     
@@ -33,6 +36,14 @@ public class AppConfig {
         return python;
     }
     
+    public CleanupConfig getCleanup() {
+        return cleanup;
+    }
+
+    public void setCleanup(CleanupConfig cleanup) {
+        this.cleanup = cleanup;
+    }
+
     public QwenVLConfig getQwenVl() {
         return qwenVl;
     }
@@ -163,7 +174,7 @@ public class AppConfig {
         private String modelPath = "./models/Qwen2.5-VL-7B-Instruct";
         private int timeout = 30000;
         private int maxRetries = 3;
-        
+
         // Getters
         public String getServiceUrl() {
             return serviceUrl;
@@ -177,7 +188,7 @@ public class AppConfig {
         public int getMaxRetries() {
             return maxRetries;
         }
-        
+
         // Setters
         public void setServiceUrl(String serviceUrl) {
             this.serviceUrl = serviceUrl;
@@ -191,5 +202,12 @@ public class AppConfig {
         public void setMaxRetries(int maxRetries) {
             this.maxRetries = maxRetries;
         }
+    }
+
+    public static class CleanupConfig {
+        private int retentionDays = 7;
+
+        public int getRetentionDays() { return retentionDays; }
+        public void setRetentionDays(int retentionDays) { this.retentionDays = retentionDays; }
     }
 }

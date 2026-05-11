@@ -41,10 +41,23 @@ public class DetectionService {
     private volatile long scanCacheTimeMs;
     private static final long SCAN_CACHE_TTL_MS = 15000L;
 
+    // Separate cache for system info (expensive totalSize computation)
+    private volatile Map<String, Object> systemInfoCache;
+    private volatile long systemInfoCacheTimeMs;
+    private static final long SYSTEM_INFO_CACHE_TTL_MS = 60000L;
+
     public DetectionService(AppConfig appConfig, ObjectMapper objectMapper, AlertService alertService) {
         this.appConfig = appConfig;
         this.objectMapper = objectMapper;
         this.alertService = alertService;
+
+        // Warm systemInfo cache in background to avoid blocking first page load
+        Thread warmer = new Thread(() -> {
+            try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+            try { getSystemInfo(); } catch (Exception ignored) {}
+        }, "sysinfo-warmer");
+        warmer.setDaemon(true);
+        warmer.start();
     }
 
     /** Call after bulk deletes so the next read sees an empty / updated folder. */
@@ -376,25 +389,30 @@ public class DetectionService {
     }
 
     public Map<String, Object> getSystemInfo() {
+        // Return cached result within TTL to avoid walking 278k files
+        long now = System.currentTimeMillis();
+        if (systemInfoCache != null && (now - systemInfoCacheTimeMs) < SYSTEM_INFO_CACHE_TTL_MS) {
+            return systemInfoCache;
+        }
+
         Map<String, Object> info = new HashMap<>();
         try {
-            File dataDir = new File(appConfig.getFile().getUploadDir());
+            DirScan scan = getOrScanUploadDir();
+            int jsonCount = scan.totalDetectionCount();
+            int jpgCount = scan.imageFiles().size();
+
+            // Compute totalSize from filesystem (expensive, but cached for 60s)
             long totalSize = 0;
-            int jsonCount = 0;
-            int jpgCount = 0;
+            File dataDir = new File(appConfig.getFile().getUploadDir());
             if (dataDir.exists() && dataDir.isDirectory()) {
                 File[] files = dataDir.listFiles();
                 if (files != null) {
                     for (File f : files) {
-                        if (f.isFile()) {
-                            totalSize += f.length();
-                            String name = f.getName();
-                            if (name.startsWith("detection_") && name.endsWith(".json")) jsonCount++;
-                            else if (name.startsWith("frame_") && name.endsWith(".jpg")) jpgCount++;
-                        }
+                        if (f.isFile()) totalSize += f.length();
                     }
                 }
             }
+
             Runtime rt = Runtime.getRuntime();
             long usedMemory = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
             long maxMemory = rt.maxMemory() / (1024 * 1024);
@@ -410,6 +428,9 @@ public class DetectionService {
             info.put("status", "error");
             info.put("message", e.getMessage());
         }
+
+        systemInfoCache = info;
+        systemInfoCacheTimeMs = now;
         return info;
     }
 

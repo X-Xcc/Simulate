@@ -17,8 +17,8 @@ export async function login(username: string, password: string): Promise<void> {
   setToken(data.token);
 }
 
-export async function getCurrentUser(): Promise<{ username: string; name: string; role: string }> {
-  return apiGet("/api/me");
+export async function getCurrentUser(signal?: AbortSignal): Promise<{ username: string; name: string; role: string }> {
+  return apiGet("/api/me", signal);
 }
 
 export function logout(): void {
@@ -28,42 +28,24 @@ export function logout(): void {
 // --- Subscribe (SSE) ---
 
 export function subscribeToCameras(callback: (cameras: Camera[]) => void): () => void {
-  apiGet<any[]>("/api/camera_config").then((data) => {
-    callback(Array.isArray(data) ? data.map(transformCamera) : []);
-  }).catch(console.error);
-
   return createSseConnection({
     onCameras: (data: any) => callback(Array.isArray(data) ? data.map(transformCamera) : []),
   });
 }
 
 export function subscribeToAlerts(callback: (alerts: Alert[]) => void): () => void {
-  apiGet<any>("/api/alerts").then((data) => {
-    const alerts = data?.items ?? (Array.isArray(data) ? data : []);
-    callback(alerts);
-  }).catch(console.error);
-
   return createSseConnection({
     onAlerts: (data: any) => callback(Array.isArray(data) ? data : []),
   });
 }
 
 export function subscribeToSystemStatus(callback: (status: SystemStatus) => void): () => void {
-  apiGet<any>("/api/system_metrics").then((data) => {
-    callback(transformSystemMetrics(data));
-  }).catch(console.error);
-
   return createSseConnection({
     onSystemMetrics: (data: any) => callback(transformSystemMetrics(data)),
   });
 }
 
 export function subscribeToAuditLogs(callback: (logs: AuditLog[]) => void): () => void {
-  apiGet<any>("/api/audit_logs").then((data) => {
-    const logs = data?.items ?? (Array.isArray(data) ? data : []);
-    callback(logs);
-  }).catch(console.error);
-
   return createSseConnection({
     onAuditLogs: (data: any) => callback(Array.isArray(data) ? data : []),
   });
@@ -72,18 +54,6 @@ export function subscribeToAuditLogs(callback: (logs: AuditLog[]) => void): () =
 // --- Camera Stats ---
 
 export function subscribeToCameraStats(callback: (stats: Record<string, number>) => void): () => void {
-  // Initial fetch
-  apiGet<any>("/api/camera_stats").then((data) => {
-    if (data?.cameras) {
-      const map: Record<string, number> = {};
-      for (const c of data.cameras) {
-        map[c.camId] = c.personCount ?? 0;
-      }
-      callback(map);
-    }
-  }).catch(console.error);
-
-  // SSE live updates
   return createSseConnection({
     onCameraStats: (data: any) => {
       if (data?.cameras) {
@@ -104,16 +74,16 @@ export async function fetchStats(): Promise<any> {
 }
 
 /** Lightweight: returns behaviorCounts + totals only, no detection list. */
-export async function fetchStatsSummary(): Promise<any> {
-  return apiGet("/api/stats/summary");
+export async function fetchStatsSummary(signal?: AbortSignal): Promise<any> {
+  return apiGet("/api/stats/summary", signal);
 }
 
-export async function fetchTrendData(range: "day" | "week" | "month" = "day"): Promise<{ labels: string[]; data: number[] }> {
-  return apiGet(`/api/stats/trend?range=${range}`);
+export async function fetchTrendData(range: "day" | "week" | "month" = "day", signal?: AbortSignal): Promise<{ labels: string[]; data: number[] }> {
+  return apiGet(`/api/stats/trend?range=${range}`, signal);
 }
 
-export async function fetchModelInfo(): Promise<any> {
-  return apiGet("/api/model_info");
+export async function fetchModelInfo(signal?: AbortSignal): Promise<any> {
+  return apiGet("/api/model_info", signal);
 }
 
 // --- Write operations ---
@@ -144,8 +114,8 @@ export async function addAuditLog(log: Omit<AuditLog, "id" | "timestamp">) {
 
 // --- Settings ---
 
-export async function fetchSettings(): Promise<Settings> {
-  return apiGet("/api/settings");
+export async function fetchSettings(signal?: AbortSignal): Promise<Settings> {
+  return apiGet("/api/settings", signal);
 }
 
 export async function updateSettings(settings: Partial<Settings>): Promise<Settings> {
@@ -154,14 +124,14 @@ export async function updateSettings(settings: Partial<Settings>): Promise<Setti
 
 // --- Paged Alerts ---
 
-export async function fetchAlertsPage(params: AlertFilterParams): Promise<PageResponse<Alert>> {
+export async function fetchAlertsPage(params: AlertFilterParams, signal?: AbortSignal): Promise<PageResponse<Alert>> {
   const query = new URLSearchParams();
   if (params.type) query.set("type", params.type);
   if (params.status) query.set("status", params.status);
   if (params.since) query.set("since", params.since);
   if (params.page != null) query.set("page", String(params.page));
   if (params.size != null) query.set("size", String(params.size));
-  return apiGet(`/api/alerts?${query.toString()}`);
+  return apiGet(`/api/alerts?${query.toString()}`, signal);
 }
 
 export function exportAlerts(params?: AlertFilterParams): void {
@@ -174,18 +144,18 @@ export function exportAlerts(params?: AlertFilterParams): void {
 
 // --- Paged Audit Logs ---
 
-export async function fetchAuditLogsPage(params: AuditFilterParams): Promise<PageResponse<AuditLog>> {
+export async function fetchAuditLogsPage(params: AuditFilterParams, signal?: AbortSignal): Promise<PageResponse<AuditLog>> {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
   if (params.category) query.set("category", params.category);
   if (params.riskLevel) query.set("riskLevel", params.riskLevel);
   if (params.page != null) query.set("page", String(params.page));
   if (params.size != null) query.set("size", String(params.size));
-  return apiGet(`/api/audit_logs?${query.toString()}`);
+  return apiGet(`/api/audit_logs?${query.toString()}`, signal);
 }
 
-export async function fetchAuditTrend(range: "day" | "week" = "day"): Promise<TrendData> {
-  return apiGet(`/api/audit_logs/trend?range=${range}`);
+export async function fetchAuditTrend(range: "day" | "week" = "day", signal?: AbortSignal): Promise<TrendData> {
+  return apiGet(`/api/audit_logs/trend?range=${range}`, signal);
 }
 
 export function exportAuditLogs(params?: AuditFilterParams): void {
@@ -198,24 +168,24 @@ export function exportAuditLogs(params?: AuditFilterParams): void {
 
 // --- Regional / Evidence / Compare ---
 
-export async function fetchRegionalStats(): Promise<RegionalStat[]> {
-  return apiGet("/api/stats/regional");
+export async function fetchRegionalStats(signal?: AbortSignal): Promise<RegionalStat[]> {
+  return apiGet("/api/stats/regional", signal);
 }
 
-export async function fetchEvidenceStats(): Promise<EvidenceStats> {
-  return apiGet("/api/evidence/stats");
+export async function fetchEvidenceStats(signal?: AbortSignal): Promise<EvidenceStats> {
+  return apiGet("/api/evidence/stats", signal);
 }
 
-export async function fetchStatsCompare(): Promise<StatsCompare> {
-  return apiGet("/api/stats/compare");
+export async function fetchStatsCompare(signal?: AbortSignal): Promise<StatsCompare> {
+  return apiGet("/api/stats/compare", signal);
 }
 
-export async function fetchFpsStats(): Promise<FpsStats> {
-  return apiGet("/api/stats/fps");
+export async function fetchFpsStats(signal?: AbortSignal): Promise<FpsStats> {
+  return apiGet("/api/stats/fps", signal);
 }
 
-export async function fetchAutomationRate(): Promise<{ rate: number }> {
-  return apiGet("/api/audit_logs/automation_rate");
+export async function fetchAutomationRate(signal?: AbortSignal): Promise<{ rate: number }> {
+  return apiGet("/api/audit_logs/automation_rate", signal);
 }
 
 export function exportCsv(): void {
