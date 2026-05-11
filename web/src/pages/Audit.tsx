@@ -8,15 +8,28 @@ import {
   Search,
   Download,
   CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { subscribeToAuditLogs, fetchAuditLogsPage, fetchAuditTrend, exportAuditLogs } from "../services/dataService";
+import { subscribeToAuditLogs, fetchAuditLogsPage, fetchAuditTrend, exportAuditLogs, fetchAutomationRate } from "../services/dataService";
 import { AuditLog, PageResponse } from "../types";
 
 export default function Audit() {
   const [auditTrend, setAuditTrend] = useState<{ name: string; value: number }[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [auditPage, setAuditPage] = useState<PageResponse<AuditLog>>({ items: [], total: 0, page: 0, size: 20 });
+  const [automationRate, setAutomationRate] = useState(0);
+  const [trendRange, setTrendRange] = useState<"day" | "week">("week");
+
+  const loadTrend = (range: "day" | "week") => {
+    setTrendRange(range);
+    setAuditTrend([]);
+    fetchAuditTrend(range).then(data => {
+      if (data?.labels && data?.data) {
+        setAuditTrend(data.labels.map((l: string, i: number) => ({ name: l, value: data.data[i] ?? 0 })));
+      }
+    }).catch(console.error);
+  };
 
   // Load trend data
   useEffect(() => {
@@ -25,6 +38,7 @@ export default function Audit() {
         setAuditTrend(data.labels.map((l: string, i: number) => ({ name: l, value: data.data[i] ?? 0 })));
       }
     }).catch(console.error);
+    fetchAutomationRate().then(d => setAutomationRate(d.rate)).catch(console.error);
   }, []);
 
   // Search with debounce
@@ -75,19 +89,19 @@ export default function Audit() {
         {[
           { label: "本期操作总量", value: auditPage.total.toLocaleString(), change: "总计", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
           { label: "高危预警次数", value: highRiskCount.toString(), change: "当前页高危", icon: ShieldAlert, color: "text-danger-red", bg: "bg-error-container/40" },
-          { label: "系统自动化率", value: "94.8%", change: "核心稳定", icon: CheckCircle2, color: "text-success-green", bg: "bg-success-green/10", bar: 94.8 },
+          { label: "系统自动化率", value: `${automationRate}%`, change: "核心稳定", icon: CheckCircle2, color: "text-success-green", bg: "bg-success-green/10", bar: automationRate },
         ].map(s => (
           <div key={s.label} className="bg-white p-lg border border-outline-variant rounded-xl shadow-sm hover:shadow-md transition-all">
              <div className="flex justify-between items-start mb-md">
                 <div>
-                   <p className="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest mb-unit">{s.label}</p>
-                   <h3 className={cn("text-[26px] font-bold font-mono tracking-tighter", s.color)}>{s.value}</h3>
+                   <p className="text-body-lg font-bold text-on-surface-variant uppercase tracking-widest mb-unit">{s.label}</p>
+                   <h3 className={cn("text-title font-bold font-mono tracking-tighter", s.color)}>{s.value}</h3>
                 </div>
                 <div className={cn("p-sm rounded-lg", s.bg)}>
                    <s.icon className={s.color} size={20} />
                 </div>
              </div>
-             <div className="flex items-center gap-xs text-[10px] font-bold opacity-60">
+             <div className="flex items-center gap-xs text-body-lg font-bold opacity-60">
                 {s.change}
              </div>
              {s.bar && (
@@ -103,10 +117,10 @@ export default function Audit() {
          {/* Active Trends Chart */}
          <section className="col-span-8 bg-white border border-outline-variant rounded-xl p-lg shadow-sm flex flex-col h-[300px]">
             <header className="flex justify-between items-center mb-xl">
-               <h3 className="font-bold flex items-center gap-2">管理人员活跃趋势 <span className="text-[11px] opacity-40">(近7日)</span></h3>
+               <h3 className="font-bold flex items-center gap-2">管理人员活跃趋势 <span className="text-body-lg opacity-40">(近7日)</span></h3>
                <div className="flex bg-surface-container-high rounded-full p-1 h-8">
-                  <button className="px-lg rounded-full text-[10px] font-bold bg-primary text-on-primary">按日</button>
-                  <button className="px-lg rounded-full text-[10px] font-bold text-on-surface-variant hover:bg-white/50">按周</button>
+                  <button onClick={() => loadTrend("day")} className={cn("px-lg rounded-full text-body-lg font-bold", trendRange === "day" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-white/50")}>按日</button>
+                  <button onClick={() => loadTrend("week")} className={cn("px-lg rounded-full text-body-lg font-bold", trendRange === "week" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-white/50")}>按周</button>
                </div>
             </header>
             <div className="flex-1 chart-grid rounded-lg pt-4 px-lg relative">
@@ -124,7 +138,7 @@ export default function Audit() {
                      </Bar>
                   </BarChart>
                </ResponsiveContainer>
-               <div className="flex justify-between text-[10px] font-bold text-outline px-lg mt-md">
+               <div className="flex justify-between text-body-lg font-bold text-outline px-lg mt-md">
                    {auditTrend.length > 0 && (
                      <>
                        <span>{auditTrend[0]?.name}</span>
@@ -143,13 +157,13 @@ export default function Audit() {
                {weeklyReports ? weeklyReports.map(r => (
                  <div key={r.title} className={cn("p-md rounded-xl bg-surface-container-low border-l-4", r.color)}>
                     <div className="flex justify-between items-center mb-xs">
-                       <span className="font-bold text-[13px]">{r.title}</span>
-                       <span className={cn("text-[9px] font-black uppercase px-sm py-unit rounded", r.risk === "high" ? "bg-error text-white" : r.risk === "medium" ? "bg-warning-orange text-white" : "bg-info-cyan text-white")}>{r.risk}</span>
+                       <span className="font-bold text-body-lg">{r.title}</span>
+                       <span className={cn("text-body-lg font-black uppercase px-sm py-unit rounded", r.risk === "high" ? "bg-error text-white" : r.risk === "medium" ? "bg-warning-orange text-white" : "bg-info-cyan text-white")}>{r.risk}</span>
                     </div>
-                    <p className="text-[11px] leading-relaxed opacity-70">{r.detail}</p>
+                    <p className="text-body-lg leading-relaxed opacity-70">{r.detail}</p>
                  </div>
                )) : (
-                 <div className="text-center text-outline text-[12px] py-xl">暂无数据</div>
+                 <div className="text-center text-outline text-body-lg py-xl">暂无数据</div>
                )}
             </div>
          </section>
@@ -167,12 +181,12 @@ export default function Audit() {
                     placeholder="搜索日志..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    className="bg-surface-container-high border border-outline-variant rounded-full h-8 pl-xl pr-md text-[11px] w-48 focus:w-64 transition-all"
+                    className="bg-surface-container-high border border-outline-variant rounded-full h-8 pl-xl pr-md text-body-lg w-48 focus:w-64 transition-all"
                   />
                </div>
                <button
                  onClick={() => exportAuditLogs()}
-                 className="bg-primary text-on-primary px-lg h-8 rounded-lg font-bold text-[11px] flex items-center gap-2"
+                 className="bg-primary text-on-primary px-lg h-8 rounded-lg font-bold text-body-lg flex items-center gap-2"
                >
                  <Download size={16} /> 导出数据
                </button>
@@ -180,7 +194,7 @@ export default function Audit() {
          </header>
          <div className="overflow-auto flex-1">
             <table className="w-full text-left border-collapse">
-               <thead className="bg-surface-container-low sticky top-0 z-10 text-[10px] uppercase font-bold text-outline tracking-widest border-b border-outline-variant">
+               <thead className="bg-surface-container-low sticky top-0 z-10 text-body-sm uppercase font-bold text-outline tracking-widest border-b border-outline-variant">
                   <tr>
                     <th className="px-lg py-md">时间戳</th>
                     <th className="px-lg py-md">操作员 ID</th>
@@ -195,21 +209,25 @@ export default function Audit() {
                     <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
                       <td className="px-lg py-md font-mono text-on-surface-variant">{new Date(log.timestamp).toLocaleString()}</td>
                       <td className="px-lg py-md flex items-center gap-sm">
-                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black", log.operatorId.startsWith('A') ? "bg-primary/20 text-primary" : "bg-outline/20 text-outline")}>{log.operatorId}</div>
+                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-body-lg font-black", log.operatorId.startsWith('A') ? "bg-primary/20 text-primary" : "bg-outline/20 text-outline")}>{log.operatorId}</div>
                         <span className="font-bold">{log.operatorName}</span>
                       </td>
                       <td className="px-lg py-md">
-                        <span className="px-lg py-unit bg-surface-container-highest rounded-full text-[10px] font-bold text-outline uppercase">{log.category}</span>
+                        <span className="px-lg py-unit bg-surface-container-highest rounded-full text-body-sm font-bold text-outline uppercase">{log.category}</span>
                       </td>
                       <td className="px-lg py-md opacity-80">{log.action}</td>
                       <td className="px-lg py-md uppercase">
-                         <span className={cn("text-[10px] font-black flex items-center gap-1", log.riskLevel === 'high' ? 'text-error' : log.riskLevel === 'medium' ? 'text-warning-orange' : 'text-info-cyan')}>
+                         <span className={cn("text-body-sm font-black flex items-center gap-1", log.riskLevel === 'high' ? 'text-error' : log.riskLevel === 'medium' ? 'text-warning-orange' : 'text-info-cyan')}>
                            <div className={cn("w-1.5 h-1.5 rounded-full", log.riskLevel === 'high' ? "bg-error animate-pulse" : log.riskLevel === 'medium' ? "bg-warning-orange" : "bg-info-cyan")} />
                            {log.riskLevel}
                          </span>
                       </td>
                       <td className="px-lg py-md text-right">
-                         <span className="text-success-green"><CheckCircle2 size={18} /></span>
+                         {log.status ? (
+                           <span className="text-success-green"><CheckCircle2 size={18} /></span>
+                         ) : (
+                           <span className="text-warning-orange"><AlertTriangle size={18} /></span>
+                         )}
                       </td>
                     </tr>
                   ))}
