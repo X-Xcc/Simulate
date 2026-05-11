@@ -18,6 +18,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.DoubleSummaryStatistics;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -38,7 +39,7 @@ public class DetectionService {
 
     private volatile DirScan scanCache;
     private volatile long scanCacheTimeMs;
-    private static final long SCAN_CACHE_TTL_MS = 5000L;
+    private static final long SCAN_CACHE_TTL_MS = 15000L;
 
     public DetectionService(AppConfig appConfig, ObjectMapper objectMapper, AlertService alertService) {
         this.appConfig = appConfig;
@@ -224,6 +225,23 @@ public class DetectionService {
             log.error("Error getting detections", e);
             return Collections.emptyList();
         }
+    }
+
+    public Map<String, Object> getFpsStats() {
+        List<DetectionData> detections = getDetections();
+        if (detections.isEmpty()) {
+            return Map.of("avg", 0, "min", 0, "max", 0, "count", 0);
+        }
+        DoubleSummaryStatistics stats = detections.stream()
+                .filter(d -> d.getFps() > 0)
+                .mapToDouble(DetectionData::getFps)
+                .summaryStatistics();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("avg", Math.round(stats.getAverage() * 10.0) / 10.0);
+        result.put("min", stats.getMin());
+        result.put("max", stats.getMax());
+        result.put("count", stats.getCount());
+        return result;
     }
 
     public List<String> getRecentFrames() {
