@@ -29,7 +29,7 @@ import {
   Cell
 } from "recharts";
 import { cn } from "../lib/utils";
-import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData, fetchStatsCompare } from "../services/dataService";
+import { subscribeToAlerts, subscribeToSystemStatus, fetchStats, fetchTrendData, fetchStatsCompare, exportCsv } from "../services/dataService";
 import { Alert, SystemStatus, AlertType, StatsCompare } from "../types";
 
 export default function Dashboard() {
@@ -86,15 +86,15 @@ export default function Dashboard() {
     <div className="space-y-xl max-w-[1600px] mx-auto pb-xl">
       <header className="flex justify-between items-end">
         <div>
-          <h1 className="font-display text-display text-on-surface">控制台概览</h1>
-          <p className="text-on-surface-variant font-body-base mt-xs">实时监控数据与系统运行分析</p>
+          <h1 className="font-bold text-title text-on-surface tracking-tight">控制台概览</h1>
+          <p className="text-on-surface-variant text-body-lg mt-xs">实时监控数据与系统运行分析</p>
         </div>
         <div className="flex gap-sm">
-          <button className="px-lg py-sm bg-white border border-outline-variant rounded-xl text-on-surface font-semibold flex items-center gap-sm hover:bg-surface-container-high transition-colors text-[13px]">
+          <button className="px-lg py-sm bg-white border border-outline-variant rounded-xl text-on-surface font-semibold flex items-center gap-sm hover:bg-surface-container-high transition-colors text-body-lg">
             <Calendar size={18} />
             过去24小时
           </button>
-          <button onClick={() => window.open("/api/export/csv", "_blank")} className="px-lg py-sm bg-primary text-white rounded-xl font-semibold flex items-center gap-sm hover:opacity-90 transition-opacity text-[13px] shadow-lg active:scale-95">
+          <button onClick={() => exportCsv()} className="px-lg py-sm bg-primary text-white rounded-xl font-semibold flex items-center gap-sm hover:opacity-90 transition-opacity text-body-lg shadow-lg active:scale-95">
             <Download size={18} />
             导出报告
           </button>
@@ -129,7 +129,7 @@ export default function Dashboard() {
         />
         <MetricCard
           icon={<User size={20} />}
-          label="人员独身"
+          label="人员聚集"
           value={alertCounts[AlertType.CROWD]}
           change={getChange("人员聚集")}
           color="detect-purple"
@@ -141,11 +141,11 @@ export default function Dashboard() {
         {/* Main Trend Chart */}
         <div className="col-span-2 bg-white p-xl rounded-xl border border-outline-variant shadow-sm flex flex-col h-[400px]">
           <div className="flex justify-between items-center mb-xl">
-            <h3 className="font-bold text-lg text-on-surface">异常行为趋势分析</h3>
+            <h3 className="font-bold text-body-lg text-on-surface">异常行为趋势分析</h3>
             <div className="flex gap-md">
               <div className="flex items-center gap-xs">
                 <span className="w-3 h-3 bg-primary rounded-full"></span>
-                <span className="text-on-surface-variant text-[11px] font-bold">当前周期</span>
+                <span className="text-on-surface-variant text-body-sm font-bold">当前周期</span>
               </div>
             </div>
           </div>
@@ -163,9 +163,9 @@ export default function Dashboard() {
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fontSize: 10, fill: '#727785' }} 
+                  tick={{ fontSize: 13, fill: '#727785' }}
                 />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#727785' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13, fill: '#727785' }} />
                 <Tooltip 
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                   cursor={{ stroke: '#adc6ff', strokeWidth: 1 }}
@@ -185,7 +185,7 @@ export default function Dashboard() {
 
         {/* Distribution Chart */}
         <div className="col-span-1 bg-white p-xl rounded-xl border border-outline-variant shadow-sm flex flex-col h-[400px]">
-          <h3 className="font-bold text-lg text-on-surface mb-xl">行为分布</h3>
+          <h3 className="font-bold text-body-lg text-on-surface mb-xl">行为分布</h3>
           <div className="flex-1 relative flex flex-col items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
@@ -203,15 +203,15 @@ export default function Dashboard() {
               </RePieChart>
             </ResponsiveContainer>
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-              <p className="font-bold text-2xl text-on-surface leading-none">{totalBehaviors}</p>
-              <p className="text-[10px] text-outline uppercase font-bold mt-1">事件总数</p>
+              <p className="font-bold text-title text-on-surface leading-none">{totalBehaviors}</p>
+              <p className="text-body-lg text-outline uppercase font-bold mt-1">事件总数</p>
             </div>
             
             <div className="mt-xl w-full grid grid-cols-2 gap-y-md gap-x-xl px-md">
               {distributionData.map(item => (
                 <div key={item.name} className="flex items-center gap-sm">
                   <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-[12px] text-on-surface-variant truncate">{item.name}</span>
+                  <span className="text-body-lg text-on-surface-variant truncate">{item.name}</span>
                 </div>
               ))}
             </div>
@@ -223,28 +223,35 @@ export default function Dashboard() {
         {/* System Status */}
         <div className="col-span-1 bg-white p-xl rounded-xl border border-outline-variant shadow-sm h-[400px] flex flex-col">
           <div className="flex justify-between items-center mb-xl">
-            <h3 className="font-bold text-lg text-on-surface">系统运行状态</h3>
-            <span className="px-md py-1 bg-success-green/10 text-success-green rounded-full text-[11px] font-bold">正常运行</span>
+            <h3 className="font-bold text-body-lg text-on-surface">系统运行状态</h3>
+            <span className={cn(
+              "px-md py-1 rounded-full text-body-sm font-bold",
+              status && status.cpuUsage < 80 && status.memoryUsage < 80
+                ? "bg-success-green/10 text-success-green"
+                : "bg-warning-orange/10 text-warning-orange"
+            )}>{status && status.cpuUsage < 80 && status.memoryUsage < 80 ? "正常运行" : "负载较高"}</span>
           </div>
           <div className="space-y-[28px] mt-md">
             <StatusProgress label="计算核心负载" value={status?.cpuUsage ?? 0} color="bg-primary" />
+            <StatusProgress label="内存使用" value={status?.memoryUsage ?? 0} color="bg-detect-purple" />
             <StatusProgress label="存储空间" value={status?.storageUsage ?? 0} color="bg-warning-orange" />
+            <StatusProgress label="GPU 算力" value={status?.gpuUsage ?? 0} color="bg-success-green" />
           </div>
 
           <div className="mt-auto pt-xl border-t border-outline-variant">
             <div className="grid grid-cols-2 gap-xl">
               <div>
-                <p className="text-outline font-bold text-[11px] uppercase mb-1">在线设备</p>
+                <p className="text-outline font-bold text-body-lg uppercase mb-1">在线设备</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-on-surface font-mono">{status?.onlineDevices ?? "—"}</span>
-                  <span className="text-[11px] text-outline font-mono">/ {status?.totalDevices ?? "—"}</span>
+                  <span className="text-title font-bold text-on-surface font-mono">{status?.onlineDevices ?? "—"}</span>
+                  <span className="text-body-sm text-outline font-mono">/ {status?.totalDevices ?? "—"}</span>
                 </div>
               </div>
               <div>
-                <p className="text-outline font-bold text-[11px] uppercase mb-1">活跃AI模型</p>
+                <p className="text-outline font-bold text-body-lg uppercase mb-1">活跃AI模型</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-on-surface font-mono">{status?.activeModels ?? "—"}</span>
-                  <span className="text-[11px] text-outline font-mono">/ {status?.totalModels ?? "—"}</span>
+                  <span className="text-title font-bold text-on-surface font-mono">{status?.activeModels ?? "—"}</span>
+                  <span className="text-body-sm text-outline font-mono">/ {status?.totalModels ?? "—"}</span>
                 </div>
               </div>
             </div>
@@ -254,7 +261,7 @@ export default function Dashboard() {
         {/* Live Alerts Table */}
         <div className="col-span-2 bg-white rounded-xl border border-outline-variant shadow-sm h-[400px] flex flex-col overflow-hidden">
           <div className="p-xl border-b border-outline-variant flex justify-between items-center bg-surface-container-low/30">
-            <h3 className="font-bold text-lg text-on-surface">实时告警订阅</h3>
+            <h3 className="font-bold text-body-lg text-on-surface">实时告警订阅</h3>
             <div className="flex gap-sm">
               <button className="p-xs text-outline hover:text-on-surface transition-colors">
                 <Filter size={18} />
@@ -266,7 +273,7 @@ export default function Dashboard() {
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar">
             <table className="w-full text-left">
-              <thead className="bg-surface-container-low/50 sticky top-0 z-10 text-[10px] uppercase font-bold text-outline tracking-wider">
+              <thead className="bg-surface-container-low/50 sticky top-0 z-10 text-body-sm uppercase font-bold text-outline tracking-wider">
                 <tr>
                   <th className="px-xl py-md">时间</th>
                   <th className="px-xl py-md">类型</th>
@@ -275,13 +282,13 @@ export default function Dashboard() {
                   <th className="px-xl py-md text-right">操作</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-outline-variant/30 text-[13px]">
+              <tbody className="divide-y divide-outline-variant/30 text-body-lg">
                 {alerts.slice(0, 10).map((alert) => (
                   <tr key={alert.id} className="hover:bg-surface-container-low transition-colors group">
                     <td className="px-xl py-md font-mono font-bold">{new Date(alert.time).toLocaleTimeString()}</td>
                     <td className="px-xl py-md">
                       <span className={cn(
-                        "px-sm py-1 rounded text-[10px] font-black uppercase",
+                        "px-sm py-1 rounded text-body-lg font-black uppercase",
                         alert.type === AlertType.FIGHT ? "bg-error-container text-on-error-container" : 
                         alert.type === AlertType.FALL ? "bg-warning-orange/10 text-warning-orange" : 
                         alert.type === AlertType.CROWD ? "bg-detect-purple/10 text-detect-purple" : 
@@ -326,18 +333,18 @@ function MetricCard({ icon, label, value, change, color, bg }: { icon: any, labe
           {icon}
         </div>
         <span className={cn(
-          "font-bold text-[12px] font-mono",
+          "font-bold text-body-lg font-mono",
           isUp ? "text-danger-red" : isSteady ? "text-info-cyan" : "text-success-green"
         )}>
           {change}
         </span>
       </div>
-      <p className="text-outline font-bold text-[11px] uppercase tracking-wider mb-sm">{label}</p>
+      <p className="text-outline font-bold text-body-lg uppercase tracking-wider mb-sm">{label}</p>
       <div className="flex items-baseline gap-sm">
-        <h2 className="font-mono text-3xl font-black text-on-surface tracking-tight">
+        <h2 className="font-mono text-title font-black text-on-surface tracking-tight">
           {value.toString().padStart(2, '0')}
         </h2>
-        <span className="text-outline-variant font-bold text-[11px] uppercase">件 / 今日</span>
+        <span className="text-outline-variant font-bold text-body-lg uppercase">件 / 今日</span>
       </div>
       
       {/* Decorative pulse line for fights */}
@@ -353,7 +360,7 @@ function MetricCard({ icon, label, value, change, color, bg }: { icon: any, labe
 function StatusProgress({ label, value, color }: { label: string, value: number, color: string }) {
   return (
     <div className="flex flex-col gap-sm">
-      <div className="flex justify-between font-bold text-[11px] uppercase text-on-surface-variant">
+      <div className="flex justify-between font-bold text-body-lg uppercase text-on-surface-variant">
         <span>{label}</span>
         <span className="font-mono">{value}%</span>
       </div>
