@@ -8,49 +8,73 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-Two-component system with dual Python→Java communication paths:
+Two-component system with no database — flat-file JSON exchange:
 
 ```
-Camera/video file → YOLOv8 Pose (Python, detection/yolov8_security.py)
-                          │
-                          ├──→ writes detection_*.json + frame_*.jpg to server/data/
-                          └──→ HTTP POST frames to /api/update_frame (MJPEG stream)
-
-Java Spring Boot (server/) ←── scans server/data/ (DirScan cache, 2s TTL)
-                           ←── serves REST API + MJPEG video feed
-
-Web Dashboard ←── polls /api/stats every 2s, /api/camera_config every 10s
+Camera/Video → Python (YOLOv8 Pose) → detection_*.json + frame_*.jpg → server/data/
+                                │                                      │
+                                └── HTTP POST JPEG frames ──→ /api/update_frame
+                                                                  │
+Java Spring Boot ←── DirScan of server/data/ (15s TTL cache)     │
+                 ←── SSE push /api/sse/stream (cameras, alerts, system_metrics)
+                 ←── MJPEG /video_feed                            │
+                                                                  │
+React SPA (Vite) ←── REST polling + SSE subscription + MJPEG video
 ```
 
 ### Python Detection (`detection/yolov8_security.py`)
 - YOLOv8n-pose model for real-time pose estimation
 - Detects: 跌倒 (fall), 打架 (fighting), 疲劳 (fatigue/posture), 眼疲劳 (eye fatigue via EAR), 离岗 (leave post), 人员聚集 (crowd gathering)
-- `Config` class (line 76) centralizes all parameters: model path, detection thresholds, alert cooldown, UI colors, save intervals, EAR threshold
-- Modules: `DetectionModule`, `DataSaver`, `AlertManager`, `UIManager`
-- Optional Qwen2.5-VL service (`detection/qwen_vl_service.py`, port 5001) for LLM-based scene analysis
-- GPU inference via `YOLOV8_DEVICE=cuda` env var; supports TensorRT acceleration (`USE_TENSORRT`)
+- `Config` class (line ~86) centralizes all parameters: model path, `IMG_SIZE=512`, `CONF_THRESH=0.5`, detection thresholds, EAR threshold, head nod params, `INFERENCE_EVERY=2` (frame skip), TensorRT toggle
+- Modules: `DetectionModule`, `DataSaver`, `AlertManager`, `UIManager`, `Utils`
+- `Utils` has geometry helpers: `calculate_iou()`, `calculate_distance()`, `calculate_angle()`, `calculate_eye_aspect_ratio()`, `detect_head_tilt()`
+- Multi-camera via `load_cameras_config()` reading `cameras.json`
+- GPU: env var `YOLOV8_DEVICE=cuda`, cuDNN benchmark, optional TensorRT export (`USE_TENSORRT`)
+- Frame sending: HTTP POST JPEG (quality=50) to Java backend every frame
+- Optional Qwen2.5-VL service (`detection/qwen_vl_service.py`, port 5001) for LLM scene analysis
 
 ### Java Spring Boot Backend (`server/`)
-- Spring Boot 3.2.5, Java 18 (target 17), Maven, WAR packaging
-- Multi-page Thymeleaf templates: `monitor.html` (dashboard), `login.html`, `admin.html`, `annotate.html`
-- Frontend static assets in `web/` served via `WebConfig` resource handlers (`file:../web/css/`, `file:../web/js/`)
+- Spring Boot 3.2.5, Java 18 (target 17), Maven WAR, Lombok, jjwt (JWT), bcrypt
+- Package: `com.yolov8.security`
+
+**Config classes:**
+- `AppConfig.java` — `@ConfigurationProperties(prefix="app")` with nested FileConfig, MonitorConfig, PythonConfig, QwenVLConfig, CleanupConfig
+- `AuthFilter.java` — dual auth: `X-API-Key` header OR `Authorization: Bearer <JWT>`. Empty API key skips auth.
+- `RateLimitFilter.java` — sliding window per-IP (API: 60/60s, video: 5/30s, delete: 3/60s)
+- `SecurityHeadersFilter.java` — CSP, X-Content-Type-Options, X-Frame-Options
+- `DataCleanupTask.java` — scheduled cleanup of old detection files
+
+**Controllers (12):** `PageController` (SPA fallback → `index.html`), `ApiController`, `StatsController`, `VideoStreamController` (MJPEG, multi-cam via `?cam=N`), `AuthController`, `UserDeviceController`, `CameraConfigController`, `AnnotationController`, `AlertController`, `AuditLogController`, `SseController`, `QwenVLController`, `SystemMetricsController`
+
+**Services (12):**
+- `DetectionService` — scans `server/data/` with `DirScan` cache (15s TTL, `SCAN_CACHE_TTL_MS=15000L`), system info cache (60s TTL), background cache warmer. Must call `invalidateScanCache()` after deletes.
+- `AbstractJsonFileService<T>` — base for JSON-file CRUD: `ReadWriteLock`, atomic writes (temp-file + rename), in-memory cache. Extended by `UserService`, `DeviceService`.
+- `SettingsService` — standalone (NOT extending AbstractJsonFileService)
+- `CameraConfigService` — CRUD for `cameras.json` (shared with Python)
+- `AnnotationService` — keypoint annotation management, YOLO/COCO export
+- `KanbanEventBus` — SSE event broadcaster for real-time push
+- Others: `AlertService`, `AuditLogService`, `ModelInfoService`, `PythonScriptService`, `QwenVLService`
+
+### Frontend (`web/`) — React SPA
+- React 19 + React Router 7 + Tailwind CSS v4 + Recharts + Lucide React + Motion + Vite 6
+- `src/App.tsx` — 10 routes: Login, Dashboard, Monitor, MonitorBigScreen, Alerts, Devices, Evidence, Analysis, Maintenance, Audit
+- Components: `Layout` (sidebar + topbar), `CameraPanel`, `ErrorBoundary`, `LoadingError`
+- `src/lib/api.ts` — REST + SSE client: 30s in-memory cache, request deduplication, auto cache invalidation on mutations, JWT attached to all requests
+- `src/lib/auth.tsx` — JWT auth context, `ProtectedRoute` wrapper
+- `src/types.ts` — TypeScript interfaces (Camera, Alert, AuditLog, SystemStatus, UserAccount, Settings, etc.)
+- SSE subscription to `/api/sse/stream` with named event types: cameras, alerts, system_metrics, audit_logs, camera_stats. Singleton `EventSource` shared across subscribers.
+- Design tokens in `DESIGN.md` — light/dark dual theme, Chinese-first UI
+- Legacy JS/CSS in `web/css/` and `web/js/` (from pre-React era, may still be referenced)
+- No separate build needed in dev — Vite dev server proxies `/api` and `/video_feed` to `localhost:5000`
 
 ### Authentication
-- `AuthFilter` accepts **either** `X-API-Key` header **or** `Authorization: Bearer <JWT>` token
-- JWT issued by `POST /api/login` via `AuthController` (uses `jjwt` library, HMAC-SHA)
-- Public paths: static assets (`/css/**`, `/js/**`), `/login`, `/video_feed`, `/api/login`, and GET-only endpoints `/api/stats`, `/api/stats/summary`, `/api/camera_config`, `/api/cameras`
+- `AuthFilter` accepts **either** `X-API-Key` header **or** `Authorization: Bearer <JWT>`
+- JWT issued by `POST /api/login` via `AuthController` (jjwt, HMAC-SHA)
+- Public paths: static assets (`/css/**`, `/js/**`), `/login`, `/video_feed`, `/api/login`, `/api/sse/stream`, `/api/stats`, `/api/stats/summary`, `/api/camera_config`, `/api/cameras`, `/api/alerts`, `/api/audit_logs`
 - Config: `app.api-key` (empty = skip auth in dev), `app.jwt.secret` (from `.env` `JWT_SECRET`)
+- Login lockout: 5 failed attempts → 15-minute lockout (client-side in login page)
 
-### Key Services
-- `DetectionService` — scans `server/data/` for `detection_*.json` + `frame_*.jpg`. `DirScan` cache with 2s TTL. Must call `invalidateScanCache()` after deletes.
-- `AbstractJsonFileService<T>` — base class for JSON-file CRUD with `ReadWriteLock`, atomic writes (temp-file + move). Extended by `UserService`, `DeviceService`.
-- `SettingsService` — standalone service for `settings.json` (does NOT extend AbstractJsonFileService)
-- `CameraConfigService` — CRUD for `cameras.json` (shared config with Python side)
-- `AnnotationService` — keypoint annotation management, YOLO/COCO export
-- `RateLimitFilter` — sliding window per-IP (API: 60/60s, video: 5/30s, delete: 3/60s)
-- `SecurityHeadersFilter` — CSP, X-Content-Type-Options, X-Frame-Options
-
-### REST API (all under `/yolov8-security/`)
+### REST API (all under `/`)
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -68,29 +92,20 @@ Web Dashboard ←── polls /api/stats every 2s, /api/camera_config every 10s
 | `POST /api/login` | JWT authentication (returns token) |
 | `POST /api/update_frame` | Receive video frame from Python |
 | `GET /video_feed` | MJPEG stream (`multipart/x-mixed-replace`) |
+| `GET /api/sse/stream` | SSE real-time events (cameras, alerts, system_metrics, audit_logs) |
 | `GET /api/ai/status` | Qwen2.5-VL service health |
 | `POST /api/ai/analyze`, `/api/ai/analyze-security`, `/api/ai/batch-analyze` | LLM scene analysis |
 | `GET/POST/PUT/DELETE /api/annotations/*` | Keypoint annotation CRUD + YOLO/COCO export |
 
 ## Key Implementation Details
 
-- **Flat-file data exchange (no database)** — Python writes `detection_*.json` and `frame_*.jpg` to `server/data/`, Java's `DetectionService` scans and parses them via Jackson.
-- **DetectionService caching** — `DirScan` cache with 2-second TTL (`SCAN_CACHE_TTL_MS = 2000L`). After `DELETE /api/delete_all_images`, `invalidateScanCache()` must be called.
+- **No database** — all persistence is JSON files on disk. `AbstractJsonFileService` provides `ReadWriteLock`-protected atomic writes (write temp, then rename). New CRUD services should extend this.
+- **DetectionService caching** — `DirScan` with 15-second TTL. After `DELETE /api/delete_all_images`, `invalidateScanCache()` must be called.
 - **StatsResponse aggregation** — `BehaviorCounts` POJO tracks fall, fight, absent, fatigue, gather. Recent detections capped at 50, all detections at 200.
-- **Video streaming** — `VideoStreamController` serves MJPEG via `multipart/x-mixed-replace`; supports multi-camera (`?cam=0`, `?cam=1`). Nginx proxies with `proxy_buffering off` and `proxy_cache off`.
-- **Auth** — `AuthFilter` checks `X-API-Key` header OR `Authorization: Bearer <JWT>`. Empty `app.api-key` skips auth in dev.
-- **Rate limiting** — `RateLimitFilter` uses sliding window counters per IP.
-- **AbstractJsonFileService** — generic JSON-file CRUD with in-memory caching, `ReadWriteLock`, and atomic writes. New CRUD services should extend this.
-- **Login lockout** — 5 failed attempts triggers 15-minute lockout (client-side in `login.js`).
-- **open_folder** — uses `java.awt.Desktop.open()` — will fail in headless/Docker without X11.
-
-## Environment
-
-- Python: Use venv (NOT conda)
-- PyTorch: CUDA 12.8 for RTX 5060, install via Tsinghua mirror: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128`
-- GPU inference is MANDATORY — always force CUDA device, never default to CPU or frame-skipping
-- JAVA_HOME must be set before running any Java commands
-- Always clean stale compiled files in `target/classes/` after editing source files — the dashboard won't reflect changes otherwise
+- **Video streaming** — MJPEG via `multipart/x-mixed-replace`; multi-camera (`?cam=0`, `?cam=1`). Nginx must use `proxy_buffering off` and `proxy_cache off`.
+- **SSE real-time push** — `KanbanEventBus` broadcasts to `SseController`. Frontend subscribes via singleton `EventSource` with named event types. Auto-reconnect on disconnect.
+- **Frontend API layer** — `api.ts` in-memory 30s cache with request deduplication for GETs. Cache auto-invalidated on mutations. JWT token attached automatically.
+- **open_folder** — uses `java.awt.Desktop.open()` — fails in headless/Docker without X11.
 
 ## Key Commands
 
@@ -98,8 +113,14 @@ Web Dashboard ←── polls /api/stats every 2s, /api/camera_config every 10s
 # Python detection
 cd detection && python yolov8_security.py
 
-# Python tests (single test: -k "test_name")
+# Python tests (single: -k "test_name")
 cd tests && python -m pytest test_detection.py -v
+
+# Frontend dev server (proxies to localhost:5000)
+cd web && npm run dev
+
+# Frontend build (outputs to web/dist/)
+cd web && npm run build
 
 # Java build (WAR)
 cd server && .\mvnw clean package -DskipTests
@@ -111,100 +132,76 @@ cd server && .\mvnw spring-boot:run
 cd server && .\mvnw test
 
 # Docker
-cd deploy && docker-compose up -d
-cd deploy && docker-compose down
-cd deploy && docker-compose logs -f
+cd deploy && docker-compose up -d / down / logs -f
 
 # Windows one-click
-start.bat              # Start all (clean → build → run)
-start.bat stop         # Stop all services
-start.bat restart      # Restart
-start.bat build        # Build WAR only
+start.bat              # clean → build → run
+start.bat stop / restart / build
 ```
 
-## Startup
+## Build & Verification
 
-- Use `start.bat` with correct ordering: clean stale files FIRST, then build, then start services
-- Watch for path escaping issues in .bat files (trailing backslashes)
-- After editing any source file, rebuild or manually copy to `target/classes/` before restarting
+After editing source files, always rebuild and verify:
+- **Java**: `cd server && .\mvnw clean package -DskipTests`, then `spring-boot:run` or copy WAR
+- **Frontend**: `cd web && npm run build` — Spring Boot serves from `file:web/dist/`
+- **Python**: no build step, just restart detection process
+- **Always** test the affected endpoint/UI before reporting success
 
-## Config
+## Environment
 
-- Python: `Config` class in `detection/yolov8_security.py` (line 76)
-- Java: `application.properties` + `AppConfig.java`
-  - `app.api-key` — API key auth (empty = skip)
-  - `app.jwt.secret` — JWT signing key (from `.env`)
-  - `server.port=5000` — backend port
-  - `app.file.upload-dir=./data` — where DetectionService scans
-- Nginx: `deploy/nginx/nginx.conf` — SSL, reverse proxy, SPA fallback
+- Python: venv (NOT conda)
+- PyTorch: CUDA 12.8 for RTX 5060: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128`
+- GPU inference is MANDATORY — always force CUDA, never CPU fallback or frame-skipping
+- `JAVA_HOME` must point to JDK 17+ before any Java commands
+- Bundled JDK 18 in `jdk-18.0.2.1+1/` for zero-setup Windows deployment
 - `.env` — `API_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET`
 
-## Frontend Rules
+## Config Locations
 
-- All dashboard data must come from real backend APIs, never mock/placeholder data
-- AuthFilter allows static assets (`/css/**`, `/js/**`, `/images/**`) and some GET API endpoints without auth
-- Frontend uses `authFetch()` (in `js/common.js`) which handles 401 redirects and stale token cleanup
-- No separate frontend build — CSS/JS files in `web/` are served directly by Spring Boot resource handlers
+| Config | File | Key Settings |
+|--------|------|--------------|
+| Java app | `server/src/main/resources/application.properties` | port=5000, JWT, API key, Qwen VL URL, cleanup retention |
+| Python | `Config` class in `detection/yolov8_security.py` | MODEL_PATH, IMG_SIZE=512, CONF_THRESH=0.5, DEVICE via env |
+| Nginx | `deploy/nginx/nginx.conf` | SSL, reverse proxy, SPA fallback, proxy_buffering off |
+| Cameras | `detection/cameras.json` | Shared between Python and Java |
+| Design | `DESIGN.md` | Color tokens, typography, spacing (light/dark/login themes) |
+
+## Debugging Philosophy
+
+When user asks to debug or fix specific issue:
+- Reproduce error → trace exact code path → apply smallest targeted fix → verify
+- Do NOT create design documents or broad exploration first
+- Skip over-engineering — user wants concrete fixes, not process
+
+## Platform-Specific Notes
+
+Windows batch scripts (.bat):
+- Avoid Chinese chars in echo statements (cmd parsing issues)
+- Handle path escaping: trailing backslashes, spaces, quoted arguments
+- Test scripts explicitly after changes — encoding/path bugs need 2-3 rounds
 
 ## Camera Integration
 
-- Always test camera reachability FIRST before building any integration code
+- Always test camera reachability FIRST before building integration code
 - RTSP may be disabled on some cameras — if RTSP fails, try HTTP snapshot endpoint immediately
-- USB camera detection: check device indices 0-5 with OpenCV, clarify which is external vs built-in
+- USB camera: check device indices 0-5 with OpenCV, clarify which is external vs built-in
 
 ## Model Files
 
 - YOLOv8n-pose: `models/yolov8n-pose.pt` (pose estimation, ~5MB)
-- Qwen2.5-VL-7B: Optional multimodal model for advanced scene analysis (~14GB)
+- Qwen2.5-VL-7B: Optional multimodal model (~14GB)
 - Models are gitignored — user must download manually
-
-## Important Notes
-
-- No database — all data stored as flat JSON files in `server/data/`
-- Python reads from `videos/test_video.mp4` by default; change `Config.SOURCE` to `0` for live camera
-- Java tests use JUnit 5 with `@TempDir` for isolated file I/O — no mocking framework
-- Qwen VL service (port 5001) is entirely optional; the system works without it
 
 ## Skill routing
 
-When the user's request matches an available skill, invoke it via the Skill tool. The
-skill has multi-step workflows, checklists, and quality gates that produce better
-results than an ad-hoc answer. When in doubt, invoke the skill. A false positive is
-cheaper than a false negative.
-
-Key routing rules:
-- Product ideas, "is this worth building", brainstorming → invoke /office-hours
-- Strategy, scope, "think bigger", "what should we build" → invoke /plan-ceo-review
-- Architecture, "does this design make sense" → invoke /plan-eng-review
-- Design system, brand, "how should this look" → invoke /design-consultation
-- Design review of a plan → invoke /plan-design-review
-- Developer experience of a plan → invoke /plan-devex-review
-- "Review everything", full review pipeline → invoke /autoplan
-- Bugs, errors, "why is this broken", "wtf", "this doesn't work" → invoke /investigate
-- Test the site, find bugs, "does this work" → invoke /qa (or /qa-only for report only)
-- Code review, check the diff, "look at my changes" → invoke /review
-- Visual polish, design audit, "this looks off" → invoke /design-review
-- Developer experience audit, try onboarding → invoke /devex-review
-- Ship, deploy, create a PR, "send it" → invoke /ship
-- Merge + deploy + verify → invoke /land-and-deploy
-- Configure deployment → invoke /setup-deploy
-- Post-deploy monitoring → invoke /canary
-- Update docs after shipping → invoke /document-release
-- Weekly retro, "how'd we do" → invoke /retro
-- Second opinion, codex review → invoke /codex
-- Safety mode, careful mode, lock it down → invoke /careful or /guard
-- Restrict edits to a directory → invoke /freeze or /unfreeze
-- Upgrade gstack → invoke /gstack-upgrade
-- Save progress, "save my work" → invoke /context-save
-- Resume, restore, "where was I" → invoke /context-restore
-- Security audit, OWASP, "is this secure" → invoke /cso
-- Make a PDF, document, publication → invoke /make-pdf
-- Launch real browser for QA → invoke /open-gstack-browser
-- Import cookies for authenticated testing → invoke /setup-browser-cookies
-- Performance regression, page speed, benchmarks → invoke /benchmark
-- Review what gstack has learned → invoke /learn
-- Tune question sensitivity → invoke /plan-tune
-- Code quality dashboard → invoke /health
+When user's request matches an available skill, invoke it via the Skill tool. Key routing:
+- Product ideas, brainstorming → invoke /office-hours
+- Architecture → invoke /plan-eng-review
+- Bugs, errors, "why is this broken" → invoke /investigate
+- Code review → invoke /review
+- Test site, find bugs → invoke /qa
+- Ship, deploy, create PR → invoke /ship
+- Security audit → invoke /cso
 
 <!-- superpowers-zh:begin (do not edit between these markers) -->
 # Superpowers-ZH 中文增强版

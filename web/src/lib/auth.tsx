@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
 import { getToken, clearToken } from "./api";
 
 interface AuthCtx {
@@ -20,6 +20,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     clearToken();
     setAuthenticated(false);
+  }, []);
+
+  // Listen for 401-triggered token invalidation from api layer
+  useEffect(() => {
+    const handler = () => setAuthenticated(false);
+    window.addEventListener("rtk:token-invalid", handler);
+    return () => window.removeEventListener("rtk:token-invalid", handler);
   }, []);
 
   return (

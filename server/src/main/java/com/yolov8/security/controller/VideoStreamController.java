@@ -63,6 +63,13 @@ public class VideoStreamController {
     }
 
     /**
+     * Update frame with person count (used by StatsController).
+     */
+    public void updateFrame(BufferedImage frame, String camId, int personCount) {
+        updateFrame(frame, camId);
+    }
+
+    /**
      * Legacy single-camera update (backward compatible).
      */
     public void updateFrame(BufferedImage frame) {
@@ -123,6 +130,23 @@ public class VideoStreamController {
         result.put("cameras", latestFrameBytes.keySet());
         result.put("count", latestFrameBytes.size());
         return result;
+    }
+
+    /** Camera stats for SSE broadcasting */
+    public Map<String, Object> getCameraStats() {
+        Map<String, Object> stats = new java.util.LinkedHashMap<>();
+        long now = System.currentTimeMillis();
+        java.util.List<Map<String, Object>> camList = new java.util.ArrayList<>();
+        for (Map.Entry<String, byte[]> entry : latestFrameBytes.entrySet()) {
+            Map<String, Object> info = new java.util.LinkedHashMap<>();
+            info.put("id", entry.getKey());
+            Long ts = lastFrameIds.get(entry.getKey());
+            info.put("online", ts != null && (now - ts) < frameTtlMs);
+            camList.add(info);
+        }
+        stats.put("cameras", camList);
+        stats.put("activeCount", latestFrameBytes.size());
+        return stats;
     }
 
     private byte[] getFrameBytes(String cam) {

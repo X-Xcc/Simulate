@@ -1,11 +1,11 @@
 /**
  * Common utilities shared across all dashboard pages.
- * Usage: <script src="/yolov8-security/static/js/common.js"></script>
+ * Usage: <script src="/static/js/common.js"></script>
  */
 (function() {
     'use strict';
 
-    var API_BASE = '/yolov8-security';
+    var API_BASE = '';
 
     function escHtml(str) {
         if (str == null) return '';

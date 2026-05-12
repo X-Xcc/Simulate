@@ -6,28 +6,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class PageController {
 
-    @GetMapping({"/", "/index"})
-    public String index() {
-        return "monitor";
-    }
-
-    @GetMapping("/login")
-    public String login() {
-        return "login";
-    }
-
-    @GetMapping("/admin")
-    public String admin() {
-        return "admin";
-    }
-
-    @GetMapping("/monitor")
-    public String monitor() {
-        return "monitor";
-    }
-
-    @GetMapping("/annotate")
-    public String annotate() {
-        return "annotate";
+    /**
+     * SPA catch-all: forward all non-API page routes to index.html.
+     * React Router handles client-side routing.
+     */
+    @GetMapping({"/", "/index", "/login", "/dashboard", "/monitor", "/alerts",
+                 "/devices", "/evidence", "/analysis", "/maintenance", "/audit",
+                 "/monitor/fullscreen"})
+    public String spaIndex() {
+        return "forward:/index.html";
     }
 }

@@ -73,12 +73,22 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
 
 // --- Typed API helpers ---
 
+function handleResponseError(res: Response, body: any): never {
+  if (res.status === 401) {
+    clearToken();
+    cache.clear();
+    pending.clear();
+    window.dispatchEvent(new Event("rtk:token-invalid"));
+  }
+  throw new Error(body.error || body.message || "请求失败");
+}
+
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   return cachedFetch(path, async () => {
     const res = await apiFetch(path, { signal });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || err.message || "请求失败");
+      handleResponseError(res, err);
     }
     const json = await res.json();
     return (json.data !== undefined ? json.data : json) as T;
@@ -90,7 +100,7 @@ export async function apiPost<T>(path: string, body: any, signal?: AbortSignal):
   const res = await apiFetch(path, { method: "POST", body: JSON.stringify(body), signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || err.message || "请求失败");
+    handleResponseError(res, err);
   }
   const json = await res.json();
   return json.data !== undefined ? json.data : json;
@@ -101,7 +111,7 @@ export async function apiPatch<T>(path: string, body: any, signal?: AbortSignal)
   const res = await apiFetch(path, { method: "PATCH", body: JSON.stringify(body), signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || err.message || "请求失败");
+    handleResponseError(res, err);
   }
   const json = await res.json();
   return json.data !== undefined ? json.data : json;
@@ -112,7 +122,7 @@ export async function apiPut<T>(path: string, body: any, signal?: AbortSignal): 
   const res = await apiFetch(path, { method: "PUT", body: JSON.stringify(body), signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || err.message || "请求失败");
+    handleResponseError(res, err);
   }
   const json = await res.json();
   return json.data !== undefined ? json.data : json;
@@ -123,7 +133,7 @@ export async function apiDelete<T>(path: string, signal?: AbortSignal): Promise<
   const res = await apiFetch(path, { method: "DELETE", signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || err.message || "请求失败");
+    handleResponseError(res, err);
   }
   const json = await res.json();
   return json.data !== undefined ? json.data : json;
@@ -168,6 +178,7 @@ function ensureSseConnection(): void {
         .then(res => {
           if (res.status === 401) {
             clearToken();
+            window.dispatchEvent(new Event("rtk:token-invalid"));
             if (sseEventSource) { sseEventSource.close(); sseEventSource = null; }
           }
         })

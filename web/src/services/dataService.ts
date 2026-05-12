@@ -28,9 +28,33 @@ export function logout(): void {
 // --- Subscribe (SSE) ---
 
 export function subscribeToCameras(callback: (cameras: Camera[]) => void): () => void {
-  return createSseConnection({
-    onCameras: (data: any) => callback(Array.isArray(data) ? data.map(transformCamera) : []),
+  let activeCamIds = new Set<string>();
+
+  // Fetch active cameras (those with live frames)
+  async function refreshActive() {
+    try {
+      const res = await fetch("/api/cameras");
+      if (res.ok) {
+        const data = await res.json();
+        activeCamIds = new Set(data.cameras || []);
+      }
+    } catch {}
+  }
+
+  // Initial fetch + periodic refresh
+  refreshActive();
+  const timer = setInterval(refreshActive, 5000);
+
+  const unsub = createSseConnection({
+    onCameras: (data: any) => {
+      if (!Array.isArray(data)) { callback([]); return; }
+      const cameras = data.map((raw: any) => transformCamera(raw, activeCamIds));
+      callback(cameras);
+    },
+    onCameraStats: () => refreshActive(),
   });
+
+  return () => { clearInterval(timer); unsub(); };
 }
 
 export function subscribeToAlerts(callback: (alerts: Alert[]) => void): () => void {
@@ -194,7 +218,8 @@ export function exportCsv(): void {
 
 // --- Transformers ---
 
-function transformCamera(raw: any): Camera {
+function transformCamera(raw: any, activeCamIds?: Set<string>): Camera {
+  const isActive = activeCamIds ? activeCamIds.has(raw.id || "") : false;
   return {
     id: raw.id || "",
     name: raw.name || "未命名",
@@ -202,7 +227,7 @@ function transformCamera(raw: any): Camera {
     address: raw.address ?? "",
     user: raw.user,
     password: raw.password,
-    status: raw.status ?? CameraStatus.OFFLINE,
+    status: isActive ? CameraStatus.ONLINE : (raw.status ?? CameraStatus.OFFLINE),
     streamUrl: raw.id ? `/video_feed?cam=${raw.id}` : "",
     personCount: raw.personCount ?? 0,
   };

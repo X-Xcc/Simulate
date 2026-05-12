@@ -9,25 +9,56 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
+    /** Resolve web asset root relative to working directory */
+    private static String webDir() {
+        // Try ../web/ first (running from server/ subdir), then ./web/ (running from project root)
+        Path parent = Paths.get("../web").toAbsolutePath().normalize();
+        if (java.nio.file.Files.isDirectory(parent)) {
+            return parent.toUri().toString();
+        }
+        Path direct = Paths.get("web").toAbsolutePath().normalize();
+        return direct.toUri().toString();
+    }
+
+    /** Resolve SPA dist directory */
+    private static String distDir() {
+        Path parent = Paths.get("../web/dist").toAbsolutePath().normalize();
+        if (java.nio.file.Files.isDirectory(parent)) {
+            return parent.toUri().toString();
+        }
+        Path direct = Paths.get("web/dist").toAbsolutePath().normalize();
+        return direct.toUri().toString();
+    }
+
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // External web assets (dev: file:../web/) take priority over classpath
+        String webRoot = webDir();
+        String dist = distDir();
+        // SPA compiled assets (React build output)
+        registry.addResourceHandler("/assets/**")
+                .addResourceLocations(dist + "assets/");
+        // External web assets (dev CSS/JS)
         registry.addResourceHandler("/static/css/**")
-                .addResourceLocations("file:../web/css/");
+                .addResourceLocations(webRoot + "css/");
         registry.addResourceHandler("/static/js/**")
-                .addResourceLocations("file:../web/js/");
+                .addResourceLocations(webRoot + "js/");
         registry.addResourceHandler("/css/**")
-                .addResourceLocations("file:../web/css/");
+                .addResourceLocations(webRoot + "css/");
         registry.addResourceHandler("/js/**")
-                .addResourceLocations("file:../web/js/");
-        // Fallback: classpath static resources (e.g. images bundled in WAR)
+                .addResourceLocations(webRoot + "js/");
+        // Fallback: classpath static resources + SPA dist
         registry.addResourceHandler("/static/**")
                 .addResourceLocations("classpath:/static/");
+        // Catch-all for SPA (index.html fallback)
+        registry.addResourceHandler("/**")
+                .addResourceLocations(dist, "classpath:/static/");
     }
 
     @Override

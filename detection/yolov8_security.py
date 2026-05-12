@@ -199,8 +199,7 @@ def detect_cameras(max_index=5):
         else:
             cap.release()
     if not available:
-        print("  ✗ 未检测到USB摄像头，将使用默认索引0")
-        available = [0]
+        print("  ✗ 未检测到任何摄像头")
     else:
         print(f"共检测到 {len(available)} 个摄像头: {available}")
     return available
@@ -1586,14 +1585,17 @@ class SecurityMonitor:
                 frame_height, frame_width = test_frame.shape[:2]
                 print(f"[{cam_name}] HTTP 快照连接成功，分辨率: {frame_width}x{frame_height}")
             else:
-                print(f"[{cam_name}] HTTP 快照连接失败: {snapshot_url}")
-                frame_width, frame_height = 1280, 720
+                print(f"[{cam_name}] HTTP 快照连接失败，跳过该摄像头: {snapshot_url}")
+                return
             cap = None
-            use_static = not ok
+            use_static = False
             test_image = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
         else:
             # USB / RTSP 模式
             use_static, cap, frame_width, frame_height = self._init_video_source(source)
+            if use_static:
+                print(f"[{cam_name}] 摄像头连接失败，跳过该摄像头")
+                return
 
         if use_static:
             test_image = np.zeros((720, 1280, 3), dtype=np.uint8)
