@@ -19,25 +19,29 @@ import {
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
-import { subscribeToAlerts, subscribeToSystemStatus, fetchStatsSummary, fetchTrendData, fetchModelInfo, fetchRegionalStats } from "../services/dataService";
-import { Alert, SystemStatus, RegionalStat } from "../types";
+import { subscribeToAlerts, subscribeToSystemStatus, fetchStatsSummary, fetchTrendData, fetchModelInfo, fetchRegionalStats, fetchFpsStats } from "../services/dataService";
+import { Alert, SystemStatus, RegionalStat, StatsSummary, ModelInfo, FpsStats } from "../types";
+import { ErrorBanner } from "../components/LoadingError";
 
 export default function Analysis() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [stats, setStats] = useState<any>(null);
-  const [modelInfo, setModelInfo] = useState<any>(null);
+  const [stats, setStats] = useState<StatsSummary | null>(null);
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [trendData, setTrendData] = useState<{ name: string; alerts: number }[]>([]);
   const [regionalData, setRegionalData] = useState<RegionalStat[]>([]);
+  const [fpsStats, setFpsStats] = useState<FpsStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
     const s = ac.signal;
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStatus = subscribeToSystemStatus(setStatus);
-    fetchStatsSummary(s).then(setStats).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    fetchModelInfo(s).then(setModelInfo).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    fetchRegionalStats(s).then(setRegionalData).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchStatsSummary(s).then(setStats).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
+    fetchModelInfo(s).then(setModelInfo).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
+    fetchRegionalStats(s).then(setRegionalData).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
+    fetchFpsStats(s).then(setFpsStats).catch(err => { if (err.name !== 'AbortError') console.error(err); });
     fetchTrendData("week", s).then(data => {
       if (data?.labels && data?.data) {
         setTrendData(data.labels.map((label: string, i: number) => ({
@@ -57,6 +61,7 @@ export default function Analysis() {
   const confirmedAlerts = alerts.filter(a => a.status === "confirmed").length;
   const accuracy = totalAlerts > 0 ? (confirmedAlerts / totalAlerts * 100).toFixed(1) : "N/A";
   const cpuUsage = status?.cpuUsage ?? 0;
+  const avgLatency = fpsStats?.avg ? `${(1000 / fpsStats.avg).toFixed(0)}ms` : "—";
 
   // Radar data from behaviorCounts
   const behaviorCounts = stats?.behaviorCounts ?? {};
@@ -78,21 +83,23 @@ export default function Analysis() {
            <p className="text-on-surface-variant text-body-lg opacity-70">监区安全数据综合分析视图（v.3.2）</p>
         </div>
         <div className="flex gap-sm">
-           <button className="bg-white border border-outline-variant px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2">
+           <button className="bg-white border border-outline-variant px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2" aria-label="近7天数据">
              <Calendar size={18} /> 近7天数据
            </button>
-           <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-sm">
+           <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-sm" aria-label="导出分析报告">
              <Download size={18} /> 导出分析报告
            </button>
         </div>
       </header>
+
+      {error && <ErrorBanner message={error} />}
 
       {/* Summary Row */}
       <div className="grid grid-cols-4 gap-xl">
          {[
            { label: "本周告警总数", value: totalAlerts.toLocaleString(), change: "+12.4%", trend: "up", icon: AlertCircle, color: "text-danger-red", bg: "bg-error-container/20" },
            { label: "AI 拦截准确率", value: `${accuracy}%`, change: "+0.8%", trend: "up", icon: ShieldCheck, color: "text-success-green", bg: "bg-success-green/10" },
-           { label: "平均识别时延", value: "N/A", change: "-", trend: "none", icon: Target, color: "text-info-cyan", bg: "bg-info-cyan/10" },
+           { label: "平均识别时延", value: avgLatency, change: "-", trend: "none", icon: Target, color: "text-info-cyan", bg: "bg-info-cyan/10" },
            { label: "设备实时负载", value: `${cpuUsage}%`, change: "正常运行", trend: "none", icon: Router, color: "text-outline", bg: "bg-surface-container-highest" },
          ].map((s, i) => (
            <div key={i} className="bg-white p-lg border border-outline-variant rounded-xl shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
@@ -124,8 +131,11 @@ export default function Analysis() {
             <div 
               className="w-full h-full rounded-lg border border-outline-variant/30 chart-grid relative overflow-hidden flex items-center justify-center bg-white"
               style={{
-                backgroundImage: `url('https://lh3.googleusercontent.com/aida-public/AB6AXuDmksrikOgXpzf8vQM16KLkGSWdxdv1C083ZLJhU4IM1RKdIzEqjY2RNQsOKmV27MldTl8LvYS3f3uJMupsvprs9jJAPupdnMzMe7h7o_V9PYeCE4V6VSIzv2ra4XG4Byn2NRqcpl522D8dFJSJHFtmgBkJCzbaiaduegIdr3uPWQkltb3jBfQFyNePPRfXdS_-P4hzLX0PHI4JYAX1g1T9jwZhEsySy7vqFDUPVO4QxpARlWIdsaZXkND2s1sPeh1gYmjVAxMHol_2')`,
-                backgroundSize: 'cover'
+                background: `
+                  radial-gradient(ellipse 80% 60% at 30% 40%, rgba(186,26,26,0.15) 0%, transparent 60%),
+                  radial-gradient(ellipse 70% 50% at 60% 30%, rgba(191,135,0,0.12) 0%, transparent 55%),
+                  linear-gradient(135deg, #f8f9fc 0%, #e8ecf4 100%)
+                `,
               }}
             >
                {/* Simplified Heatmap Blobs Simulation */}

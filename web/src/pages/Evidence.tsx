@@ -1,31 +1,31 @@
 import { useState, useEffect } from "react";
-import { 
-  Calendar, 
-  Archive, 
-  Download, 
-  History, 
-  FileVideo, 
-  Play, 
-  Clock, 
-  ShieldCheck, 
-  UserCircle 
+import {
+  Calendar,
+  Archive,
+  Download,
+  FileVideo,
+  Play,
+  Clock,
 } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn, sanitizeImageUrl } from "../lib/utils";
 import { subscribeToAlerts, fetchEvidenceStats, fetchStatsCompare } from "../services/dataService";
 import { Alert, AlertLevel, EvidenceStats, StatsCompare } from "../types";
+import { ErrorBanner } from "../components/LoadingError";
 
 export default function Evidence() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [activeTab, setActiveTab] = useState(0);
   const [evStats, setEvStats] = useState<EvidenceStats | null>(null);
   const [compare, setCompare] = useState<StatsCompare | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [timelineLimit, setTimelineLimit] = useState(5);
 
   useEffect(() => {
     const ac = new AbortController();
     const s = ac.signal;
     const unsub = subscribeToAlerts(setAlerts);
-    fetchEvidenceStats(s).then(setEvStats).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    fetchStatsCompare(s).then(setCompare).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchEvidenceStats(s).then(setEvStats).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
+    fetchStatsCompare(s).then(setCompare).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
     return () => { ac.abort(); unsub(); };
   }, []);
 
@@ -33,8 +33,9 @@ export default function Evidence() {
 
   const criticalClips = alerts.filter(a => a.level === AlertLevel.CRITICAL);
 
-  const todayTotal = compare ? Object.values(compare).reduce((sum: number, c: any) => sum + (c.today ?? 0), 0) : 0;
-  const yesterdayTotal = compare ? Object.values(compare).reduce((sum: number, c: any) => sum + (c.yesterday ?? 0), 0) : 0;
+  const compareValues = compare ? Object.values(compare) as { today: number; yesterday: number }[] : [];
+  const todayTotal = compareValues.reduce((sum, c) => sum + c.today, 0);
+  const yesterdayTotal = compareValues.reduce((sum, c) => sum + c.yesterday, 0);
   const changePercent = yesterdayTotal > 0 ? `${((todayTotal - yesterdayTotal) / yesterdayTotal * 100).toFixed(0)}%` : "0%";
 
   return (
@@ -46,14 +47,16 @@ export default function Evidence() {
            <p className="text-on-surface-variant text-body-lg opacity-70">整合关键告警切片、全时段录像回放及司法级证据存储</p>
         </div>
         <div className="flex gap-sm">
-           <button className="bg-white border border-outline-variant px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 hover:bg-surface-container-low transition-all">
+           <button className="bg-white border border-outline-variant px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 hover:bg-surface-container-low transition-all" aria-label="历史日历">
              <Calendar size={18} /> 历史日历
            </button>
-           <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-lg hover:shadow-xl transition-all active:scale-95">
+           <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-lg hover:shadow-xl transition-all active:scale-95" aria-label="一键备份">
              <Archive size={18} /> 一键备份
            </button>
         </div>
       </section>
+
+      {error && <ErrorBanner message={error} />}
 
       {/* Stats */}
       <section className="grid grid-cols-4 gap-md shrink-0">
@@ -73,7 +76,7 @@ export default function Evidence() {
          ))}
       </section>
 
-      <div className="flex-1 grid grid-cols-12 gap-lg min-h-0 min-h-0 overflow-hidden">
+      <div className="flex-1 grid grid-cols-12 gap-lg min-h-0 overflow-hidden">
         {/* Left: Timeline */}
         <aside className="col-span-3 bg-white border border-outline-variant rounded-xl p-md flex flex-col overflow-hidden">
           <h3 className="font-bold flex items-center gap-2 mb-md text-primary">
@@ -87,7 +90,7 @@ export default function Evidence() {
              <div>
                <p className="text-body-lg text-outline font-bold uppercase mb-sm">当日高频时段</p>
                <div className="space-y-sm">
-                  {alerts.slice(0, 5).map((a, i) => (
+                  {alerts.slice(0, timelineLimit).map((a, i) => (
                     <div key={a.id} className="flex gap-sm p-sm hover:bg-surface-container-low transition-colors rounded-lg cursor-pointer group">
                       <div className={cn("w-1 h-10 rounded-full shrink-0", a.level === AlertLevel.CRITICAL ? "bg-error" : "bg-warning-orange")} />
                       <div className="flex-1 min-w-0">
@@ -98,6 +101,14 @@ export default function Evidence() {
                       </div>
                     </div>
                   ))}
+                  {alerts.length > timelineLimit && (
+                    <button
+                      onClick={() => setTimelineLimit(prev => prev + 5)}
+                      className="text-primary text-body-lg font-bold hover:underline w-full text-center py-sm"
+                    >
+                      查看更多 ({alerts.length - timelineLimit} 条剩余)
+                    </button>
+                  )}
                </div>
              </div>
           </div>
@@ -116,7 +127,7 @@ export default function Evidence() {
            <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-md pr-1 custom-scrollbar">
               {filteredAlerts.map(a => (
                 <div key={a.id} className="group relative bg-black aspect-video rounded-xl overflow-hidden border border-outline-variant shadow-sm h-fit">
-                   <img src={a.snapshotUrl} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
+                   <img src={sanitizeImageUrl(a.snapshotUrl)} alt={`${a.cameraName} ${a.type} 快照`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
                    <div className="absolute inset-0 video-hud flex flex-col justify-between p-sm">
                       <div className="flex justify-between items-start">
                          <span className={cn(

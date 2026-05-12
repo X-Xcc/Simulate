@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
-import { 
-  Maximize2, 
-  Settings, 
-  Bell, 
-  SunMoon, 
-  UserCircle, 
-  Activity, 
-  Shield, 
+import {
+  Maximize2,
+  Settings,
+  Bell,
+  SunMoon,
+  UserCircle,
+  Activity,
+  Shield,
   AlertCircle,
-  Users,
   VideoOff,
   SignalLow,
   CheckCircle2
@@ -17,6 +16,8 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { subscribeToCameras, subscribeToAlerts, subscribeToCameraStats, fetchStatsSummary, subscribeToSystemStatus, fetchFpsStats, getCurrentUser } from "../services/dataService";
 import { Camera, Alert, AlertLevel, CameraStatus, SystemStatus } from "../types";
+import { ErrorBanner } from "../components/LoadingError";
+import CameraPanel from "../components/CameraPanel";
 
 export default function MonitorBigScreen() {
   const navigate = useNavigate();
@@ -28,9 +29,14 @@ export default function MonitorBigScreen() {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [fps, setFps] = useState<number | null>(null);
   const [currentUser, setCurrentUser] = useState<{name: string; role: string} | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [camerasLoading, setCamerasLoading] = useState(true);
 
   useEffect(() => {
-    const unsubCameras = subscribeToCameras(setCameras);
+    const unsubCameras = subscribeToCameras((list) => {
+      setCameras(list);
+      setCamerasLoading(false);
+    });
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStats = subscribeToCameraStats(setCameraStats);
     const unsubStatus = subscribeToSystemStatus(setSystemStatus);
@@ -40,11 +46,11 @@ export default function MonitorBigScreen() {
 
     fetchStatsSummary(s).then((s) => {
       const counts = s?.behaviorCounts || {};
-      setTotalDetections(Object.values(counts).reduce((a: number, b: any) => a + (b as number), 0));
-    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+      setTotalDetections(Object.values(counts).reduce((a, b) => a + b, 0));
+    }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
 
-    fetchFpsStats(s).then(d => setFps(d.avg)).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    getCurrentUser(s).then(setCurrentUser).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchFpsStats(s).then(d => setFps(d.avg)).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
+    getCurrentUser(s).then(setCurrentUser).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
 
     return () => {
       unsubCameras();
@@ -94,6 +100,7 @@ export default function MonitorBigScreen() {
                 onClick={() => navigate(-1)}
                 className="p-1 hover:bg-white/10 rounded transition-colors"
                 title="退出大屏模式"
+                aria-label="退出大屏模式"
               >
                 <Maximize2 size={18} className="rotate-45" />
               </button>
@@ -101,20 +108,33 @@ export default function MonitorBigScreen() {
         </div>
       </header>
 
+      {error && <ErrorBanner message={error} />}
+
       <main className="flex-1 flex w-full p-xs gap-xs overflow-hidden">
         {/* 3x2 Video Matrix - Full Width Expansion */}
         <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-xs">
-          {cameras.slice(0, 6).map((cam) => (
-            <div key={cam.id} className="h-full w-full">
-              <CameraPanel camera={cam} personCount={cameraStats[cam.id] ?? 0} />
+          {camerasLoading ? (
+            <div className="col-span-3 row-span-2 flex items-center justify-center">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
-          ))}
-          {/* Fill if less than 6 */}
-          {Array.from({ length: Math.max(0, 6 - cameras.length) }).map((_, i) => (
-            <div key={`empty-${i}`} className="bg-zinc-900 flex items-center justify-center border border-white/5">
-              <VideoOff size={48} className="text-white/10" />
+          ) : cameras.length === 0 ? (
+            <div className="col-span-3 row-span-2 flex items-center justify-center">
+              <span className="text-white/20 text-body-lg font-mono">暂无摄像头设备</span>
             </div>
-          ))}
+          ) : (
+            <>
+              {cameras.slice(0, 6).map((cam) => (
+                <div key={cam.id} className="h-full w-full">
+                  <CameraPanel camera={cam} personCount={cameraStats[cam.id] ?? 0} />
+                </div>
+              ))}
+              {Array.from({ length: Math.max(0, 6 - cameras.length) }).map((_, i) => (
+                <div key={`empty-${i}`} className="bg-zinc-900 flex items-center justify-center border border-white/5">
+                  <VideoOff size={48} className="text-white/10" />
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </main>
 
@@ -131,52 +151,3 @@ export default function MonitorBigScreen() {
   );
 }
 
-function CameraPanel({ camera, personCount }: { camera: Camera; personCount: number }) {
-  return (
-    <div className="relative group bg-black overflow-hidden flex flex-col border border-white/5">
-      {/* Scanline Effect Overlay (CSS-only) */}
-      <div className="absolute inset-0 pointer-events-none z-10 bg-gradient-to-b from-transparent via-primary/5 to-transparent h-1/4 animate-[shimmer_3s_infinite]" />
-      
-      {camera.streamUrl ? (
-        <img src={camera.streamUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all duration-500" alt="" />
-      ) : (
-        <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-white/20 text-body-lg font-mono">NO SIGNAL</div>
-      )}
-      
-      {/* HUD Info Overlay */}
-      <div className="absolute inset-0 flex flex-col justify-between p-sm pointer-events-none">
-        <div className="flex justify-between items-start">
-           <div className="flex items-center gap-xs px-1.5 py-1 bg-black/60 backdrop-blur rounded border border-white/10">
-              <div className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                camera.status === CameraStatus.ONLINE ? "bg-success-green box-shadow-[0_0_8px_#1a7f37]" : "bg-error animate-pulse"
-              )}></div>
-              <span className="text-body-lg font-mono font-bold text-white/90">CAM {camera.id.slice(-4).toUpperCase()}</span>
-           </div>
-           
-           <div className="flex items-center gap-sm">
-              {camera.status === CameraStatus.ONLINE && (
-                <div className="px-1.5 py-1 bg-primary/20 backdrop-blur rounded border border-primary/20 flex items-center gap-1">
-                  <Users size={10} className="text-primary" />
-                  <span className="text-body-lg font-mono font-bold text-primary">{personCount.toString().padStart(2, '0')}</span>
-                </div>
-              )}
-           </div>
-        </div>
-
-        <div className="flex justify-between items-end bg-gradient-to-t from-black/80 via-black/40 to-transparent p-xs -m-sm">
-          <div className="flex flex-col">
-            <span className="text-body-lg font-bold text-white/80">{camera.name}</span>
-            <span className="text-body-lg font-mono text-white/40 uppercase">{camera.name}</span>
-          </div>
-          <span className={cn(
-            "text-body-lg font-black uppercase tracking-widest",
-            camera.status === CameraStatus.ONLINE ? "text-success-green" : "text-error"
-          )}>
-            {camera.status}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}

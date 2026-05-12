@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
-import { 
-  CheckCircle2, 
-  ShieldCheck, 
-  RefreshCcw, 
-  Activity, 
+import {
+  ShieldCheck,
+  RefreshCcw,
+  Activity,
   Terminal,
   CloudDownload,
   Clock,
-  Wrench
+  Wrench,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { subscribeToSystemStatus, fetchModelInfo } from "../services/dataService";
-import { SystemStatus } from "../types";
+import { SystemStatus, ModelInfo } from "../types";
+import { ErrorBanner, PageLoader } from "../components/LoadingError";
 
 const Gauge = ({ value, label, sub, color }: { value: number, label: string, sub: string, color: string }) => {
   const dashArray = (value / 100) * 100;
@@ -37,34 +37,30 @@ const Gauge = ({ value, label, sub, color }: { value: number, label: string, sub
 
 export default function Maintenance() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [modelInfo, setModelInfo] = useState<any>(null);
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
     const unsub = subscribeToSystemStatus(setStatus);
-    fetchModelInfo(ac.signal).then(setModelInfo).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchModelInfo(ac.signal).then(setModelInfo).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
     return () => { ac.abort(); unsub(); };
   }, []);
 
   if (!status) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-outline font-bold animate-pulse">正在初始化系统监控...</p>
-        </div>
-      </div>
-    );
+    return <PageLoader text="正在初始化系统监控..." />;
   }
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-xl h-full flex flex-col min-h-0">
+      {error && <ErrorBanner message={error} />}
+
       <header className="flex justify-between items-center shrink-0">
         <div>
            <h2 className="text-title-lg font-black tracking-tight flex items-center gap-2"><Wrench size={24} className="text-primary" /> 运维中心与监控</h2>
            <p className="text-on-surface-variant text-body-lg opacity-70">实时系统物理资源监控与服务节点健康度</p>
         </div>
-        <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-lg hover:shadow-xl transition-all">
+        <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-lg hover:shadow-xl transition-all" aria-label="全局状态刷新">
           <RefreshCcw size={18} /> 全局状态刷新
         </button>
       </header>
@@ -72,7 +68,7 @@ export default function Maintenance() {
       {/* Metrics Gauges */}
       <div className="grid grid-cols-4 gap-lg shrink-0">
         <Gauge value={status.cpuUsage} label="CPU 利用率" sub={status.cpuUsage > 80 ? "负载压力较大" : "核心负载正常"} color={status.cpuUsage > 80 ? "text-error" : "text-primary"} />
-        <Gauge value={status.memoryUsage} label="内存驻留" sub={status.memoryUsage > 80 ? "高负载预警" : "分配正常"} color={status.memoryUsage > 80 ? "text-warning-orange" : "text-warning-orange"} />
+        <Gauge value={status.memoryUsage} label="内存驻留" sub={status.memoryUsage > 90 ? "高负载预警" : status.memoryUsage > 70 ? "中度负载" : "分配正常"} color={status.memoryUsage > 90 ? "text-error" : status.memoryUsage > 70 ? "text-warning-orange" : "text-success-green"} />
         <Gauge value={status.storageUsage} label="存储资源" sub={status.storageUsage > 90 ? "空间严重不足" : "可用空间充足"} color={status.storageUsage > 90 ? "text-error" : "text-info-cyan"} />
         <Gauge value={status.gpuUsage} label="GPU 算力" sub={status.gpuUsage > 80 ? "推理任务满载" : "算力空闲"} color="text-success-green" />
       </div>

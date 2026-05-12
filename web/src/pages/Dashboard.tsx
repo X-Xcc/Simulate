@@ -1,19 +1,16 @@
-import { 
-  ShieldAlert, 
-  Accessibility, 
-  UserMinus, 
-  User, 
-  BarChart3, 
-  PieChart, 
-  Activity, 
-  Zap, 
-  Download, 
+import {
+  ShieldAlert,
+  Accessibility,
+  UserMinus,
+  User,
+  PieChart,
+  Download,
   Calendar,
   Filter,
   MoreVertical,
   Play
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { 
   LineChart,
   Line,
@@ -30,54 +27,72 @@ import {
 } from "recharts";
 import { cn } from "../lib/utils";
 import { subscribeToAlerts, subscribeToSystemStatus, fetchStatsSummary, fetchTrendData, fetchStatsCompare, exportCsv } from "../services/dataService";
-import { Alert, SystemStatus, AlertType, StatsCompare } from "../types";
+import { Alert, SystemStatus, AlertType, StatsCompare, StatsSummary } from "../types";
+import { ErrorBanner } from "../components/LoadingError";
 
 export default function Dashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<StatsSummary | null>(null);
   const [trendData, setTrendData] = useState<{ name: string; current: number }[]>([]);
   const [compare, setCompare] = useState<StatsCompare | null>(null);
+  const [trendRange, setTrendRange] = useState<"day" | "week" | "month">("day");
+  const [error, setError] = useState<string | null>(null);
+  const trendAbortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
+  const loadTrend = (range: "day" | "week" | "month") => {
+    trendAbortRef.current?.abort();
+    setTrendRange(range);
     const ac = new AbortController();
-    const s = ac.signal;
-    const unsubAlerts = subscribeToAlerts(setAlerts);
-    const unsubStatus = subscribeToSystemStatus(setStatus);
-    fetchStatsSummary(s).then(setStats).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    fetchStatsCompare(s).then(setCompare).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    fetchTrendData("day", s).then(data => {
+    trendAbortRef.current = ac;
+    fetchTrendData(range, ac.signal).then(data => {
       if (data?.labels && data?.data) {
         setTrendData(data.labels.map((label: string, i: number) => ({
           name: label,
           current: data.data[i] ?? 0,
         })));
       }
-    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+      setError(null);
+    }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
+    return () => ac.abort();
+  };
+
+  useEffect(() => {
+    const ac = new AbortController();
+    const s = ac.signal;
+    const unsubAlerts = subscribeToAlerts(setAlerts);
+    const unsubStatus = subscribeToSystemStatus(setStatus);
+    fetchStatsSummary(s).then(s => { setStats(s); setError(null); }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
+    fetchStatsCompare(s).then(setCompare).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    const trendCleanup = loadTrend("day");
     return () => {
       ac.abort();
       unsubAlerts();
       unsubStatus();
+      trendCleanup();
     };
   }, []);
 
   const behaviorCounts = stats?.behaviorCounts ?? {};
-  const alertCounts = {
+
+  const alertCounts = useMemo(() => ({
     [AlertType.FIGHT]: behaviorCounts["打架"] ?? 0,
     [AlertType.FALL]: behaviorCounts["跌倒"] ?? 0,
     [AlertType.ABSENCE]: behaviorCounts["离岗"] ?? 0,
     [AlertType.CROWD]: behaviorCounts["人员聚集"] ?? 0,
-  };
+  }), [behaviorCounts]);
 
-  const distributionData = [
+  const distributionData = useMemo(() => [
     { name: '跌倒', value: behaviorCounts["跌倒"] ?? 0, color: '#0051ae' },
     { name: '打架', value: behaviorCounts["打架"] ?? 0, color: '#0058be' },
     { name: '离岗', value: behaviorCounts["离岗"] ?? 0, color: '#bf8700' },
     { name: '疲劳', value: behaviorCounts["疲劳"] ?? 0, color: '#c2c6d6' },
     { name: '人员聚集', value: behaviorCounts["人员聚集"] ?? 0, color: '#7c4dff' },
-  ];
+  ], [behaviorCounts]);
 
-  const totalBehaviors = Object.values(behaviorCounts as Record<string, number>).reduce((a, b) => a + b, 0);
+  const totalBehaviors = useMemo(() =>
+    Object.values(behaviorCounts as Record<string, number>).reduce((a, b) => a + b, 0),
+  [behaviorCounts]);
 
   const getChange = (behavior: string): string => {
     if (!compare?.[behavior]) return "—";
@@ -93,16 +108,18 @@ export default function Dashboard() {
           <p className="text-on-surface-variant text-body-lg mt-xs">实时监控数据与系统运行分析</p>
         </div>
         <div className="flex gap-sm">
-          <button className="px-lg py-sm bg-white border border-outline-variant rounded-xl text-on-surface font-semibold flex items-center gap-sm hover:bg-surface-container-high transition-colors text-body-lg">
+          <button onClick={() => loadTrend("day")} className="px-lg py-sm bg-white border border-outline-variant rounded-xl text-on-surface font-semibold flex items-center gap-sm hover:bg-surface-container-high transition-colors text-body-lg">
             <Calendar size={18} />
             过去24小时
           </button>
-          <button onClick={() => exportCsv()} className="px-lg py-sm bg-primary text-white rounded-xl font-semibold flex items-center gap-sm hover:opacity-90 transition-opacity text-body-lg shadow-lg active:scale-95">
+          <button onClick={() => exportCsv()} className="px-lg py-sm bg-primary text-white rounded-xl font-semibold flex items-center gap-sm hover:opacity-90 transition-opacity text-body-lg shadow-lg active:scale-95" aria-label="导出报告">
             <Download size={18} />
             导出报告
           </button>
         </div>
       </header>
+
+      {error && <ErrorBanner message={error} onRetry={() => { setError(null); loadTrend(trendRange); }} />}
 
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-4 gap-xl">
@@ -286,7 +303,11 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/30 text-body-lg">
-                {alerts.slice(0, 10).map((alert) => (
+                {alerts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-xl py-xl text-center text-outline text-body-lg">暂无告警</td>
+                  </tr>
+                ) : alerts.slice(0, 10).map((alert) => (
                   <tr key={alert.id} className="hover:bg-surface-container-low transition-colors group">
                     <td className="px-xl py-md font-mono font-bold">{new Date(alert.time).toLocaleTimeString()}</td>
                     <td className="px-xl py-md">

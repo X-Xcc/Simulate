@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Cell
 } from "recharts";
@@ -9,10 +9,13 @@ import {
   Download,
   CheckCircle2,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { subscribeToAuditLogs, fetchAuditLogsPage, fetchAuditTrend, exportAuditLogs, fetchAutomationRate } from "../services/dataService";
 import { AuditLog, PageResponse } from "../types";
+import { ErrorBanner } from "../components/LoadingError";
 
 export default function Audit() {
   const [auditTrend, setAuditTrend] = useState<{ name: string; value: number }[]>([]);
@@ -20,20 +23,33 @@ export default function Audit() {
   const [auditPage, setAuditPage] = useState<PageResponse<AuditLog>>({ items: [], total: 0, page: 0, size: 20 });
   const [automationRate, setAutomationRate] = useState(0);
   const [trendRange, setTrendRange] = useState<"day" | "week">("week");
+  const [auditPageNum, setAuditPageNum] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [auditLoading, setAuditLoading] = useState(true);
+
+  const searchTermRef = useRef(searchTerm);
+  searchTermRef.current = searchTerm;
+
+  const trendAbortRef = useRef<AbortController | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const loadTrend = (range: "day" | "week") => {
+    trendAbortRef.current?.abort();
     setTrendRange(range);
     setAuditTrend([]);
-    fetchAuditTrend(range).then(data => {
+    const ac = new AbortController();
+    trendAbortRef.current = ac;
+    fetchAuditTrend(range, ac.signal).then(data => {
       if (data?.labels && data?.data) {
         setAuditTrend(data.labels.map((l: string, i: number) => ({ name: l, value: data.data[i] ?? 0 })));
       }
-    }).catch(console.error);
+    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
   };
 
   // Load trend data
   useEffect(() => {
     const ac = new AbortController();
+    trendAbortRef.current = ac;
     const s = ac.signal;
     fetchAuditTrend("week", s).then(data => {
       if (data?.labels && data?.data) {
@@ -44,19 +60,28 @@ export default function Audit() {
     return () => ac.abort();
   }, []);
 
-  // Search with debounce
+  // Search with debounce (also handles page changes)
   useEffect(() => {
+    fetchAbortRef.current?.abort();
     const ac = new AbortController();
+    fetchAbortRef.current = ac;
     const timer = setTimeout(() => {
-      fetchAuditLogsPage({ search: searchTerm || undefined, page: 0, size: 20 }, ac.signal).then(setAuditPage).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+      fetchAuditLogsPage({ search: searchTerm || undefined, page: auditPageNum, size: 20 }, ac.signal).then(page => { setAuditPage(page); setError(null); }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } }).finally(() => setAuditLoading(false));
     }, 300);
     return () => { clearTimeout(timer); ac.abort(); };
-  }, [searchTerm]);
+  }, [searchTerm, auditPageNum]);
+
+  // Reset page on search
+  useEffect(() => { setAuditPageNum(0); }, [searchTerm]);
 
   // SSE live updates
   useEffect(() => {
     const unsub = subscribeToAuditLogs(() => {
-      fetchAuditLogsPage({ search: searchTerm || undefined, page: 0, size: 20 }).then(setAuditPage);
+      setAuditPageNum(0);
+      fetchAbortRef.current?.abort();
+      const ac = new AbortController();
+      fetchAbortRef.current = ac;
+      fetchAuditLogsPage({ search: searchTermRef.current || undefined, page: 0, size: 20 }, ac.signal).then(page => { setAuditPage(page); setError(null); }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
     });
     return () => unsub();
   }, []);
@@ -91,7 +116,7 @@ export default function Audit() {
       {/* Metrics */}
       <section className="grid grid-cols-3 gap-xl shrink-0">
         {[
-          { label: "本期操作总量", value: auditPage.total.toLocaleString(), change: "总计", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
+          { label: "本期操作总量", value: auditLoading ? "—" : auditPage.total.toLocaleString(), change: "总计", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
           { label: "高危预警次数", value: highRiskCount.toString(), change: "当前页高危", icon: ShieldAlert, color: "text-danger-red", bg: "bg-error-container/40" },
           { label: "系统自动化率", value: `${automationRate}%`, change: "核心稳定", icon: CheckCircle2, color: "text-success-green", bg: "bg-success-green/10", bar: automationRate },
         ].map(s => (
@@ -116,6 +141,8 @@ export default function Audit() {
           </div>
         ))}
       </section>
+
+      {error && <ErrorBanner message={error} onRetry={() => { setError(null); setAuditPageNum(0); }} />}
 
       <div className="grid grid-cols-12 gap-lg shrink-0">
          {/* Active Trends Chart */}
@@ -184,6 +211,7 @@ export default function Audit() {
                     type="text"
                     placeholder="搜索日志..."
                     value={searchTerm}
+                    aria-label="搜索审计日志"
                     onChange={e => setSearchTerm(e.target.value)}
                     className="bg-surface-container-high border border-outline-variant rounded-full h-8 pl-xl pr-md text-body-lg w-48 focus:w-64 transition-all"
                   />
@@ -238,6 +266,26 @@ export default function Audit() {
                </tbody>
             </table>
          </div>
+
+         <footer className="h-12 border-t border-outline-variant bg-surface-container-lowest px-lg flex items-center justify-between text-outline text-body-sm shrink-0">
+           <span>第 {auditPageNum + 1} 页 / 共 {Math.ceil(auditPage.total / 20) || 1} 页</span>
+           <div className="flex gap-1">
+             <button
+               onClick={() => setAuditPageNum(p => Math.max(0, p - 1))}
+               disabled={auditPageNum === 0}
+               className="h-6 w-6 rounded border border-outline-variant flex items-center justify-center hover:bg-surface-variant disabled:opacity-30"
+             >
+               <ChevronLeft size={14} />
+             </button>
+             <button
+               onClick={() => setAuditPageNum(p => p + 1)}
+               disabled={(auditPageNum + 1) * 20 >= auditPage.total}
+               className="h-6 w-6 rounded border border-outline-variant flex items-center justify-center hover:bg-surface-variant disabled:opacity-30"
+             >
+               <ChevronRight size={14} />
+             </button>
+           </div>
+         </footer>
       </section>
     </div>
   );

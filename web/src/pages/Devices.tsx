@@ -22,6 +22,7 @@ import {
 import { cn } from "../lib/utils";
 import { subscribeToCameras, addCamera, deleteCamera, updateCamera, fetchSettings, updateSettings, testCamera } from "../services/dataService";
 import { apiGet } from "../lib/api";
+import { ErrorBanner } from "../components/LoadingError";
 
 interface CameraForm {
   name: string;
@@ -53,6 +54,8 @@ export default function Devices() {
   const [testResult, setTestResult] = useState<{ reachable: boolean; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -61,8 +64,8 @@ export default function Devices() {
       setCameras(list);
       setLoading(false);
     });
-    fetchSettings(s).then(setSettings).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    apiGet<any>("/api/system_info", s).then(d => setDataDirSizeMb(d.dataDirSizeMb ?? 0)).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchSettings(s).then(setSettings).catch(err => { if (err.name !== 'AbortError') { setLoadError(err.message); console.error(err); } });
+    apiGet<any>("/api/system_info", s).then(d => setDataDirSizeMb(d.dataDirSizeMb ?? 0)).catch(err => { if (err.name !== 'AbortError') { setLoadError(err.message); console.error(err); } });
     return () => { ac.abort(); unsub(); };
   }, []);
 
@@ -109,6 +112,8 @@ export default function Devices() {
         await addCamera(payload);
       }
       setShowModal(false);
+      setSuccessMsg(editId ? "摄像头已更新" : "摄像头已添加");
+      setTimeout(() => setSuccessMsg(""), 3000);
     } catch (e: any) {
       setError(e.message || "保存失败");
     } finally {
@@ -147,6 +152,14 @@ export default function Devices() {
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-lg">
+      {loadError && <ErrorBanner message={loadError} />}
+
+      {successMsg && (
+        <div className="bg-success-green/10 text-success-green px-lg py-sm rounded-lg font-bold text-body-lg">
+          {successMsg}
+        </div>
+      )}
+
       <div className="space-y-xl animate-in fade-in duration-500">
         <header className="flex justify-between items-center bg-white p-lg rounded-xl border border-outline-variant shadow-sm">
           <div className="flex items-center gap-md">
@@ -156,6 +169,7 @@ export default function Devices() {
           <button
             onClick={openAdd}
             className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-sm hover:opacity-90 transition-all shadow-md active:scale-95"
+            aria-label="添加摄像头"
           >
             <Plus size={18} /> 添加摄像头
           </button>
@@ -325,12 +339,18 @@ export default function Devices() {
                    <div className="flex items-center justify-between mb-xs">
                      <span className="font-bold text-body-lg">自动覆盖策略</span>
                      <div
-                       onClick={() => {
+                       onClick={async () => {
                          if (!settings) return;
-                         const newVal = !settings.storage.autoOverwrite;
-                         const updated = { ...settings, storage: { ...settings.storage, autoOverwrite: newVal } };
-                         setSettings(updated);
-                         updateSettings({ storage: { ...settings.storage, autoOverwrite: newVal } }).catch(console.error);
+                         const prevVal = settings.storage.autoOverwrite;
+                         const newVal = !prevVal;
+                         setSettings(prev => ({ ...prev, storage: { ...prev.storage, autoOverwrite: newVal } }));
+                         try {
+                           const result = await updateSettings({ storage: { autoOverwrite: newVal } });
+                           setSettings(result);
+                         } catch (e) {
+                           setSettings(prev => ({ ...prev, storage: { ...prev.storage, autoOverwrite: prevVal } }));
+                           console.error("保存存储设置失败", e);
+                         }
                        }}
                        className={cn("w-8 h-4 rounded-full relative cursor-pointer transition-colors", settings?.storage?.autoOverwrite ? "bg-primary" : "bg-outline-variant")}
                      >
@@ -364,12 +384,18 @@ export default function Devices() {
                     <input
                       type="checkbox"
                       checked={settings?.notifications?.[item.key] ?? false}
-                      onChange={() => {
+                      onChange={async () => {
                         if (!settings) return;
-                        const newVal = !(settings.notifications?.[item.key] ?? false);
-                        const updated = { ...settings, notifications: { ...settings.notifications, [item.key]: newVal } };
-                        setSettings(updated);
-                        updateSettings({ notifications: { ...settings.notifications, [item.key]: newVal } }).catch(console.error);
+                        const prevVal = settings.notifications?.[item.key] ?? false;
+                        const newVal = !prevVal;
+                        setSettings(prevS => ({ ...prevS, notifications: { ...prevS.notifications, [item.key]: newVal } }));
+                        try {
+                          const result = await updateSettings({ notifications: { ...settings.notifications, [item.key]: newVal } });
+                          setSettings(result);
+                        } catch (e) {
+                          setSettings(prevS => ({ ...prevS, notifications: { ...prevS.notifications, [item.key]: prevVal } }));
+                          console.error("保存通知设置失败", e);
+                        }
                       }}
                       className="w-5 h-5 rounded border-outline-variant text-primary focus:ring-primary"
                     />

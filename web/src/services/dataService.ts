@@ -1,4 +1,4 @@
-import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, StatsCompare, AlertFilterParams, AuditFilterParams, FpsStats } from "../types";
+import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, StatsCompare, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo } from "../types";
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
 
 // --- Auth ---
@@ -74,7 +74,7 @@ export async function fetchStats(): Promise<any> {
 }
 
 /** Lightweight: returns behaviorCounts + totals only, no detection list. */
-export async function fetchStatsSummary(signal?: AbortSignal): Promise<any> {
+export async function fetchStatsSummary(signal?: AbortSignal): Promise<StatsSummary> {
   return apiGet("/api/stats/summary", signal);
 }
 
@@ -82,7 +82,7 @@ export async function fetchTrendData(range: "day" | "week" | "month" = "day", si
   return apiGet(`/api/stats/trend?range=${range}`, signal);
 }
 
-export async function fetchModelInfo(signal?: AbortSignal): Promise<any> {
+export async function fetchModelInfo(signal?: AbortSignal): Promise<ModelInfo> {
   return apiGet("/api/model_info", signal);
 }
 

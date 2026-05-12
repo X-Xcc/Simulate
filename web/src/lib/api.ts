@@ -19,8 +19,7 @@ const cache = new Map<string, { data: any; ts: number }>();
 const CACHE_TTL = 30_000; // 30s
 const pending = new Map<string, Promise<any>>();
 
-function cacheKey(path: string, signal?: AbortSignal): string {
-  // same path = same cache key; signal doesn't affect key
+function cacheKey(path: string): string {
   return path;
 }
 
@@ -138,7 +137,9 @@ const SSE_EVENT_TYPES = ["cameras", "alerts", "system_metrics", "audit_logs", "c
 
 const sseSubscribers = new Map<string, Set<SseCallback>>();
 let sseEventSource: EventSource | null = null;
-let sseCleanup: (() => void) | null = null;
+let sseSubscriberCount = 0;
+const SSE_MAX_ERRORS = 3;
+let sseErrorCount = 0;
 
 function ensureSseConnection(): void {
   if (sseEventSource) return;
@@ -156,8 +157,22 @@ function ensureSseConnection(): void {
   }
 
   es.onerror = () => {
-    console.error("SSE connection error, will retry automatically");
-    // EventSource has built-in reconnection; on 401 force logout
+    sseErrorCount++;
+    console.error(`SSE connection error (${sseErrorCount}/${SSE_MAX_ERRORS})`);
+    if (sseErrorCount >= SSE_MAX_ERRORS) {
+      sseErrorCount = 0;
+      const token = getToken();
+      if (!token) return;
+      // Verify auth via HEAD; if 401, clear token to trigger logout
+      fetch(`${API_BASE}/api/me`, { method: 'HEAD', headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => {
+          if (res.status === 401) {
+            clearToken();
+            if (sseEventSource) { sseEventSource.close(); sseEventSource = null; }
+          }
+        })
+        .catch(() => { sseErrorCount = 0; });
+    }
   };
 
   sseEventSource = es;
@@ -168,12 +183,22 @@ export function subscribeSse(eventType: string, callback: SseCallback): () => vo
     sseSubscribers.set(eventType, new Set());
   }
   sseSubscribers.get(eventType)!.add(callback);
+  sseSubscriberCount++;
 
   // Lazy-start after first subscriber registers
   ensureSseConnection();
 
   return () => {
-    sseSubscribers.get(eventType)?.delete(callback);
+    const subs = sseSubscribers.get(eventType);
+    if (subs) {
+      subs.delete(callback);
+      if (subs.size === 0) sseSubscribers.delete(eventType);
+    }
+    sseSubscriberCount--;
+    if (sseSubscriberCount <= 0 && sseEventSource) {
+      sseEventSource.close();
+      sseEventSource = null;
+    }
   };
 }
 
@@ -196,11 +221,11 @@ export function createSseConnection(callbacks: {
 
 // --- Auth-aware file download ---
 
-export function apiDownload(path: string): void {
+export function apiDownload(path: string, signal?: AbortSignal): void {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  fetch(path, { headers })
+  fetch(path, { headers, signal })
     .then(res => res.blob())
     .then(blob => {
       const url = URL.createObjectURL(blob);
@@ -210,5 +235,5 @@ export function apiDownload(path: string): void {
       a.click();
       URL.revokeObjectURL(url);
     })
-    .catch(console.error);
+    .catch(err => { if ((err as Error).name !== 'AbortError') console.error(err); });
 }

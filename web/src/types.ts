@@ -13,12 +13,14 @@ export enum CameraStatus {
 export interface Camera {
   id: string;
   name: string;
-  sn: string;
+  type: "usb" | "rtsp" | "http_snapshot";
+  address: string | number;
+  user?: string;
+  password?: string;
+  // computed at runtime
   status: CameraStatus;
   streamUrl: string;
-  lastOnline: string;
   personCount: number;
-  location: string;
 }
 
 export enum AlertLevel {
@@ -122,9 +124,7 @@ export interface EvidenceStats {
   onlineRate: number;
 }
 
-export interface StatsCompare {
-  [behavior: string]: { today: number; yesterday: number; change: number };
-}
+export type StatsCompare = Record<string, { today: number; yesterday: number; change: number }>;
 
 export interface AiSensitivity {
   fightDetection: number;
@@ -169,4 +169,22 @@ export interface AuditFilterParams {
   riskLevel?: string;
   page?: number;
   size?: number;
+}
+
+export interface FpsStats {
+  avg: number;
+  min: number;
+  max: number;
+  count: number;
+}
+
+export interface StatsSummary {
+  behaviorCounts: Record<string, number>;
+  totalDetections: number;
+}
+
+export interface ModelInfo {
+  model_size_mb: number;
+  device: string;
+  precision: string;
 }

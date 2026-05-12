@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Alert, AlertLevel, AlertType, PageResponse } from "../types";
 import {
   Download,
@@ -9,8 +9,9 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
-import { cn } from "../lib/utils";
+import { cn, sanitizeImageUrl } from "../lib/utils";
 import { subscribeToAlerts, updateAlertStatus, fetchAlertsPage, exportAlerts } from "../services/dataService";
+import { ErrorBanner } from "../components/LoadingError";
 
 export default function Alerts() {
   const [alertsPage, setAlertsPage] = useState<PageResponse<Alert>>({ items: [], total: 0, page: 0, size: 20 });
@@ -19,14 +20,19 @@ export default function Alerts() {
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
   const loadAlerts = useCallback((signal?: AbortSignal) => {
+    loadAbortRef.current?.abort();
+    const ac = signal ? null : new AbortController();
+    if (ac) loadAbortRef.current = ac;
     fetchAlertsPage({
       type: filterType || undefined,
       status: filterStatus || undefined,
       page: currentPage,
       size: 20
-    }, signal).then(setAlertsPage).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    }, signal || ac?.signal).then(page => { setAlertsPage(page); setError(null); }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
   }, [filterType, filterStatus, currentPage]);
 
   useEffect(() => {
@@ -35,9 +41,14 @@ export default function Alerts() {
     return () => ac.abort();
   }, [loadAlerts]);
 
-  // SSE — 标记dirty不直接覆盖
+  // SSE — 更新total计数+标记dirty
   useEffect(() => {
-    const unsub = subscribeToAlerts(() => setIsDirty(true));
+    const unsub = subscribeToAlerts((data: Alert[]) => {
+      setIsDirty(true);
+      if (Array.isArray(data)) {
+        setAlertsPage(prev => ({ ...prev, total: data.length }));
+      }
+    });
     return unsub;
   }, []);
 
@@ -62,6 +73,7 @@ export default function Alerts() {
             value={filterType}
             onChange={e => { setFilterType(e.target.value); setCurrentPage(0); }}
             className="bg-surface-container-low border border-outline-variant rounded h-8 px-sm text-body-lg font-bold focus:ring-1 focus:ring-primary outline-none"
+            aria-label="筛选告警类型"
           >
             <option value="">所有告警类型</option>
             {Object.values(AlertType).map(t => <option key={t} value={t}>{t}</option>)}
@@ -70,6 +82,7 @@ export default function Alerts() {
             value={filterStatus}
             onChange={e => { setFilterStatus(e.target.value); setCurrentPage(0); }}
             className="bg-surface-container-low border border-outline-variant rounded h-8 px-sm text-body-lg font-bold focus:ring-1 focus:ring-primary outline-none"
+            aria-label="筛选告警状态"
           >
             <option value="">所有状态</option>
             <option value="pending">待处理</option>
@@ -84,6 +97,8 @@ export default function Alerts() {
           <Download size={14} /> 导出告警报告
         </button>
       </section>
+
+      {error && <ErrorBanner message={error} onRetry={() => { setError(null); loadAlerts(); }} />}
 
       {/* SSE dirty indicator */}
       {isDirty && (
@@ -126,7 +141,9 @@ export default function Alerts() {
                     <td className="px-lg py-md">
                       <span className={cn(
                         "px-xs py-[2px] rounded text-body-lg font-bold border",
-                        alert.level === AlertLevel.CRITICAL ? "bg-error/10 border-error/20 text-error" : "bg-warning-orange/10 border-warning-orange/20 text-warning-orange"
+                        alert.level === AlertLevel.CRITICAL ? "bg-error/10 border-error/20 text-error"
+                        : alert.level === AlertLevel.WARNING ? "bg-warning-orange/10 border-warning-orange/20 text-warning-orange"
+                        : "bg-info-cyan/10 border-info-cyan/20 text-info-cyan"
                       )}>
                         {alert.type}
                       </span>
@@ -134,7 +151,7 @@ export default function Alerts() {
                     <td className="px-lg py-md font-mono opacity-70">{new Date(alert.time).toLocaleTimeString()}</td>
                     <td className="px-lg py-md">
                       <div className="w-16 h-10 rounded border border-outline-variant overflow-hidden group">
-                        <img src={alert.snapshotUrl} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                        <img src={sanitizeImageUrl(alert.snapshotUrl)} alt={`${alert.cameraName} 告警快照`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </td>
                     <td className="px-lg py-md">
@@ -184,7 +201,7 @@ export default function Alerts() {
             <div className="p-md flex-1 overflow-y-auto space-y-lg custom-scrollbar">
               {/* Snapshot */}
               <div className="rounded-xl overflow-hidden border border-outline-variant bg-dark-bg relative group">
-                <img src={selectedAlert.snapshotUrl} alt="" className="w-full aspect-video object-cover opacity-90 group-hover:scale-105 transition-transform duration-700" />
+                <img src={sanitizeImageUrl(selectedAlert.snapshotUrl)} alt={`${selectedAlert.cameraName} 告警详情`} className="w-full aspect-video object-cover opacity-90 group-hover:scale-105 transition-transform duration-700" />
                 <div className="absolute inset-0 border-[3px] border-error/50 m-4 animate-pulse opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="absolute bottom-0 left-0 right-0 p-sm video-hud flex justify-between items-end text-body-lg font-mono">
                   <span className="text-on-secondary">{new Date(selectedAlert.time).toLocaleTimeString()}</span>
@@ -196,7 +213,7 @@ export default function Alerts() {
               <div className="grid grid-cols-2 gap-md p-md bg-surface-container rounded-xl border border-outline-variant">
                 <div>
                   <p className="text-body-sm font-bold text-outline uppercase mb-unit">检测类型</p>
-                  <p className={cn("font-bold text-body-lg flex items-center gap-1", selectedAlert.level === AlertLevel.CRITICAL ? "text-error" : "text-warning-orange")}>
+                  <p className={cn("font-bold text-body-lg flex items-center gap-1", selectedAlert.level === AlertLevel.CRITICAL ? "text-error" : selectedAlert.level === AlertLevel.WARNING ? "text-warning-orange" : "text-info-cyan")}>
                     <ShieldAlert size={16} /> {selectedAlert.type}
                   </p>
                 </div>

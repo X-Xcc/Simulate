@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Users, VideoOff, Triangle, AlertCircle, PlayCircle, Maximize2 } from "lucide-react";
+import { Users, VideoOff, AlertCircle, Maximize2 } from "lucide-react";
 import { Camera, Alert, CameraStatus, AlertLevel, FpsStats } from "../types";
 import { motion } from "motion/react";
-import { cn, formatDate } from "../lib/utils";
+import { cn, formatDate, sanitizeImageUrl } from "../lib/utils";
 import { subscribeToCameras, subscribeToAlerts, subscribeToCameraStats, fetchFpsStats } from "../services/dataService";
 import { useNavigate } from "react-router-dom";
+import { ErrorBanner } from "../components/LoadingError";
 
 export default function Monitor() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function Monitor() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [cameraStats, setCameraStats] = useState<Record<string, number>>({});
   const [fps, setFps] = useState<FpsStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -21,7 +23,7 @@ export default function Monitor() {
     const unsubCameras = subscribeToCameras(setCameras);
     const unsubAlerts = subscribeToAlerts(setAlerts);
     const unsubStats = subscribeToCameraStats(setCameraStats);
-    fetchFpsStats(ac.signal).then(setFps).catch(err => { if (err.name !== 'AbortError') console.error(err); });
+    fetchFpsStats(ac.signal).then(setFps).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
 
     return () => {
       clearInterval(timer);
@@ -51,10 +53,13 @@ export default function Monitor() {
         <button 
           onClick={() => navigate("/monitor/fullscreen")}
           className="flex items-center gap-2 px-sm py-[2px] bg-primary text-white rounded text-body-lg font-bold hover:bg-primary/90 transition-all active:scale-95"
+          aria-label="进入大屏模式"
         >
           <Maximize2 size={12} /> 进入大屏模式
         </button>
       </div>
+
+      {error && <ErrorBanner message={error} />}
 
       <div className="flex-1 flex gap-xs min-h-0">
         {/* Camera Grid - Expanded */}
@@ -77,7 +82,7 @@ export default function Monitor() {
                 ) : (
                   <>
                     <img
-                      src={cam.streamUrl}
+                      src={sanitizeImageUrl(cam.streamUrl)}
                       alt={cam.name}
                       className={cn(
                         "absolute inset-0 w-full h-full object-cover transition-opacity duration-700",

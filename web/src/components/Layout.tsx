@@ -1,14 +1,13 @@
 import { useNavigate, useLocation, Outlet, NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { 
-  LayoutDashboard, 
-  Video, 
-  AlertTriangle, 
-  FolderLock, 
-  Settings2, 
-  BarChart3, 
-  BrainCircuit, 
-  History, 
+import {
+  LayoutDashboard,
+  Video,
+  AlertTriangle,
+  FolderLock,
+  Settings2,
+  BarChart3,
+  History,
   Wrench,
   Search,
   Bell,
@@ -23,7 +22,7 @@ import { useAuth } from "../lib/auth";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "控制面板", path: "/dashboard" },
-  { icon: Video, label: "实时监控", path: "/monitor/fullscreen" },
+  { icon: Video, label: "实时监控", path: "/monitor" },
   { icon: AlertTriangle, label: "AI告警中心", path: "/alerts" },
   { icon: FolderLock, label: "视频证据", path: "/evidence" },
   { icon: Settings2, label: "设备管理", path: "/devices" },
@@ -37,6 +36,7 @@ export default function Layout() {
   const location = useLocation();
   const { logout } = useAuth();
   const [userData, setUserData] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     getCurrentUser()
@@ -64,20 +64,23 @@ export default function Layout() {
           <div className="h-6 w-px bg-outline-variant"></div>
           <div className="relative group">
             <Search className="absolute left-sm top-1/2 -translate-y-1/2 text-outline" size={16} />
-            <input 
-              type="text" 
-              placeholder="搜索数据、区域或设备..." 
+            <input
+              type="text"
+              placeholder="搜索数据、区域或设备..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') console.warn('Global search not implemented:', searchQuery); }}
               className="bg-surface-container-low/50 border border-outline-variant/60 rounded-lg h-9 pl-xl pr-md text-body focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-72 transition-all placeholder:text-outline/40"
             />
           </div>
         </div>
         
         <div className="flex items-center gap-md">
-          <button className="p-xs text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors relative">
+          <button className="p-xs text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors relative" aria-label="通知">
             <Bell size={20} />
             <span className="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span>
           </button>
-          <button className="p-xs text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors">
+          <button className="p-xs text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors" aria-label="切换主题">
             <SunMoon size={20} />
           </button>
           <div className="h-6 w-px bg-outline-variant mx-xs"></div>
@@ -126,6 +129,7 @@ export default function Layout() {
             <button 
               onClick={handleLogout}
               className="w-full h-[48px] flex items-center gap-md px-md rounded-lg text-error/60 hover:text-error hover:bg-error/10 transition-all font-extrabold group"
+              aria-label="退出系统"
             >
               <LogOut size={22} className="group-hover:translate-x-1 transition-transform" />
               <span className="text-body-lg font-extrabold">退出系统</span>
