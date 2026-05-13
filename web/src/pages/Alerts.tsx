@@ -43,11 +43,8 @@ export default function Alerts() {
 
   // SSE — 更新total计数+标记dirty
   useEffect(() => {
-    const unsub = subscribeToAlerts((data: Alert[]) => {
+    const unsub = subscribeToAlerts(() => {
       setIsDirty(true);
-      if (Array.isArray(data)) {
-        setAlertsPage(prev => ({ ...prev, total: data.length }));
-      }
     });
     return unsub;
   }, []);
