@@ -1,4 +1,4 @@
-import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, StatsCompare, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo } from "../types";
+import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, StatsCompare, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse } from "../types";
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
 
 // --- Auth ---
@@ -33,11 +33,8 @@ export function subscribeToCameras(callback: (cameras: Camera[]) => void): () =>
   // Fetch active cameras (those with live frames)
   async function refreshActive() {
     try {
-      const res = await fetch("/api/cameras");
-      if (res.ok) {
-        const data = await res.json();
-        activeCamIds = new Set(data.cameras || []);
-      }
+      const data = await apiGet<{ cameras: string[] }>("/api/cameras");
+      activeCamIds = new Set(data.cameras || []);
     } catch {}
   }
 
@@ -93,7 +90,7 @@ export function subscribeToCameraStats(callback: (stats: Record<string, number>)
 
 // --- Stats ---
 
-export async function fetchStats(): Promise<any> {
+export async function fetchStats(): Promise<FullStatsResponse> {
   return apiGet("/api/stats");
 }
 
@@ -108,6 +105,10 @@ export async function fetchTrendData(range: "day" | "week" | "month" = "day", si
 
 export async function fetchModelInfo(signal?: AbortSignal): Promise<ModelInfo> {
   return apiGet("/api/model_info", signal);
+}
+
+export async function fetchSystemInfo(signal?: AbortSignal): Promise<SystemInfo> {
+  return apiGet("/api/system_info", signal);
 }
 
 // --- Write operations ---
