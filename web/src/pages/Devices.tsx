@@ -20,8 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { subscribeToCameras, addCamera, deleteCamera, updateCamera, fetchSettings, updateSettings, testCamera } from "../services/dataService";
-import { apiGet } from "../lib/api";
+import { subscribeToCameras, addCamera, deleteCamera, updateCamera, fetchSettings, updateSettings, testCamera, fetchSystemInfo } from "../services/dataService";
 import { ErrorBanner } from "../components/LoadingError";
 
 interface CameraForm {
@@ -65,7 +64,7 @@ export default function Devices() {
       setLoading(false);
     });
     fetchSettings(s).then(setSettings).catch(err => { if (err.name !== 'AbortError') { setLoadError(err.message); console.error(err); } });
-    apiGet<any>("/api/system_info", s).then(d => setDataDirSizeMb(d.dataDirSizeMb ?? 0)).catch(err => { if (err.name !== 'AbortError') { setLoadError(err.message); console.error(err); } });
+    fetchSystemInfo(s).then(d => setDataDirSizeMb(d.dataDirSizeMb ?? 0)).catch(err => { if (err.name !== 'AbortError') { setLoadError(err.message); console.error(err); } });
     return () => { ac.abort(); unsub(); };
   }, []);
 
@@ -343,12 +342,12 @@ export default function Devices() {
                          if (!settings) return;
                          const prevVal = settings.storage.autoOverwrite;
                          const newVal = !prevVal;
-                         setSettings(prev => ({ ...prev, storage: { ...prev.storage, autoOverwrite: newVal } }));
+                         setSettings(prev => prev ? { ...prev, storage: { ...prev.storage, autoOverwrite: newVal } } as Settings : null);
                          try {
                            const result = await updateSettings({ storage: { autoOverwrite: newVal } });
                            setSettings(result);
                          } catch (e) {
-                           setSettings(prev => ({ ...prev, storage: { ...prev.storage, autoOverwrite: prevVal } }));
+                           setSettings(prev => prev ? { ...prev, storage: { ...prev.storage, autoOverwrite: prevVal } } as Settings : null);
                            console.error("保存存储设置失败", e);
                          }
                        }}
@@ -388,12 +387,12 @@ export default function Devices() {
                         if (!settings) return;
                         const prevVal = settings.notifications?.[item.key] ?? false;
                         const newVal = !prevVal;
-                        setSettings(prevS => ({ ...prevS, notifications: { ...prevS.notifications, [item.key]: newVal } }));
+                        setSettings(prevS => prevS ? { ...prevS, notifications: { ...prevS.notifications, [item.key]: newVal } } as Settings : null);
                         try {
                           const result = await updateSettings({ notifications: { ...settings.notifications, [item.key]: newVal } });
                           setSettings(result);
                         } catch (e) {
-                          setSettings(prevS => ({ ...prevS, notifications: { ...prevS.notifications, [item.key]: prevVal } }));
+                          setSettings(prevS => prevS ? { ...prevS, notifications: { ...prevS.notifications, [item.key]: prevVal } } as Settings : null);
                           console.error("保存通知设置失败", e);
                         }
                       }}

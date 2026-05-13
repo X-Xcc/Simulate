@@ -188,3 +188,34 @@ export interface ModelInfo {
   device: string;
   precision: string;
 }
+
+export interface SystemInfo {
+  cpuPercent: number;
+  memoryPercent: number;
+  diskPercent: number;
+  gpuPercent: number;
+  version: string;
+  engine: string;
+  uptime?: string;
+  onlineDevices?: number;
+  totalDevices?: number;
+  dataDirSizeMb?: number;
+  detectionCount?: number;
+}
+
+export interface Detection {
+  filename: string;
+  timestamp: string;
+  type: string;
+  confidence: number;
+  camera?: string;
+}
+
+export interface FullStatsResponse {
+  totalDetections: number;
+  totalImages: number;
+  behaviorCounts: Record<string, number>;
+  allDetections: Detection[];
+  recentDetections: Detection[];
+  personCount: number;
+}
