@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.service.AlertService;
 import com.yolov8.security.service.AuditLogService;
 import com.yolov8.security.service.CameraConfigService;
+import com.yolov8.security.service.DetectionService;
 import com.yolov8.security.service.KanbanEventBus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,17 +31,19 @@ public class SseController {
     private final CameraConfigService cameraConfigService;
     private final AlertService alertService;
     private final AuditLogService auditLogService;
+    private final DetectionService detectionService;
     private final VideoStreamController videoStreamController;
 
     public SseController(ObjectMapper objectMapper, CameraConfigService cameraConfigService,
                          AlertService alertService, AuditLogService auditLogService,
-                         VideoStreamController videoStreamController) {
+                         DetectionService detectionService, VideoStreamController videoStreamController) {
         this.objectMapper = objectMapper;
         this.compactMapper = objectMapper.copy();
         this.compactMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
         this.cameraConfigService = cameraConfigService;
         this.alertService = alertService;
         this.auditLogService = auditLogService;
+        this.detectionService = detectionService;
         this.videoStreamController = videoStreamController;
 
         // Subscribe to event bus
@@ -102,6 +108,7 @@ public class SseController {
 
     @SuppressWarnings("all")
     private Map<String, Object> collectSystemMetrics() {
+        Map<String, Object> m = new LinkedHashMap<>();
         try {
             com.sun.management.OperatingSystemMXBean osBean =
                     (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
@@ -113,26 +120,60 @@ public class SseController {
             double memoryPercent = Math.round((double)(total - free) / total * 100);
             double diskPercent = Math.round((double) (root.getTotalSpace() - root.getUsableSpace()) / root.getTotalSpace() * 100);
 
-            boolean yoloHealthy = (System.currentTimeMillis() - SystemMetricsController.getLastFrameUpdate()) < 30000;
-            return Map.of(
-                "cpuPercent", cpuPercent,
-                "memoryPercent", memoryPercent,
-                "diskPercent", diskPercent,
-                "gpuPercent", SystemMetricsController.getLatestGpuPercent(),
-                "version", "v2.4.1-stable",
-                "engine", "Spring Boot + YOLOv8",
-                "services", java.util.List.of(
-                    java.util.Map.of("name", "API Server", "status", "Running"),
-                    java.util.Map.of("name", "YOLOv8 Service", "status", yoloHealthy ? "Running" : "Warning"),
-                    java.util.Map.of("name", "Stream Gateway", "status", "Running")
-                )
-            );
+            m.put("cpuPercent", cpuPercent);
+            m.put("memoryPercent", memoryPercent);
+            m.put("diskPercent", diskPercent);
         } catch (Exception e) {
-            return Map.of(
-                "cpuPercent", 0, "memoryPercent", 0, "diskPercent", 0,
-                "gpuPercent", 0, "version", "unknown", "engine", "unknown",
-                "services", java.util.List.of()
-            );
+            m.put("cpuPercent", 0);
+            m.put("memoryPercent", 0);
+            m.put("diskPercent", 0);
         }
+        m.put("gpuPercent", SystemMetricsController.getLatestGpuPercent());
+        m.put("version", "v2.4.1-stable");
+        m.put("engine", "Spring Boot + YOLOv8");
+        m.put("coreEngine", "YOLOv8n-Pose");
+
+        // Uptime
+        long uptimeMs = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
+        long days = uptimeMs / 86400000;
+        long hours = (uptimeMs % 86400000) / 3600000;
+        long minutes = (uptimeMs % 3600000) / 60000;
+        m.put("uptime", days + "d " + hours + "h " + minutes + "m");
+
+        // Camera stats
+        try {
+            var cameras = cameraConfigService.getAllCameras();
+            m.put("totalDevices", cameras.size());
+            boolean yoloActive = (System.currentTimeMillis() - SystemMetricsController.getLastFrameUpdate()) < 30000;
+            m.put("onlineDevices", yoloActive ? cameras.size() : 0);
+        } catch (Exception e) {
+            m.put("totalDevices", 0);
+            m.put("onlineDevices", 0);
+        }
+        m.put("activeModels", 1);
+        m.put("totalModels", 1);
+
+        // Detection stats
+        try {
+            Map<String, Object> sysInfo = detectionService.getSystemInfo();
+            m.put("dataDirSizeMb", sysInfo.get("dataDirSizeMb"));
+            m.put("detectionCount", sysInfo.get("detectionCount"));
+            m.put("imageCount", sysInfo.get("imageCount"));
+        } catch (Exception e) {
+            m.put("dataDirSizeMb", 0);
+            m.put("detectionCount", 0);
+            m.put("imageCount", 0);
+        }
+
+        // Services with uptime and health
+        boolean yoloHealthy = (System.currentTimeMillis() - SystemMetricsController.getLastFrameUpdate()) < 30000;
+        List<Map<String, String>> services = new ArrayList<>();
+        services.add(Map.of("name", "API Server", "status", "Running", "uptime", "-", "health", "正常"));
+        services.add(Map.of("name", "YOLOv8 Service", "status", yoloHealthy ? "Running" : "Warning",
+                "uptime", "-", "health", yoloHealthy ? "正常" : "异常"));
+        services.add(Map.of("name", "Stream Gateway", "status", "Running", "uptime", "-", "health", "正常"));
+        m.put("services", services);
+
+        return m;
     }
 }
