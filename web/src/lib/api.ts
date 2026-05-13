@@ -158,6 +158,7 @@ function ensureSseConnection(): void {
 
   for (const eventType of SSE_EVENT_TYPES) {
     es.addEventListener(eventType, (e: MessageEvent) => {
+      sseErrorCount = 0;
       const subs = sseSubscribers.get(eventType);
       if (!subs || subs.size === 0) return;
       let data: any;
@@ -173,8 +174,8 @@ function ensureSseConnection(): void {
       sseErrorCount = 0;
       const token = getToken();
       if (!token) return;
-      // Verify auth via HEAD; if 401, clear token to trigger logout
-      fetch(`${API_BASE}/api/me`, { method: 'HEAD', headers: { 'Authorization': `Bearer ${token}` } })
+      // Verify auth via GET; if 401, clear token to trigger logout
+      fetch(`${API_BASE}/api/me`, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => {
           if (res.status === 401) {
             clearToken();
