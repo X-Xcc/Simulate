@@ -51,7 +51,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Window> deleteWindows = new ConcurrentHashMap<>();
     private final AtomicInteger requestCount = new AtomicInteger(0);
 
-    private static final String[] PUBLIC_PATHS = {"/", "/index", "/static", "/error", "/api/monitor_status"};
+    private static final String[] PUBLIC_PATHS = {"/", "/index", "/static", "/error", "/api/monitor_status", "/video_feed"};
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
