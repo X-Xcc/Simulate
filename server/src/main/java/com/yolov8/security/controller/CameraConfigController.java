@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
 
@@ -77,5 +79,64 @@ public class CameraConfigController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("删除摄像头失败: " + e.getMessage()));
         }
+    }
+
+    @PostMapping("/camera_config/test")
+    public ResponseEntity<Map<String, Object>> testCameraConnection(@RequestBody Map<String, String> body) {
+        String type = body.getOrDefault("type", "");
+        String address = body.getOrDefault("address", "");
+
+        if (address == null || address.isBlank()) {
+            return ResponseEntity.ok(Map.of("reachable", false, "message", "地址不能为空"));
+        }
+
+        Map<String, Object> result;
+
+        switch (type) {
+            case "http_snapshot" -> {
+                try {
+                    URL url = new URL(address);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("HEAD");
+                    conn.setConnectTimeout(5000);
+                    conn.setReadTimeout(5000);
+                    int code = conn.getResponseCode();
+                    boolean reachable = code >= 200 && code < 400;
+                    result = Map.of("reachable", reachable,
+                            "message", reachable
+                                    ? "HTTP连接成功 (HTTP " + code + ")"
+                                    : "HTTP连接失败: HTTP " + code);
+                } catch (Exception e) {
+                    result = Map.of("reachable", false,
+                            "message", "HTTP连接失败: " + e.getMessage());
+                }
+            }
+            case "rtsp" -> {
+                boolean valid = address.startsWith("rtsp://");
+                result = Map.of("reachable", valid,
+                        "message", valid
+                                ? "RTSP地址格式正确（完整测试需Python检测服务）"
+                                : "RTSP地址格式无效");
+            }
+            case "usb" -> {
+                boolean valid;
+                try {
+                    Integer.parseInt(address.trim());
+                    valid = true;
+                } catch (NumberFormatException e) {
+                    valid = false;
+                }
+                result = Map.of("reachable", valid,
+                        "message", valid
+                                ? "USB设备索引有效（完整测试需Python检测服务）"
+                                : "USB设备索引必须为数字");
+            }
+            default -> {
+                result = Map.of("reachable", false,
+                        "message", "未知摄像头类型: " + type);
+            }
+        }
+
+        return ResponseEntity.ok(result);
     }
 }
