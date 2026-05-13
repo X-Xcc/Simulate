@@ -44,7 +44,7 @@ React SPA (Vite) ←── REST polling + SSE subscription + MJPEG video
 - `SecurityHeadersFilter.java` — CSP, X-Content-Type-Options, X-Frame-Options
 - `DataCleanupTask.java` — scheduled cleanup of old detection files
 
-**Controllers (12):** `PageController` (SPA fallback → `index.html`), `ApiController`, `StatsController`, `VideoStreamController` (MJPEG, multi-cam via `?cam=N`), `AuthController`, `UserDeviceController`, `CameraConfigController`, `AnnotationController`, `AlertController`, `AuditLogController`, `SseController`, `QwenVLController`, `SystemMetricsController`
+**Controllers (13):** `PageController` (SPA fallback → `index.html`), `ApiController`, `StatsController`, `VideoStreamController` (MJPEG, multi-cam via `?cam=N`), `AuthController`, `UserDeviceController`, `CameraConfigController`, `AnnotationController`, `AlertController`, `AuditLogController`, `SseController`, `QwenVLController`, `SystemMetricsController`
 
 **Services (12):**
 - `DetectionService` — scans `server/data/` with `DirScan` cache (15s TTL, `SCAN_CACHE_TTL_MS=15000L`), system info cache (60s TTL), background cache warmer. Must call `invalidateScanCache()` after deletes.
@@ -52,20 +52,24 @@ React SPA (Vite) ←── REST polling + SSE subscription + MJPEG video
 - `SettingsService` — standalone (NOT extending AbstractJsonFileService)
 - `CameraConfigService` — CRUD for `cameras.json` (shared with Python)
 - `AnnotationService` — keypoint annotation management, YOLO/COCO export
-- `KanbanEventBus` — SSE event broadcaster for real-time push
+- `KanbanEventBus` — SSE event broadcaster for real-time push (standalone class, not extending AbstractJsonFileService)
 - Others: `AlertService`, `AuditLogService`, `ModelInfoService`, `PythonScriptService`, `QwenVLService`
 
 ### Frontend (`web/`) — React SPA
-- React 19 + React Router 7 + Tailwind CSS v4 + Recharts + Lucide React + Motion + Vite 6
-- `src/App.tsx` — 10 routes: Login, Dashboard, Monitor, MonitorBigScreen, Alerts, Devices, Evidence, Analysis, Maintenance, Audit
+- React 19 + React Router 7 + Tailwind CSS v4 (via `@tailwindcss/vite`) + Recharts + Lucide React + Motion + Vite 6
+- `src/App.tsx` — 9 page routes + fullscreen monitor: Login, Dashboard, Monitor, MonitorBigScreen (`/monitor/fullscreen`), Alerts, Devices, Evidence, Analysis, Maintenance, Audit. Default `/` redirects to `/monitor`.
 - Components: `Layout` (sidebar + topbar), `CameraPanel`, `ErrorBoundary`, `LoadingError`
 - `src/lib/api.ts` — REST + SSE client: 30s in-memory cache, request deduplication, auto cache invalidation on mutations, JWT attached to all requests
 - `src/lib/auth.tsx` — JWT auth context, `ProtectedRoute` wrapper
+- `src/lib/utils.ts` — utility functions
+- `src/services/dataService.ts` — SSE subscription and REST call wrapper
 - `src/types.ts` — TypeScript interfaces (Camera, Alert, AuditLog, SystemStatus, UserAccount, Settings, etc.)
+- `src/index.css` — Tailwind v4 CSS-first config with `@theme` block defining design tokens
 - SSE subscription to `/api/sse/stream` with named event types: cameras, alerts, system_metrics, audit_logs, camera_stats. Singleton `EventSource` shared across subscribers.
 - Design tokens in `DESIGN.md` — light/dark dual theme, Chinese-first UI
 - Legacy JS/CSS in `web/css/` and `web/js/` (from pre-React era, may still be referenced)
-- No separate build needed in dev — Vite dev server proxies `/api` and `/video_feed` to `localhost:5000`
+- Build: `tsc && vite build` — Spring Boot serves from `file:web/dist/` (dist IS committed, not gitignored)
+- Dev: Vite dev server on port 5173, proxies `/api` and `/video_feed` to `localhost:5000`
 
 ### Authentication
 - `AuthFilter` accepts **either** `X-API-Key` header **or** `Authorization: Bearer <JWT>`
