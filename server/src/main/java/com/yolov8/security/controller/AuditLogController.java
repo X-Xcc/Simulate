@@ -1,7 +1,9 @@
 package com.yolov8.security.controller;
 
+import com.yolov8.security.model.Alert;
 import com.yolov8.security.model.AuditLog;
 import com.yolov8.security.model.ApiResponse;
+import com.yolov8.security.service.AlertService;
 import com.yolov8.security.service.AuditLogService;
 import com.yolov8.security.service.KanbanEventBus;
 import org.springframework.http.*;
@@ -16,9 +18,11 @@ import java.util.Map;
 public class AuditLogController {
 
     private final AuditLogService auditLogService;
+    private final AlertService alertService;
 
-    public AuditLogController(AuditLogService auditLogService) {
+    public AuditLogController(AuditLogService auditLogService, AlertService alertService) {
         this.auditLogService = auditLogService;
+        this.alertService = alertService;
     }
 
     @GetMapping("/audit_logs")
@@ -72,6 +76,23 @@ public class AuditLogController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("创建审计日志失败: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/audit_logs/automation_rate")
+    public ResponseEntity<Map<String, Double>> getAutomationRate() {
+        try {
+            List<Alert> allAlerts = alertService.getAllAlerts();
+            double rate = 0.0;
+            if (!allAlerts.isEmpty()) {
+                long autoConfirmed = allAlerts.stream()
+                        .filter(a -> "auto_confirmed".equals(a.getStatus()))
+                        .count();
+                rate = Math.round((double) autoConfirmed / allAlerts.size() * 1000.0) / 10.0;
+            }
+            return ResponseEntity.ok(Map.of("rate", rate));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of("rate", 0.0));
         }
     }
 }
