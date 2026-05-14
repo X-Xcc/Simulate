@@ -188,7 +188,7 @@ public class AlertService extends AbstractJsonFileService<Alert> {
                 return Files.isRegularFile(p) && name.startsWith("detection_") && name.endsWith(".json");
             }).forEach(p -> {
                 try (var reader = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
-                    DetectionData det = new com.fasterxml.jackson.databind.ObjectMapper().readValue(reader, DetectionData.class);
+                    DetectionData det = objectMapper.readValue(reader, DetectionData.class);
                     if (det.getTimestamp() != null && det.getImageFilename() != null && det.getCameraId() != null) {
                         long epochMs = LocalDateTime.parse(det.getTimestamp(), DET_TS_FMT)
                                 .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
