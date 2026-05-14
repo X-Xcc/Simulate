@@ -11,6 +11,8 @@ public class Alert {
     private String message;
     private String cameraName;
     private String cameraId;
+    private String imageFilename;
+    private boolean simulated;
 
     public Alert() {}
 
@@ -43,4 +45,10 @@ public class Alert {
 
     public String getCameraId() { return cameraId; }
     public void setCameraId(String cameraId) { this.cameraId = cameraId; }
+
+    public String getImageFilename() { return imageFilename; }
+    public void setImageFilename(String imageFilename) { this.imageFilename = imageFilename; }
+
+    public boolean isSimulated() { return simulated; }
+    public void setSimulated(boolean simulated) { this.simulated = simulated; }
 }
