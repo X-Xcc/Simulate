@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Video, AlertTriangle, FolderLock, Settings2,
   BarChart3, History, Wrench, BrainCircuit, Search, Bell,
-  Sun, Moon, UserCircle, Shield, LogOut,
+  Sun, Moon, UserCircle, Shield, LogOut, PencilRuler, Cpu,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { useAuth } from "../lib/auth";
@@ -18,6 +18,8 @@ const menuItems = [
   { icon: BarChart3, label: "数据分析", path: "/analysis" },
   { icon: History, label: "审计日志", path: "/audit" },
   { icon: BrainCircuit, label: "模型训练", path: "/training" },
+  { icon: Cpu, label: "模型微调", path: "/model-training" },
+  { icon: PencilRuler, label: "数据标注", path: "/annotation" },
   { icon: Wrench, label: "运维中心", path: "/maintenance" },
 ];
 

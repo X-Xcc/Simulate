@@ -220,3 +220,80 @@ export interface FullStatsResponse {
   recentDetections: Detection[];
   personCount: number;
 }
+
+// --- Annotation ---
+
+export interface BBox {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  labels: string[];
+  confidence: number;
+  source: string;
+}
+
+export interface AnnotationData {
+  imageFilename: string;
+  imageWidth: number;
+  imageHeight: number;
+  annotator: string;
+  annotatedAt: string;
+  status: "unlabeled" | "ai_pending" | "reviewed";
+  labels: string[];
+  bboxes: BBox[];
+}
+
+export interface ImageItem {
+  filename: string;
+  path: string;
+  hasAnnotation: boolean;
+  annotationStatus?: "unlabeled" | "ai_pending" | "reviewed";
+}
+
+export interface LabelOption {
+  id: number;
+  name: string;
+  color: string;
+}
+
+// ID 与后端 COCO 导出 category ID 一致；id 2,3 保留给 fatigue/eye_fatigue（本页未使用）
+export const LABEL_OPTIONS: LabelOption[] = [
+  { id: 0, name: "跌倒", color: "#f97316" },
+  { id: 1, name: "打架", color: "#ef4444" },
+  { id: 4, name: "离岗", color: "#22c55e" },
+  { id: 5, name: "聚集", color: "#3b82f6" },
+];
+
+// --- Model Training ---
+
+/** 训练配置 — 提交训练任务时发送 */
+export interface TrainingConfig {
+  epochs: number;
+  prompt: string;
+  dataset_file: string;
+  learning_rate?: number;
+  img_size?: number;
+  batch_size?: number;
+}
+
+/** 训练状态 — 轮询 / SSE 返回 */
+export interface TrainingStatus {
+  status: "idle" | "running" | "completed" | "error";
+  current_epoch: number;
+  total_epochs: number;
+  learning_rate: number;
+  map50: number;
+  loss: number;
+  elapsed_seconds: number;
+  eta_seconds: number;
+  gpu_memory_mb: number;
+}
+
+/** 日志条目 */
+export interface TrainingLog {
+  level: "INFO" | "TRAIN" | "DATA" | "WARN" | "SYNC";
+  message: string;
+  timestamp: string;
+}
