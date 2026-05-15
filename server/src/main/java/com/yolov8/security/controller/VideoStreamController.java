@@ -1,5 +1,7 @@
 package com.yolov8.security.controller;
 
+import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.service.DemoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -46,6 +48,14 @@ public class VideoStreamController {
 
     /** Default camera ID */
     private static final String DEFAULT_CAM = "0";
+
+    private final AppConfig appConfig;
+    private final DemoService demoService;
+
+    public VideoStreamController(AppConfig appConfig, DemoService demoService) {
+        this.appConfig = appConfig;
+        this.demoService = demoService;
+    }
 
     /**
      * Update frame for a specific camera. Converts to JPEG bytes immediately.
@@ -134,6 +144,25 @@ public class VideoStreamController {
 
     /** Camera stats for SSE broadcasting */
     public Map<String, Object> getCameraStats() {
+        // Demo mode: return virtual camera stats
+        if (appConfig != null && appConfig.isDemoMode() && demoService != null) {
+            Map<String, Object> stats = new java.util.LinkedHashMap<>();
+            java.util.List<Map<String, Object>> camList = new java.util.ArrayList<>();
+            java.util.Random rand = new java.util.Random();
+            for (String[] def : DemoService.CAMERA_DEFS) {
+                Map<String, Object> info = new java.util.LinkedHashMap<>();
+                info.put("id", def[0]);
+                info.put("name", def[1]);
+                boolean online = rand.nextDouble() > 0.2;
+                info.put("online", online);
+                info.put("personCount", online ? rand.nextInt(5) + 1 : 0);
+                camList.add(info);
+            }
+            stats.put("cameras", camList);
+            stats.put("activeCount", DemoService.CAMERA_DEFS.length);
+            return stats;
+        }
+
         Map<String, Object> stats = new java.util.LinkedHashMap<>();
         long now = System.currentTimeMillis();
         java.util.List<Map<String, Object>> camList = new java.util.ArrayList<>();

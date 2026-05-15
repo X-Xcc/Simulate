@@ -34,10 +34,10 @@ import { ErrorBanner } from "../components/LoadingError";
 
 /* ── palette ── */
 const C = {
-  fight:   { line: "#ef4444", fill: "rgba(239,68,68,0.08)", bg: "bg-red-50",    text: "text-red-600",    badge: "bg-red-100 text-red-700" },
-  fall:    { line: "#3b82f6", fill: "rgba(59,130,246,0.08)", bg: "bg-blue-50",   text: "text-blue-600",   badge: "bg-blue-100 text-blue-700" },
-  absent:  { line: "#f59e0b", fill: "rgba(245,158,11,0.08)", bg: "bg-amber-50",  text: "text-amber-600",  badge: "bg-amber-100 text-amber-700" },
-  crowd:   { line: "#8b5cf6", fill: "rgba(139,92,246,0.08)", bg: "bg-violet-50", text: "text-violet-600", badge: "bg-violet-100 text-violet-700" },
+  fight:   { line: "#ef4444", fill: "rgba(239,68,68,0.08)",  bg: "bg-red-50",    text: "text-red-600",    badge: "bg-red-100 text-red-700" },
+  fall:    { line: "#f97316", fill: "rgba(249,115,22,0.08)", bg: "bg-orange-50", text: "text-orange-600", badge: "bg-orange-100 text-orange-700" },
+  absent:  { line: "#3b82f6", fill: "rgba(59,130,246,0.08)", bg: "bg-blue-50",   text: "text-blue-600",   badge: "bg-blue-100 text-blue-700" },
+  crowd:   { line: "#eab308", fill: "rgba(234,179,8,0.08)",  bg: "bg-yellow-50", text: "text-yellow-600", badge: "bg-yellow-100 text-yellow-700" },
 };
 
 const TREND_COLORS: Record<string, string> = {
@@ -261,16 +261,16 @@ export default function Dashboard() {
                     <stop offset="100%" stopColor="#ef4444" stopOpacity={0.01}/>
                   </linearGradient>
                   <linearGradient id="gradFall" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f97316" stopOpacity={0.15}/>
+                    <stop offset="100%" stopColor="#f97316" stopOpacity={0.01}/>
+                  </linearGradient>
+                  <linearGradient id="gradAbsent" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.15}/>
                     <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.01}/>
                   </linearGradient>
-                  <linearGradient id="gradAbsent" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.15}/>
-                    <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.01}/>
-                  </linearGradient>
                   <linearGradient id="gradCrowd" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.15}/>
-                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.01}/>
+                    <stop offset="0%" stopColor="#eab308" stopOpacity={0.15}/>
+                    <stop offset="100%" stopColor="#eab308" stopOpacity={0.01}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>

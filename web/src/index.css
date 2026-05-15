@@ -1,95 +1,335 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #0051ae;
+  /* ── 商业版色彩系统 ── */
+  --color-primary: #1a56db;
   --color-on-primary: #ffffff;
-  --color-primary-container: #0969da;
-  --color-on-primary-container: #ecefff;
-  --color-primary-fixed: #dce1ff;
-  --color-primary-fixed-dim: #b8c4ff;
-  
-  --color-secondary: #0058be;
+  --color-primary-container: #d1e0ff;
+  --color-on-primary-container: #001d36;
+  --color-primary-fixed: #d1e0ff;
+  --color-primary-fixed-dim: #a4c2f5;
+
+  --color-secondary: #545d6e;
   --color-on-secondary: #ffffff;
-  --color-secondary-container: #2170e4;
-  --color-on-secondary-container: #fefcff;
-  --color-secondary-fixed: #d6e3ff;
-  --color-secondary-fixed-dim: #acc7ff;
-  
-  --color-tertiary: #ba1a1a;
+  --color-secondary-container: #d8e2f6;
+  --color-on-secondary-container: #111928;
+  --color-secondary-fixed: #d8e2f6;
+  --color-secondary-fixed-dim: #b6c3d8;
+
+  --color-tertiary: #c13737;
   --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #ffdad6;
-  --color-on-tertiary-container: #410002;
-  --color-tertiary-fixed: #ffb4ab;
+  --color-tertiary-container: #fde2e2;
+  --color-on-tertiary: #771d1d;
 
-  --color-error: #ba1a1a;
+  --color-error: #c13737;
   --color-on-error: #ffffff;
-  --color-error-container: #ffdad6;
-  --color-on-error-container: #410002;
-  
-  --color-surface: #f9f9ff;
-  --color-surface-dim: #d8d9e3;
-  --color-surface-container: #ecedf7;
-  --color-surface-container-low: #f2f3fd;
-  --color-surface-container-high: #e6e8f1;
-  --color-surface-container-highest: #e1e2ec;
+  --color-error-container: #fde2e2;
+  --color-on-error-container: #771d1d;
+
+  --color-success: #057a55;
+  --color-on-success: #ffffff;
+  --color-success-container: #e4f7ed;
+  --color-on-success-container: #014737;
+
+  --color-warning: #c27a18;
+  --color-on-warning: #ffffff;
+  --color-warning-container: #fdf0d5;
+  --color-on-warning-container: #5e3b08;
+
+  /* ── 表面色 ── */
+  --color-surface: #f9fafb;
+  --color-surface-dim: #f3f4f6;
+  --color-surface-container: #ffffff;
+  --color-surface-container-low: #f9fafb;
+  --color-surface-container-high: #f3f4f6;
+  --color-surface-container-highest: #e5e7eb;
   --color-surface-container-lowest: #ffffff;
-  
-  --color-on-surface: #191c22;
-  --color-on-surface-variant: #424753;
-  --color-outline: #727785;
-  --color-outline-variant: #c2c6d6;
-  
-  --color-background: #f9f9ff;
-  --color-on-background: #191c22;
+  --color-surface-bright: #ffffff;
+  --color-surface-variant: #e5e7eb;
 
-  --color-dark-bg: #080c14;
-  --color-dark-sidebar: #0e1525;
-  --color-login-bg: #060a14;
-  
-  --color-success-green: #1a7f37;
-  --color-danger-red: #cf222e;
-  --color-warning-orange: #bf8700;
-  --color-detect-purple: #8250df;
-  --color-info-cyan: #0550ae;
+  --color-on-surface: #111928;
+  --color-on-surface-variant: #4b5563;
+  --color-outline: #9ca3af;
+  --color-outline-variant: #e5e7eb;
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-background: #f9fafb;
+  --color-on-background: #111928;
 
+  /* ── 深色系 ── */
+  --color-dark-bg: #030712;
+  --color-dark-sidebar: #111928;
+  --color-login-bg: #030712;
+
+  /* ── 功能色 ── */
+  --color-success-green: #057a55;
+  --color-danger-red: #c13737;
+  --color-warning-orange: #c27a18;
+  --color-detect-purple: #7c3aed;
+  --color-info-cyan: #0e7490;
+
+  /* ── 商业版字体系统 ── */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Source Han Sans SC", "WenQuanYi Micro Hei", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, SFMono-Regular, monospace;
+
+  /* ── 字号系统 ── */
+  --text-caption: 0.75rem;      /* 12px */
+  --text-body-sm: 0.8125rem;    /* 13px */
+  --text-body: 0.875rem;        /* 14px */
+  --text-body-lg: 0.9375rem;    /* 15px */
+  --text-heading: 1.25rem;      /* 20px */
+  --text-title: 1.5rem;         /* 24px */
+  --text-title-lg: 1.75rem;     /* 28px */
+  --text-display: 2.25rem;      /* 36px */
+
+  /* ── 间距系统 ── */
   --spacing-unit: 4px;
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 12px;
   --spacing-lg: 16px;
-  --spacing-xl: 32px;
-  --spacing-grid-gap: 12px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+  --spacing-3xl: 48px;
+  --spacing-grid-gap: 16px;
 
-  --text-caption: 12px;
-  --text-body-sm: 14px;
-  --text-body: 16px;
-  --text-body-lg: 20px;
-  --text-heading: 24px;
-  --text-title: 32px;
-  --text-display: 40px;
+  /* ── 圆角 ── */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
+/* ── 暗色主题覆盖 ── */
+[data-theme="dark"] {
+  --color-background: #0f1117;
+  --color-on-background: #e5e7eb;
+  --color-surface: #1a1d27;
+  --color-surface-dim: #14161e;
+  --color-surface-container: #1f2233;
+  --color-surface-container-low: #171a24;
+  --color-surface-container-high: #262a3a;
+  --color-surface-container-highest: #2f3447;
+  --color-on-surface: #e5e7eb;
+  --color-on-surface-variant: #9ca3af;
+  --color-outline: #6b7280;
+  --color-outline-variant: #374151;
+}
 
+/* ── 全局基线 ── */
 @layer base {
   body {
     @apply bg-background text-on-surface font-sans antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.005em;
+    line-height: 1.6;
+  }
+
+  /* 商业版全局文字优化 */
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 数字等宽 */
+  .font-mono, [class*="font-mono"] {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  /* 全局滚动条 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+  }
+
+  /* 选中色 */
+  ::selection {
+    background: #d1e0ff;
+    color: #001d36;
   }
 }
 
+/* ── 商业版视频 HUD ── */
 .video-hud {
-  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0) 100%);
 }
 
+/* ── 图表网格 ── */
 .chart-grid {
-  background-image: linear-gradient(to right, rgba(114, 119, 133, 0.1) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(114, 119, 133, 0.1) 1px, transparent 1px);
-  background-size: 20px 20px;
+  background-image: linear-gradient(to right, rgba(156,163,175,0.06) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(156,163,175,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
+/* ── 侧边栏渐隐 ── */
 .sidebar-mask {
   mask-image: linear-gradient(to bottom, black 90%, transparent);
 }
 
+/* ── 自定义滚动条类 ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+
+/* ── 商业版表格样式 ── */
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 动画 ── */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+@keyframes fade-in-up {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s ease-out both;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ── 商业版卡片阴影 ── */
+.card-shadow {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.card-shadow-md {
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.03);
+}
+
+.card-shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.06), 0 4px 6px -4px rgba(0,0,0,0.04);
+}
+
+/* ── 通知徽章脉冲 ── */
+.notification-pulse {
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* ── 输入框聚焦样式 ── */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.12);
+}
+
+/* ── 按钮基础交互 ── */
+button {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* ── 状态指示器 ── */
+.status-dot {
+  position: relative;
+}
+.status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* ── 渐变背景 ── */
+.gradient-primary {
+  background: linear-gradient(135deg, #1a56db 0%, #3b82f6 100%);
+}
+
+.gradient-dark {
+  background: linear-gradient(135deg, #111928 0%, #1f2937 100%);
+}
+
+/* ── Range Slider 美化 ── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: #e5e7eb;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* ── Checkbox 美化 ── */
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}

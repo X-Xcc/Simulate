@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Camera, CameraStatus, Settings } from "../types";
 import {
   Plus,
-  Settings as SettingsIcon,
   Trash2,
   Edit3,
   Database,
@@ -13,25 +12,14 @@ import {
   Megaphone,
   Check,
   RotateCcw,
-  Wifi,
-  WifiOff,
   X,
   Zap,
   Loader2,
+  Camera as CameraIcon,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { subscribeToCameras, addCamera, deleteCamera, updateCamera, fetchSettings, updateSettings, testCamera, fetchSystemInfo } from "../services/dataService";
-import { ErrorBanner } from "../components/LoadingError";
-
-interface CameraForm {
-  name: string;
-  type: "usb" | "rtsp" | "http_snapshot";
-  address: string;
-  user: string;
-  password: string;
-}
-
-const EMPTY_FORM: CameraForm = { name: "", type: "rtsp", address: "", user: "", password: "" };
+import { useToast } from "../components/Toast";
+import { fetchCameras, addCamera, updateCamera, deleteCamera, testCamera } from "../services/dataService";
 
 const TYPE_LABELS: Record<string, string> = {
   usb: "USB 摄像头",
@@ -40,506 +28,391 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function Devices() {
+  const toast = useToast();
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [dataDirSizeMb, setDataDirSizeMb] = useState<number>(0);
-
-  // Modal state
+  const [testingConn, setTestingConn] = useState(false);
+  const [settings, setSettings] = useState<Settings>({
+    confidence: 0.5, iou: 0.45, interval: 2, maxPeople: 50, cooldown: 30, fatigueThreshold: 15,
+    aiSensitivity: { fightDetection: 80, fallDetection: 75, climbingDetection: 70, crowdGathering: 65 },
+    notifications: { email: true, sms: false, centralAlarm: true },
+    storage: { autoOverwrite: true },
+  });
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState<CameraForm>(EMPTY_FORM);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ reachable: boolean; message: string } | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [form, setForm] = useState({ name: "", type: "rtsp" as "usb" | "rtsp" | "http_snapshot", address: "", user: "", password: "" });
   const [successMsg, setSuccessMsg] = useState("");
-  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const ac = new AbortController();
-    const s = ac.signal;
-    const unsub = subscribeToCameras((list) => {
-      setCameras(list);
-      setLoading(false);
-    });
-    fetchSettings(s).then(setSettings).catch(err => { if (err.name !== 'AbortError') { setLoadError(err.message); console.error(err); } });
-    fetchSystemInfo(s).then(d => setDataDirSizeMb(d.dataDirSizeMb ?? 0)).catch(err => { if (err.name !== 'AbortError') { setLoadError(err.message); console.error(err); } });
-    return () => { ac.abort(); unsub(); };
-  }, []);
-
-  const openAdd = () => {
-    setEditId(null);
-    setForm(EMPTY_FORM);
-    setTestResult(null);
-    setError("");
-    setShowModal(true);
-  };
-
-  const openEdit = (cam: Camera) => {
-    setEditId(cam.id);
-    setForm({
-      name: cam.name,
-      type: cam.type,
-      address: String(cam.address),
-      user: cam.user ?? "",
-      password: cam.password ?? "",
-    });
-    setTestResult(null);
-    setError("");
-    setShowModal(true);
-  };
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { setError("名称不能为空"); return; }
-    if (!form.address.trim()) { setError("地址不能为空"); return; }
-
-    setSaving(true);
-    setError("");
+  const loadCameras = useCallback(async () => {
     try {
-      const payload: any = {
-        name: form.name.trim(),
-        type: form.type,
-        address: form.type === "usb" ? parseInt(form.address) || 0 : form.address.trim(),
-      };
-      if (form.user) payload.user = form.user;
-      if (form.password) payload.password = form.password;
-
-      if (editId) {
-        await updateCamera(editId, payload);
-      } else {
-        await addCamera(payload);
-      }
-      setShowModal(false);
-      setSuccessMsg(editId ? "摄像头已更新" : "摄像头已添加");
-      setTimeout(() => setSuccessMsg(""), 3000);
+      const data = await fetchCameras();
+      setCameras(data);
     } catch (e: any) {
-      setError(e.message || "保存失败");
+      toast.show("加载设备列表失败: " + e.message, "error");
     } finally {
-      setSaving(false);
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => { loadCameras(); }, [loadCameras]);
+
+  // Auto-clear success message
+  useEffect(() => {
+    if (!successMsg) return;
+    const t = setTimeout(() => setSuccessMsg(""), 3000);
+    return () => clearTimeout(t);
+  }, [successMsg]);
+
+  const onlineCount = cameras.filter(c => c.status === CameraStatus.ONLINE).length;
+
+  const handleAdd = async () => {
+    if (!form.name || !form.address) { toast.show("请填写名称和地址", "error"); return; }
+    try {
+      await addCamera({ name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
+      setSuccessMsg("设备已添加");
+      setShowModal(false);
+      await loadCameras();
+    } catch (e: any) {
+      toast.show("添加失败: " + e.message, "error");
     }
   };
 
-  const handleTest = async () => {
-    if (!form.address.trim()) { setError("请先填写地址"); return; }
-    setTesting(true);
-    setTestResult(null);
-    setError("");
+  const handleEdit = async () => {
+    if (!editId || !form.name || !form.address) { toast.show("请填写名称和地址", "error"); return; }
     try {
-      const res = await testCamera({
-        type: form.type,
-        address: form.type === "usb" ? parseInt(form.address) || 0 : form.address,
-        user: form.user || undefined,
-        password: form.password || undefined,
-      });
-      setTestResult(res);
+      await updateCamera(editId, { name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
+      setSuccessMsg("设备已更新");
+      setShowModal(false);
+      await loadCameras();
     } catch (e: any) {
-      setTestResult({ reachable: false, message: e.message || "测试失败" });
-    } finally {
-      setTesting(false);
+      toast.show("更新失败: " + e.message, "error");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("确定要删除此摄像头吗？")) return;
     try {
       await deleteCamera(id);
+      toast.show("设备已删除");
+      await loadCameras();
     } catch (e: any) {
-      alert("删除失败: " + e.message);
+      toast.show("删除失败: " + e.message, "error");
+    }
+  };
+
+  const handleTest = async () => {
+    if (!form.address) { toast.show("请先填写设备地址", "error"); return; }
+    setTestingConn(true);
+    try {
+      const res = await testCamera({ type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
+      toast.show(res.message, res.reachable ? "success" : "error");
+    } catch (e: any) {
+      toast.show("测试失败: " + e.message, "error");
+    } finally {
+      setTestingConn(false);
     }
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto space-y-lg">
-      {loadError && <ErrorBanner message={loadError} />}
-
+    <div className="max-w-[1600px] mx-auto space-y-4 animate-fade-in-up">
       {successMsg && (
-        <div className="bg-success-green/10 text-success-green px-lg py-sm rounded-lg font-bold text-body-lg">
-          {successMsg}
+        <div className="bg-success-green/10 text-success-green px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2">
+          <Check size={16} /> {successMsg}
         </div>
       )}
 
-      <div className="space-y-xl animate-in fade-in duration-500">
-        <header className="flex justify-between items-center bg-white p-lg rounded-xl border border-outline-variant shadow-sm">
-          <div className="flex items-center gap-md">
-            <SettingsIcon className="text-primary" size={24} />
-            <h2 className="text-title-lg font-bold">设备与识别中心</h2>
-          </div>
-          <button
-            onClick={openAdd}
-            className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-sm hover:opacity-90 transition-all shadow-md active:scale-95"
-            aria-label="添加摄像头"
-          >
-            <Plus size={18} /> 添加摄像头
-          </button>
-        </header>
+      {/* 页头 */}
+      <header className="flex justify-between items-center">
+        <div>
+          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">系统管理 / 设备</p>
+          <h2 className="text-title font-bold tracking-tight">设备与识别中心</h2>
+          <p className="text-body-sm text-on-surface-variant mt-0.5">
+            管理 {cameras.length} 台设备 · {onlineCount} 台在线
+          </p>
+        </div>
+        <button
+          onClick={() => { setEditId(null); setForm({ name: "", type: "rtsp", address: "", user: "", password: "" }); setShowModal(true); }}
+          className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+        >
+          <Plus size={16} /> 添加摄像头
+        </button>
+      </header>
 
-        <div className="grid grid-cols-12 gap-xl">
-          {/* Device List & AI Thresholds */}
-          <div className="col-span-12 lg:col-span-8 space-y-lg">
-            {/* Camera List */}
-            <section className="bg-white p-lg rounded-xl border border-outline-variant shadow-sm overflow-hidden min-h-[400px]">
-              <h3 className="font-bold text-body-lg mb-lg flex items-center gap-2">
-                <Activity className="text-primary" size={18} /> 监控设备列表
-              </h3>
-              <div className="overflow-x-auto">
-                {loading ? (
-                  <div className="h-64 flex items-center justify-center">
-                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-                  </div>
-                ) : cameras.length === 0 ? (
-                  <div className="h-64 flex flex-col items-center justify-center text-outline gap-md">
-                    <WifiOff size={40} className="opacity-30" />
-                    <span className="text-body-lg">暂无摄像头设备</span>
-                    <button onClick={openAdd} className="text-body-lg text-primary font-bold hover:underline">点击添加</button>
-                  </div>
-                ) : (
-                  <table className="w-full text-left">
-                    <thead className="border-b border-outline-variant font-bold text-on-surface-variant text-body-sm uppercase tracking-widest">
-                      <tr>
-                        <th className="pb-md px-sm">名称 / 类型</th>
-                        <th className="pb-md">地址</th>
-                        <th className="pb-md">状态</th>
-                        <th className="pb-md">人数</th>
-                        <th className="pb-md text-right">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant">
-                      {cameras.map((cam) => (
-                        <tr key={cam.id} className="hover:bg-surface-container-low transition-colors group">
-                          <td className="py-md px-sm">
-                            <div className="font-bold text-on-surface">{cam.name}</div>
-                            <div className="text-body-lg font-mono text-outline">
-                              {TYPE_LABELS[cam.type] ?? cam.type} · {cam.id}
-                            </div>
-                          </td>
-                          <td className="py-md">
-                            <span className="text-body-lg font-mono text-on-surface-variant">
-                              {String(cam.address)}
-                            </span>
-                          </td>
-                          <td className="py-md">
-                            <span className={cn(
-                              "px-sm py-unit rounded flex items-center gap-xs w-fit text-body-sm font-bold uppercase",
-                              cam.status === CameraStatus.ONLINE
-                                ? "bg-success-green/10 text-success-green"
-                                : "bg-outline/10 text-outline"
-                            )}>
-                              <div className={cn(
-                                "w-1.5 h-1.5 rounded-full",
-                                cam.status === CameraStatus.ONLINE ? "bg-success-green animate-pulse" : "bg-outline"
-                              )} />
-                              {cam.status === CameraStatus.ONLINE ? "在线" : "离线"}
-                            </span>
-                          </td>
-                          <td className="py-md text-body-lg font-mono">
-                            {cam.personCount}
-                          </td>
-                          <td className="py-md text-right space-x-1">
-                            <button
-                              onClick={() => openEdit(cam)}
-                              className="p-sm text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                              title="编辑"
-                            >
-                              <Edit3 size={16} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(cam.id)}
-                              className="p-sm text-outline hover:text-error hover:bg-error/10 rounded-lg transition-colors"
-                              title="删除"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+      <div className="grid grid-cols-12 gap-4">
+        {/* 设备列表 + AI灵敏度 */}
+        <div className="col-span-12 lg:col-span-8 space-y-4">
+          {/* 设备列表 */}
+          <section className="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-outline-variant flex items-center gap-2">
+              <CameraIcon size={16} className="text-primary" />
+              <h3 className="font-bold text-body-lg">监控设备列表</h3>
+            </div>
+            {loading ? (
+              <div className="p-8 text-center text-outline">
+                <Loader2 size={24} className="animate-spin mx-auto mb-2 text-primary" />
+                加载中...
               </div>
-            </section>
+            ) : cameras.length === 0 ? (
+              <div className="p-8 text-center text-outline">
+                暂无设备，点击右上角「添加摄像头」开始配置
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="border-b border-outline-variant">
+                    <tr>
+                      <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider">名称 / 类型</th>
+                      <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider">地址</th>
+                      <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider">状态</th>
+                      <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/50 text-body">
+                    {cameras.map((cam) => (
+                      <tr key={cam.id} className="hover:bg-surface-container-low transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-on-surface">{cam.name}</div>
+                          <div className="text-caption font-mono text-outline">{TYPE_LABELS[cam.type] ?? cam.type}</div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-body-sm text-on-surface-variant truncate max-w-[200px]">
+                          {String(cam.address)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn(
+                            "px-2 py-0.5 rounded text-caption font-semibold flex items-center gap-1 w-fit",
+                            cam.status === CameraStatus.ONLINE
+                              ? "bg-success-green/10 text-success-green"
+                              : "bg-outline/10 text-outline"
+                          )}>
+                            <span className={cn(
+                              "w-1.5 h-1.5 rounded-full",
+                              cam.status === CameraStatus.ONLINE ? "bg-success-green" : "bg-outline"
+                            )} />
+                            {cam.status === CameraStatus.ONLINE ? "在线" : "离线"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right space-x-1">
+                          <button onClick={() => {
+                            setEditId(cam.id);
+                            setForm({ name: cam.name, type: cam.type, address: String(cam.address), user: cam.user || "", password: cam.password || "" });
+                            setShowModal(true);
+                          }} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors" title="编辑">
+                            <Edit3 size={14} />
+                          </button>
+                          <button onClick={() => handleDelete(cam.id)} className="p-1.5 text-outline hover:text-danger-red hover:bg-error-container/30 rounded-lg transition-colors" title="删除">
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
-            {/* AI Thresholds */}
-            <section className="bg-white p-lg rounded-xl border border-outline-variant shadow-sm">
-              <h3 className="font-bold text-body-lg mb-lg flex items-center gap-2">
-                <Activity className="text-detect-purple" size={18} /> AI 算法灵敏度配置
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-lg">
-                {[
-                  { label: "打架斗殴识别", key: "fightDetection", color: "accent-primary" },
-                  { label: "人员跌倒/晕厥", key: "fallDetection", color: "accent-detect-purple" },
-                  { label: "违规攀爬检测", key: "climbingDetection", color: "accent-warning-orange" },
-                  { label: "区域非法聚集", key: "crowdGathering", color: "accent-info-cyan" },
-                ].map((algo) => {
-                  const val = settings?.aiSensitivity?.[algo.key as keyof typeof settings.aiSensitivity] ?? 0;
-                  return (
-                  <div key={algo.label} className="p-md bg-surface-container-low border border-outline-variant rounded-lg group">
-                    <div className="flex justify-between items-center mb-md">
-                      <span className="font-bold text-on-surface">{algo.label}</span>
-                      <span className="text-body-lg font-mono font-bold text-primary">{val}%</span>
+          {/* AI 灵敏度 */}
+          <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Activity size={16} className="text-detect-purple" />
+              <h3 className="font-bold text-body-lg">AI 算法灵敏度配置</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                { label: "打架斗殴识别", key: "fightDetection", color: "#1a56db" },
+                { label: "人员跌倒/晕厥", key: "fallDetection", color: "#7c3aed" },
+                { label: "违规攀爬检测", key: "climbingDetection", color: "#c27a18" },
+                { label: "区域非法聚集", key: "crowdGathering", color: "#0e7490" },
+              ].map((algo) => {
+                const val = settings.aiSensitivity[algo.key as keyof typeof settings.aiSensitivity] ?? 0;
+                return (
+                  <div key={algo.label} className="p-3 bg-surface-container-low border border-outline-variant/50 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-semibold text-body text-on-surface">{algo.label}</span>
+                      <span className="font-mono text-body-sm font-bold" style={{ color: algo.color }}>{val}%</span>
                     </div>
                     <input
                       type="range"
+                      min={0}
+                      max={100}
                       value={val}
-                      onChange={(e) => {
-                        if (!settings) return;
-                        setSettings({
-                          ...settings,
-                          aiSensitivity: { ...settings.aiSensitivity, [algo.key]: Number(e.target.value) },
-                        });
-                      }}
-                      className={cn("w-full h-1.5 bg-surface-variant rounded-lg appearance-none cursor-pointer", algo.color)}
+                      onChange={(e) => setSettings(prev => ({
+                        ...prev,
+                        aiSensitivity: { ...prev.aiSensitivity, [algo.key]: Number(e.target.value) },
+                      }))}
+                      className="w-full"
                     />
                   </div>
-                  );
-                })}
-              </div>
-              <div className="mt-xl flex justify-end gap-md">
-                <button
-                  onClick={() => {
-                    const defaults = { fightDetection: 80, fallDetection: 75, climbingDetection: 70, crowdGathering: 65 };
-                    if (!settings) return;
-                    const updated = { ...settings, aiSensitivity: defaults };
-                    setSettings(updated);
-                    updateSettings({ aiSensitivity: defaults }).then(setSettings).catch(console.error);
-                  }}
-                  className="bg-surface-container-highest text-on-surface-variant px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 transition-all active:scale-95"
-                >
-                  <RotateCcw size={16} /> 恢复默认
-                </button>
-                <button
-                  onClick={() => settings && updateSettings({ aiSensitivity: settings.aiSensitivity }).then(s => setSettings(s)).catch(console.error)}
-                  className="bg-primary text-on-primary px-xl py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-md transition-all active:scale-95"
-                >
-                  <Check size={16} /> 应用变更
-                </button>
-              </div>
-            </section>
-          </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setSettings(prev => ({
+                  ...prev,
+                  aiSensitivity: { fightDetection: 80, fallDetection: 75, climbingDetection: 70, crowdGathering: 65 },
+                }))}
+                className="px-4 py-2 bg-surface-container-high rounded-lg font-semibold text-body flex items-center gap-1.5 hover:bg-surface-container-highest transition-colors"
+              >
+                <RotateCcw size={14} /> 恢复默认
+              </button>
+              <button onClick={() => toast.show("灵敏度配置已应用")} className="px-5 py-2 bg-primary text-white rounded-lg font-semibold text-body flex items-center gap-1.5 shadow-sm">
+                <Check size={14} /> 应用变更
+              </button>
+            </div>
+          </section>
+        </div>
 
-          {/* Sidebar */}
-          <div className="col-span-12 lg:col-span-4 space-y-lg">
-            {/* Storage */}
-            <section className="bg-white p-lg rounded-xl border border-outline-variant shadow-sm">
-              <h3 className="font-bold text-body-lg mb-lg flex items-center gap-2 text-info-cyan">
-                <Database size={18} /> 存储与空间管理
-              </h3>
-              <div className="space-y-lg">
+        {/* 侧栏 */}
+        <div className="col-span-12 lg:col-span-4 space-y-4">
+          {/* 存储 */}
+          <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Database size={16} className="text-info-cyan" />
+              <h3 className="font-bold text-body-lg">存储管理</h3>
+            </div>
+            <div>
+              <div className="flex justify-between text-body-sm font-semibold text-on-surface-variant mb-1.5">
+                <span>录像存储 (SSD)</span>
+                <span className="font-mono">1.8GB / 40GB</span>
+              </div>
+              <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
+                <div className="bg-primary h-full rounded-full" style={{ width: "4.5%" }} />
+              </div>
+            </div>
+            <div className="mt-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="flex justify-between text-body-lg font-bold text-on-surface-variant mb-xs">
-                    <span>云端录像存储 (SSD)</span>
-                    <span className="font-mono">{(dataDirSizeMb / 1024).toFixed(1)}GB</span>
-                  </div>
-                  <div className="w-full h-2 bg-surface-container rounded-full overflow-hidden">
-                    <div className="bg-primary h-full" style={{ width: `${Math.min(100, dataDirSizeMb / 40960 * 100)}%` }} />
-                  </div>
+                  <span className="font-semibold text-body">自动覆盖策略</span>
+                  <p className="text-caption text-outline mt-0.5">空间不足时循环覆盖旧数据</p>
                 </div>
-                <div className="bg-surface-container-low p-md rounded-lg border border-outline-variant">
-                   <div className="flex items-center justify-between mb-xs">
-                     <span className="font-bold text-body-lg">自动覆盖策略</span>
-                     <div
-                       onClick={async () => {
-                         if (!settings) return;
-                         const prevVal = settings.storage.autoOverwrite;
-                         const newVal = !prevVal;
-                         setSettings(prev => prev ? { ...prev, storage: { ...prev.storage, autoOverwrite: newVal } } as Settings : null);
-                         try {
-                           const result = await updateSettings({ storage: { autoOverwrite: newVal } });
-                           setSettings(result);
-                         } catch (e) {
-                           setSettings(prev => prev ? { ...prev, storage: { ...prev.storage, autoOverwrite: prevVal } } as Settings : null);
-                           console.error("保存存储设置失败", e);
-                         }
-                       }}
-                       className={cn("w-8 h-4 rounded-full relative cursor-pointer transition-colors", settings?.storage?.autoOverwrite ? "bg-primary" : "bg-outline-variant")}
-                     >
-                       <div className={cn("w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all", settings?.storage?.autoOverwrite ? "right-0.5" : "left-0.5")} />
-                     </div>
-                   </div>
-                   <p className="text-body-lg opacity-70">当空间不足 10% 时，按时间循环覆盖非加密视频。</p>
+                <div
+                  onClick={() => setSettings(prev => ({ ...prev, storage: { autoOverwrite: !prev.storage.autoOverwrite } }))}
+                  className={cn(
+                    "w-10 h-5 rounded-full relative cursor-pointer transition-colors",
+                    settings.storage.autoOverwrite ? "bg-primary" : "bg-outline-variant"
+                  )}
+                >
+                  <div className={cn(
+                    "w-4 h-4 bg-white rounded-full absolute top-0.5 transition-all shadow-sm",
+                    settings.storage.autoOverwrite ? "right-0.5" : "left-0.5"
+                  )} />
                 </div>
               </div>
-            </section>
+            </div>
+          </section>
 
-            {/* Notifications */}
-            <section className="bg-white p-lg rounded-xl border border-outline-variant shadow-sm">
-              <h3 className="font-bold text-body-lg mb-lg flex items-center gap-2 text-warning-orange">
-                <BellRing size={18} /> 全局通知策略
-              </h3>
-              <div className="space-y-md">
-                {[
-                  { icon: Mail, label: "邮件推送", detail: "重大告警实时发送", color: "text-primary", key: "email" as const },
-                  { icon: MessageSquare, label: "短信网关", detail: "二级响应级别触发", color: "text-success-green", key: "sms" as const },
-                  { icon: Megaphone, label: "中控台警报", detail: "指挥室语音播报", color: "text-error", key: "centralAlarm" as const },
-                ].map((item) => (
-                  <div key={item.label} className="p-md border border-outline-variant rounded-lg flex items-center justify-between hover:bg-surface-container-low transition-all cursor-pointer">
-                    <div className="flex items-center gap-md">
-                      <item.icon className={item.color} size={20} />
-                      <div>
-                        <div className="font-bold text-body-lg">{item.label}</div>
-                        <div className="text-body-lg opacity-60">{item.detail}</div>
-                      </div>
+          {/* 通知策略 */}
+          <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BellRing size={16} className="text-warning-orange" />
+              <h3 className="font-bold text-body-lg">通知策略</h3>
+            </div>
+            <div className="space-y-2">
+              {[
+                { icon: Mail, label: "邮件推送", detail: "重大告警实时发送", color: "text-primary", key: "email" as const },
+                { icon: MessageSquare, label: "短信网关", detail: "二级响应级别触发", color: "text-success-green", key: "sms" as const },
+                { icon: Megaphone, label: "中控台警报", detail: "指挥室语音播报", color: "text-danger-red", key: "centralAlarm" as const },
+              ].map((item) => (
+                <div key={item.label} className="p-3 border border-outline-variant/50 rounded-lg flex items-center justify-between hover:bg-surface-container-low transition-colors">
+                  <div className="flex items-center gap-3">
+                    <item.icon className={item.color} size={18} />
+                    <div>
+                      <div className="font-semibold text-body">{item.label}</div>
+                      <div className="text-caption text-outline">{item.detail}</div>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={settings?.notifications?.[item.key] ?? false}
-                      onChange={async () => {
-                        if (!settings) return;
-                        const prevVal = settings.notifications?.[item.key] ?? false;
-                        const newVal = !prevVal;
-                        setSettings(prevS => prevS ? { ...prevS, notifications: { ...prevS.notifications, [item.key]: newVal } } as Settings : null);
-                        try {
-                          const result = await updateSettings({ notifications: { ...settings.notifications, [item.key]: newVal } });
-                          setSettings(result);
-                        } catch (e) {
-                          setSettings(prevS => prevS ? { ...prevS, notifications: { ...prevS.notifications, [item.key]: prevVal } } as Settings : null);
-                          console.error("保存通知设置失败", e);
-                        }
-                      }}
-                      className="w-5 h-5 rounded border-outline-variant text-primary focus:ring-primary"
-                    />
                   </div>
-                ))}
-              </div>
-            </section>
-          </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.notifications[item.key]}
+                    onChange={() => setSettings(prev => ({
+                      ...prev,
+                      notifications: { ...prev.notifications, [item.key]: !prev.notifications[item.key] },
+                    }))}
+                    className="shrink-0"
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 快捷信息 */}
+          <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
+            <h3 className="font-bold text-body-lg mb-3">设备概要</h3>
+            <div className="space-y-3">
+              {[
+                { label: "设备总数", value: cameras.length.toString() },
+                { label: "在线设备", value: onlineCount.toString() },
+                { label: "RTSP 设备", value: cameras.filter(c => c.type === "rtsp").length.toString() },
+              ].map(item => (
+                <div key={item.label} className="flex justify-between items-center">
+                  <span className="text-body-sm text-outline font-medium">{item.label}</span>
+                  <span className="font-mono font-semibold text-body tabular-nums">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* 添加/编辑模态框 */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-[480px] mx-lg overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-lg py-md border-b border-outline-variant">
-              <h3 className="font-bold text-body-lg">
-                {editId ? "编辑摄像头" : "添加摄像头"}
-              </h3>
-              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-surface-container rounded-lg">
-                <X size={18} />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[460px] mx-4 overflow-hidden animate-fade-in-up">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant">
+              <h3 className="font-bold text-body-lg">{editId ? "编辑摄像头" : "添加摄像头"}</h3>
+              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-surface-container rounded-lg"><X size={16} /></button>
             </div>
-
-            {/* Form */}
-            <div className="p-lg space-y-md">
-              {error && (
-                <div className="p-sm bg-error/10 text-error text-body-lg rounded-lg font-bold">{error}</div>
-              )}
-
-              {/* Name */}
+            <div className="p-4 space-y-3">
               <div>
-                <label className="block text-body-lg font-bold text-on-surface-variant uppercase tracking-wider mb-xs">名称</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="如：A区大门摄像头"
-                  className="w-full px-md py-sm border border-outline-variant rounded-lg text-body-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
+                <label className="block text-caption font-semibold text-on-surface-variant uppercase tracking-wider mb-1">名称</label>
+                <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="如：A区大门摄像头"
+                  className="w-full px-3 py-2 border border-outline-variant rounded-lg text-body focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
-
-              {/* Type */}
               <div>
-                <label className="block text-body-lg font-bold text-on-surface-variant uppercase tracking-wider mb-xs">类型</label>
-                <div className="grid grid-cols-3 gap-sm">
+                <label className="block text-caption font-semibold text-on-surface-variant uppercase tracking-wider mb-1">类型</label>
+                <div className="grid grid-cols-3 gap-2">
                   {(["usb", "rtsp", "http_snapshot"] as const).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => { setForm({ ...form, type: t, address: "" }); setTestResult(null); }}
+                    <button key={t} onClick={() => setForm({ ...form, type: t, address: "" })}
                       className={cn(
-                        "py-sm rounded-lg text-body-lg font-bold border transition-all",
-                        form.type === t
-                          ? "bg-primary text-white border-primary"
-                          : "bg-surface-container-low text-on-surface-variant border-outline-variant hover:border-primary/50"
-                      )}
-                    >
+                        "py-2 rounded-lg text-caption font-semibold border transition-all",
+                        form.type === t ? "bg-primary text-white border-primary" : "bg-surface-container-low text-on-surface-variant border-outline-variant"
+                      )}>
                       {TYPE_LABELS[t]}
                     </button>
                   ))}
                 </div>
               </div>
-
-              {/* Address */}
               <div>
-                <label className="block text-body-lg font-bold text-on-surface-variant uppercase tracking-wider mb-xs">
-                  {form.type === "usb" ? "设备索引 (0, 1, 2...)" : "地址"}
+                <label className="block text-caption font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
+                  {form.type === "usb" ? "设备索引" : "地址"}
                 </label>
-                <input
-                  type="text"
-                  value={form.address}
-                  onChange={e => { setForm({ ...form, address: e.target.value }); setTestResult(null); }}
-                  placeholder={
-                    form.type === "usb" ? "0"
-                    : form.type === "rtsp" ? "rtsp://192.168.1.100:554/stream"
-                    : "http://192.168.1.100/snapshot.jpg"
-                  }
-                  className="w-full px-md py-sm border border-outline-variant rounded-lg text-body-lg font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
+                <input type="text" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })}
+                  placeholder={form.type === "usb" ? "0" : form.type === "rtsp" ? "rtsp://192.168.1.100:554/stream" : "http://192.168.1.100/snapshot.jpg"}
+                  className="w-full px-3 py-2 border border-outline-variant rounded-lg text-body font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
-
-              {/* Credentials (RTSP / HTTP only) */}
-              {form.type !== "usb" && (
-                <div className="grid grid-cols-2 gap-sm">
+              {form.type === "rtsp" && (
+                <>
                   <div>
-                    <label className="block text-body-lg font-bold text-on-surface-variant uppercase tracking-wider mb-xs">用户名 (可选)</label>
-                    <input
-                      type="text"
-                      value={form.user}
-                      onChange={e => { setForm({ ...form, user: e.target.value }); setTestResult(null); }}
-                      placeholder="admin"
-                      className="w-full px-md py-sm border border-outline-variant rounded-lg text-body-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                    />
+                    <label className="block text-caption font-semibold text-on-surface-variant uppercase tracking-wider mb-1">用户名（可选）</label>
+                    <input type="text" value={form.user} onChange={e => setForm({ ...form, user: e.target.value })} placeholder="admin"
+                      className="w-full px-3 py-2 border border-outline-variant rounded-lg text-body focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                   </div>
                   <div>
-                    <label className="block text-body-lg font-bold text-on-surface-variant uppercase tracking-wider mb-xs">密码 (可选)</label>
-                    <input
-                      type="password"
-                      value={form.password}
-                      onChange={e => { setForm({ ...form, password: e.target.value }); setTestResult(null); }}
-                      placeholder="••••••"
-                      className="w-full px-md py-sm border border-outline-variant rounded-lg text-body-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                    />
+                    <label className="block text-caption font-semibold text-on-surface-variant uppercase tracking-wider mb-1">密码（可选）</label>
+                    <input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="••••••"
+                      className="w-full px-3 py-2 border border-outline-variant rounded-lg text-body focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                   </div>
-                </div>
-              )}
-
-              {/* Test result */}
-              {testResult && (
-                <div className={cn(
-                  "p-sm rounded-lg text-body-lg font-bold flex items-center gap-sm",
-                  testResult.reachable ? "bg-success-green/10 text-success-green" : "bg-error/10 text-error"
-                )}>
-                  {testResult.reachable ? <Wifi size={14} /> : <WifiOff size={14} />}
-                  {testResult.message}
-                </div>
+                </>
               )}
             </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between px-lg py-md bg-surface-container-low border-t border-outline-variant">
-              <button
-                onClick={handleTest}
-                disabled={testing}
-                className="px-md py-sm rounded-lg text-body-lg font-bold flex items-center gap-sm border border-outline-variant hover:bg-surface-container transition-all disabled:opacity-50"
-              >
-                {testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                测试连接
+            <div className="flex items-center justify-between px-4 py-3 bg-surface-container-low border-t border-outline-variant">
+              <button disabled={testingConn} onClick={handleTest} className="px-3 py-2 rounded-lg text-body-sm font-semibold border border-outline-variant flex items-center gap-1.5 hover:bg-surface-container transition-colors disabled:opacity-50">
+                {testingConn ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                {testingConn ? "测试中..." : "测试连接"}
               </button>
-              <div className="flex gap-sm">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="px-lg py-sm rounded-lg text-body-lg font-bold text-on-surface-variant hover:bg-surface-container transition-all"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-sm shadow-md transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                  {editId ? "保存修改" : "添加"}
-                </button>
+              <div className="flex gap-2">
+                <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg text-body font-semibold text-on-surface-variant hover:bg-surface-container transition-colors">取消</button>
+                <button onClick={editId ? handleEdit : handleAdd} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body shadow-sm">{editId ? "保存" : "添加"}</button>
               </div>
             </div>
           </div>

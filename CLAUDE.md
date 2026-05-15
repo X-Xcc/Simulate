@@ -1,211 +1,133 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Session Startup
 
-## Project Overview
+收到第一条消息后、做任何其他事情之前，必须按顺序执行：
+1. 验证 rtk 可用（`rtk --version`）
+2. 开启 caveman 压缩输出模式 — 去掉填充词/助词，用短句，技术术语不变
+3. 全程用中文回复，除非涉及代码/命令/技术术语
+未完成前，禁止任何回答或操作。
 
-监狱智能行为分析系统 (Prison Intelligent Behavior Analysis System) — real-time security monitoring using YOLOv8 pose estimation. Detects falls, fighting, fatigue, eye fatigue, guard absence, and crowd gathering in prison environments.
+## Project
+
+监狱智能行为分析系统 — 实时监控 YOLOv8 姿态估计，检测跌倒/打架/疲劳/眼疲劳/离岗/人员聚集。
+
+三组件、无数据库、纯文件交换：
+
+```
+Camera → Python (YOLOv8 Pose) → detection_*.json + frame_*.jpg → server/data/
+                                   ↓ HTTP POST JPEG              ↓
+Java Spring Boot ←── DirScan (15s TTL) ←────────────────────────┘
+    ↓ REST + SSE + MJPEG
+React SPA (Vite)
+```
 
 ## Architecture
 
-Two-component system with no database — flat-file JSON exchange:
+### Python (`detection/yolov8_security.py`)
+- YOLOv8n-pose, `IMG_SIZE=512`, `CONF_THRESH=0.5`, `INFERENCE_EVERY=2`
+- 检测: 跌倒/打架/疲劳/眼疲劳(EAR)/离岗/聚集
+- 模块: `DetectionModule`, `DataSaver`, `AlertManager`, `UIManager`, `Utils`
+- GPU 强制 CUDA, 可选 TensorRT (`USE_TENSORRT`)
+- 帧传输: HTTP POST JPEG(quality=50) → `/api/update_frame`
+- 多摄像头: `load_cameras_config()` 读 `cameras.json`
+- 可选: Qwen2.5-VL 服务 (`qwen_vl_service.py`, port 5001)
 
-```
-Camera/Video → Python (YOLOv8 Pose) → detection_*.json + frame_*.jpg → server/data/
-                                │                                      │
-                                └── HTTP POST JPEG frames ──→ /api/update_frame
-                                                                  │
-Java Spring Boot ←── DirScan of server/data/ (15s TTL cache)     │
-                 ←── SSE push /api/sse/stream (cameras, alerts, system_metrics)
-                 ←── MJPEG /video_feed                            │
-                                                                  │
-React SPA (Vite) ←── REST polling + SSE subscription + MJPEG video
-```
+### Java Backend (`server/`)
+- Spring Boot 3.2.5, Java 17+, Maven WAR, Lombok, jjwt, bcrypt
+- **过滤器链**: `AuthFilter` (API Key 或 JWT) → `RateLimitFilter` → `SecurityHeadersFilter`
+- **核心服务**:
+  - `DetectionService` — DirScan 缓存 (15s TTL), 删除后必须调 `invalidateScanCache()`
+  - `AbstractJsonFileService<T>` — JSON CRUD 基类: ReadWriteLock, 原子写入 (temp→rename)
+  - `KanbanEventBus` — SSE 广播器
+  - `CameraConfigService` — `cameras.json` CRUD (与 Python 共享)
+- **Controller (13)**: Page, Api, Stats, VideoStream(多摄像头 `?cam=N`), Auth, UserDevice, CameraConfig, Annotation, Alert, AuditLog, Sse, QwenVL, SystemMetrics
 
-### Python Detection (`detection/yolov8_security.py`)
-- YOLOv8n-pose model for real-time pose estimation
-- Detects: 跌倒 (fall), 打架 (fighting), 疲劳 (fatigue/posture), 眼疲劳 (eye fatigue via EAR), 离岗 (leave post), 人员聚集 (crowd gathering)
-- `Config` class (line ~86) centralizes all parameters: model path, `IMG_SIZE=512`, `CONF_THRESH=0.5`, detection thresholds, EAR threshold, head nod params, `INFERENCE_EVERY=2` (frame skip), TensorRT toggle
-- Modules: `DetectionModule`, `DataSaver`, `AlertManager`, `UIManager`, `Utils`
-- `Utils` has geometry helpers: `calculate_iou()`, `calculate_distance()`, `calculate_angle()`, `calculate_eye_aspect_ratio()`, `detect_head_tilt()`
-- Multi-camera via `load_cameras_config()` reading `cameras.json`
-- GPU: env var `YOLOV8_DEVICE=cuda`, cuDNN benchmark, optional TensorRT export (`USE_TENSORRT`)
-- Frame sending: HTTP POST JPEG (quality=50) to Java backend every frame
-- Optional Qwen2.5-VL service (`detection/qwen_vl_service.py`, port 5001) for LLM scene analysis
+### Frontend (`web/`)
+- React 19 + React Router 7 + Tailwind v4 + Recharts + Lucide + Motion + Vite 6
+- 9 路由: Login, Dashboard, Monitor, MonitorBigScreen, Alerts, Devices, Evidence, Analysis, Maintenance, Audit
+- `api.ts`: 30s 内存缓存 + 请求去重 + GET 自动失效 + JWT 自动附加
+- SSE: 单例 `EventSource` 订阅 `/api/sse/stream` (cameras, alerts, system_metrics, audit_logs)
+- 构建: `tsc && vite build` → `web/dist/`, Spring Boot 从 `file:web/dist/` 提供服务
 
-### Java Spring Boot Backend (`server/`)
-- Spring Boot 3.2.5, Java 18 (target 17), Maven WAR, Lombok, jjwt (JWT), bcrypt
-- Package: `com.yolov8.security`
-
-**Config classes:**
-- `AppConfig.java` — `@ConfigurationProperties(prefix="app")` with nested FileConfig, MonitorConfig, PythonConfig, QwenVLConfig, CleanupConfig
-- `AuthFilter.java` — dual auth: `X-API-Key` header OR `Authorization: Bearer <JWT>`. Empty API key skips auth.
-- `RateLimitFilter.java` — sliding window per-IP (API: 60/60s, video: 5/30s, delete: 3/60s)
-- `SecurityHeadersFilter.java` — CSP, X-Content-Type-Options, X-Frame-Options
-- `DataCleanupTask.java` — scheduled cleanup of old detection files
-
-**Controllers (13):** `PageController` (SPA fallback → `index.html`), `ApiController`, `StatsController`, `VideoStreamController` (MJPEG, multi-cam via `?cam=N`), `AuthController`, `UserDeviceController`, `CameraConfigController`, `AnnotationController`, `AlertController`, `AuditLogController`, `SseController`, `QwenVLController`, `SystemMetricsController`
-
-**Services (12):**
-- `DetectionService` — scans `server/data/` with `DirScan` cache (15s TTL, `SCAN_CACHE_TTL_MS=15000L`), system info cache (60s TTL), background cache warmer. Must call `invalidateScanCache()` after deletes.
-- `AbstractJsonFileService<T>` — base for JSON-file CRUD: `ReadWriteLock`, atomic writes (temp-file + rename), in-memory cache. Extended by `UserService`, `DeviceService`.
-- `SettingsService` — standalone (NOT extending AbstractJsonFileService)
-- `CameraConfigService` — CRUD for `cameras.json` (shared with Python)
-- `AnnotationService` — keypoint annotation management, YOLO/COCO export
-- `KanbanEventBus` — SSE event broadcaster for real-time push (standalone class, not extending AbstractJsonFileService)
-- Others: `AlertService`, `AuditLogService`, `ModelInfoService`, `PythonScriptService`, `QwenVLService`
-
-### Frontend (`web/`) — React SPA
-- React 19 + React Router 7 + Tailwind CSS v4 (via `@tailwindcss/vite`) + Recharts + Lucide React + Motion + Vite 6
-- `src/App.tsx` — 9 page routes + fullscreen monitor: Login, Dashboard, Monitor, MonitorBigScreen (`/monitor/fullscreen`), Alerts, Devices, Evidence, Analysis, Maintenance, Audit. Default `/` redirects to `/monitor`.
-- Components: `Layout` (sidebar + topbar), `CameraPanel`, `ErrorBoundary`, `LoadingError`
-- `src/lib/api.ts` — REST + SSE client: 30s in-memory cache, request deduplication, auto cache invalidation on mutations, JWT attached to all requests
-- `src/lib/auth.tsx` — JWT auth context, `ProtectedRoute` wrapper
-- `src/lib/utils.ts` — utility functions
-- `src/services/dataService.ts` — SSE subscription and REST call wrapper
-- `src/types.ts` — TypeScript interfaces (Camera, Alert, AuditLog, SystemStatus, UserAccount, Settings, etc.)
-- `src/index.css` — Tailwind v4 CSS-first config with `@theme` block defining design tokens
-- SSE subscription to `/api/sse/stream` with named event types: cameras, alerts, system_metrics, audit_logs, camera_stats. Singleton `EventSource` shared across subscribers.
-- Design tokens in `DESIGN.md` — light/dark dual theme, Chinese-first UI
-- Legacy JS/CSS in `web/css/` and `web/js/` (from pre-React era, may still be referenced)
-- Build: `tsc && vite build` — Spring Boot serves from `file:web/dist/` (dist IS committed, not gitignored)
-- Dev: Vite dev server on port 5173, proxies `/api` and `/video_feed` to `localhost:5000`
-
-### Authentication
-- `AuthFilter` accepts **either** `X-API-Key` header **or** `Authorization: Bearer <JWT>`
-- JWT issued by `POST /api/login` via `AuthController` (jjwt, HMAC-SHA)
-- Public paths: static assets (`/css/**`, `/js/**`), `/login`, `/video_feed`, `/api/login`, `/api/sse/stream`, `/api/stats`, `/api/stats/summary`, `/api/camera_config`, `/api/cameras`, `/api/alerts`, `/api/audit_logs`
-- Config: `app.api-key` (empty = skip auth in dev), `app.jwt.secret` (from `.env` `JWT_SECRET`)
-- Login lockout: 5 failed attempts → 15-minute lockout (client-side in login page)
-
-### REST API (all under `/`)
+## API Endpoints
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/stats` | Detection statistics + BehaviorCounts (fall/fight/absent/fatigue/gather) |
-| `GET /api/stats/summary` | Aggregated stats summary |
-| `GET /api/detections` | Detection list |
-| `GET /api/images`, `GET /api/images/{name}` | Screenshot listing/serving |
-| `DELETE /api/delete_all_images` | Bulk delete detection data + invalidate cache |
-| `GET /api/model_info` | YOLO model quantization info |
-| `GET /api/settings`, `PUT /api/settings` | System settings (JSON-persisted) |
-| `GET/POST/PUT/DELETE /api/users` | User management (BCrypt passwords) |
-| `GET/POST/PUT/DELETE /api/devices` | Device/camera management |
-| `GET /api/camera_config`, `PUT /api/camera_config` | Camera config (shared with Python) |
-| `GET /api/cameras` | Active camera list |
-| `POST /api/login` | JWT authentication (returns token) |
-| `POST /api/update_frame` | Receive video frame from Python |
-| `GET /video_feed` | MJPEG stream (`multipart/x-mixed-replace`) |
-| `GET /api/sse/stream` | SSE real-time events (cameras, alerts, system_metrics, audit_logs) |
-| `GET /api/ai/status` | Qwen2.5-VL service health |
-| `POST /api/ai/analyze`, `/api/ai/analyze-security`, `/api/ai/batch-analyze` | LLM scene analysis |
-| `GET/POST/PUT/DELETE /api/annotations/*` | Keypoint annotation CRUD + YOLO/COCO export |
+| `GET /api/stats` | 统计 + BehaviorCounts |
+| `GET /api/detections` | 检测列表 |
+| `GET/DELETE /api/images/*` | 截图管理 |
+| `GET/PUT /api/settings` | 系统设置 |
+| `GET/POST/PUT/DELETE /api/users` | 用户管理 (BCrypt) |
+| `GET/POST/PUT/DELETE /api/devices` | 设备管理 |
+| `GET/PUT /api/camera_config` | 摄像头配置 |
+| `POST /api/login` | JWT 登录 |
+| `POST /api/update_frame` | 接收视频帧 |
+| `GET /video_feed` | MJPEG 流 |
+| `GET /api/sse/stream` | SSE 实时事件 |
+| `GET/POST /api/ai/*` | Qwen VL 分析 |
+| `CRUD /api/annotations/*` | 关键点标注 |
 
-## Key Implementation Details
+认证: `X-API-Key` 或 `Authorization: Bearer <JWT>`, 空 API key 跳过认证。公共路径: 静态资源, `/login`, `/video_feed`, `/api/login`, `/api/sse/stream`, `/api/stats/*`, `/api/cameras`, `/api/alerts`, `/api/audit_logs`。
 
-- **No database** — all persistence is JSON files on disk. `AbstractJsonFileService` provides `ReadWriteLock`-protected atomic writes (write temp, then rename). New CRUD services should extend this.
-- **DetectionService caching** — `DirScan` with 15-second TTL. After `DELETE /api/delete_all_images`, `invalidateScanCache()` must be called.
-- **StatsResponse aggregation** — `BehaviorCounts` POJO tracks fall, fight, absent, fatigue, gather. Recent detections capped at 50, all detections at 200.
-- **Video streaming** — MJPEG via `multipart/x-mixed-replace`; multi-camera (`?cam=0`, `?cam=1`). Nginx must use `proxy_buffering off` and `proxy_cache off`.
-- **SSE real-time push** — `KanbanEventBus` broadcasts to `SseController`. Frontend subscribes via singleton `EventSource` with named event types. Auto-reconnect on disconnect.
-- **Frontend API layer** — `api.ts` in-memory 30s cache with request deduplication for GETs. Cache auto-invalidated on mutations. JWT token attached automatically.
-- **open_folder** — uses `java.awt.Desktop.open()` — fails in headless/Docker without X11.
+## Key Details
 
-## Key Commands
+- **无数据库** — JSON 文件持久化, 新 CRUD 服务继承 `AbstractJsonFileService<T>`
+- **缓存** — `DirScan` 15s TTL, 删除后必须 `invalidateScanCache()`
+- **视频流** — MJPEG `multipart/x-mixed-replace`, Nginx 需 `proxy_buffering off`
+- **原子写入** — 先写 temp 文件再 rename, ReadWriteLock 保护
+- **`open_folder`** — `Desktop.open()` 在 headless/Docker 下会失败
+
+## Commands
 
 ```bash
-# Python detection
-cd detection && python yolov8_security.py
-
-# Python tests (single: -k "test_name")
-cd tests && python -m pytest test_detection.py -v
-
-# Frontend dev server (proxies to localhost:5000)
-cd web && npm run dev
-
-# Frontend build (outputs to web/dist/)
-cd web && npm run build
-
-# Java build (WAR)
-cd server && .\mvnw clean package -DskipTests
-
-# Java dev server
-cd server && .\mvnw spring-boot:run
-
-# Java tests
-cd server && .\mvnw test
-
-# Docker
-cd deploy && docker-compose up -d / down / logs -f
-
-# Windows one-click
-start.bat              # clean → build → run
-start.bat stop / restart / build
+cd detection && python yolov8_security.py          # Python 检测
+cd tests && python -m pytest test_detection.py -v  # Python 测试
+cd web && npm run dev / npm run build              # 前端开发/构建
+cd server && .\mvnw clean package -DskipTests      # Java 构建
+cd server && .\mvnw spring-boot:run                # Java 运行
+cd server && .\mvnw test                            # Java 测试
+start.bat / stop / restart / build                  # Windows 一键
 ```
-
-## Build & Verification
-
-After editing source files, always rebuild and verify:
-- **Java**: `cd server && .\mvnw clean package -DskipTests`, then `spring-boot:run` or copy WAR
-- **Frontend**: `cd web && npm run build` — Spring Boot serves from `file:web/dist/`
-- **Python**: no build step, just restart detection process
-- **Always** test the affected endpoint/UI before reporting success
 
 ## Environment
 
-- Python: venv (NOT conda)
-- PyTorch: CUDA 12.8 for RTX 5060: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128`
-- GPU inference is MANDATORY — always force CUDA, never CPU fallback or frame-skipping
-- `JAVA_HOME` must point to JDK 17+ before any Java commands
-- Bundled JDK 18 in `jdk-18.0.2.1+1/` for zero-setup Windows deployment
-- `.env` — `API_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET`
+- Python: venv, GPU 强制 CUDA (`YOLOV8_DEVICE=cuda`), RTX 5060 用 `cu128`
+- Java: `JAVA_HOME` 指向 JDK 17+, 内置 `jdk-18.0.2.1+1/`
+- `.env`: `API_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `JWT_SECRET`
+- 模型: `models/yolov8n-pose.pt` (~5MB), Qwen2.5-VL-7B (~14GB) — 均 gitignored
 
-## Config Locations
+## Config
 
-| Config | File | Key Settings |
-|--------|------|--------------|
-| Java app | `server/src/main/resources/application.properties` | port=5000, JWT, API key, Qwen VL URL, cleanup retention |
-| Python | `Config` class in `detection/yolov8_security.py` | MODEL_PATH, IMG_SIZE=512, CONF_THRESH=0.5, DEVICE via env |
-| Nginx | `deploy/nginx/nginx.conf` | SSL, reverse proxy, SPA fallback, proxy_buffering off |
-| Cameras | `detection/cameras.json` | Shared between Python and Java |
-| Design | `DESIGN.md` | Color tokens, typography, spacing (light/dark/login themes) |
-
-## Debugging Philosophy
-
-When user asks to debug or fix specific issue:
-- Reproduce error → trace exact code path → apply smallest targeted fix → verify
-- Do NOT create design documents or broad exploration first
-- Skip over-engineering — user wants concrete fixes, not process
-
-## Platform-Specific Notes
-
-Windows batch scripts (.bat):
-- Avoid Chinese chars in echo statements (cmd parsing issues)
-- Handle path escaping: trailing backslashes, spaces, quoted arguments
-- Test scripts explicitly after changes — encoding/path bugs need 2-3 rounds
+| Config | File |
+|--------|------|
+| Java | `server/src/main/resources/application.properties` |
+| Python | `Config` class in `detection/yolov8_security.py` |
+| Nginx | `deploy/nginx/nginx.conf` |
+| Cameras | `detection/cameras.json` (Python/Java 共享) |
+| Design | `DESIGN.md` |
 
 ## Camera Integration
 
-- Always test camera reachability FIRST before building integration code
-- RTSP may be disabled on some cameras — if RTSP fails, try HTTP snapshot endpoint immediately
-- USB camera: check device indices 0-5 with OpenCV, clarify which is external vs built-in
+- 先测摄像头可达性，再写集成代码
+- RTSP 禁用时立即尝试 HTTP snapshot
+- USB 摄像头: 检查 OpenCV 设备索引 0-5
 
-## Model Files
+## Working Principles
 
-- YOLOv8n-pose: `models/yolov8n-pose.pt` (pose estimation, ~5MB)
-- Qwen2.5-VL-7B: Optional multimodal model (~14GB)
-- Models are gitignored — user must download manually
+**想清楚再写** — 不确定就问，有多种解读就都列出来，别替用户选。
 
-## Skill routing
+**大任务必须用 Skill + Agent** — 每次涉及比较大的项目（新功能、重构、多文件改动、架构调整），必须先检查匹配的 skill 并调用，用 Agent 并行处理独立子任务。不要徒手硬写。
 
-When user's request matches an available skill, invoke it via the Skill tool. Key routing:
-- Product ideas, brainstorming → invoke /office-hours
-- Architecture → invoke /plan-eng-review
-- Bugs, errors, "why is this broken" → invoke /investigate
-- Code review → invoke /review
-- Test site, find bugs → invoke /qa
-- Ship, deploy, create PR → invoke /ship
-- Security audit → invoke /cso
+**不懂就讨论** — 需求有歧义、方案有多个、不确定用户意图时，先和用户讨论清楚，达成共识再动手。禁止闷头猜。
+
+**极简** — 200 行能缩 50 行就缩。不加没要求的功能、不为单次用法抽象、不处理不可能的错误。
+
+**精准修改** — 只改该改的行，每行都能追溯到用户需求。不顺手"改进"相邻代码。
+
+**目标驱动** — 任务拆成可验证的目标。多步任务列计划 + 检查点。
+
+**调试**: 复现 → 追踪代码路径 → 最小修复 → 验证。不要先写设计文档。
 
 <!-- superpowers-zh:begin (do not edit between these markers) -->
 # Superpowers-ZH 中文增强版

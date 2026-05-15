@@ -1,5 +1,5 @@
 import React from "react";
-import { Users } from "lucide-react";
+import { Users, VideoOff } from "lucide-react";
 import { Camera, CameraStatus } from "../types";
 import { cn, sanitizeImageUrl } from "../lib/utils";
 
@@ -22,8 +22,11 @@ const CameraPanel = React.memo(function CameraPanel({
           alt={`摄像头 ${camera.name} 实时画面`}
         />
       ) : (
-        <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-white/20 text-body-lg font-mono">
-          NO SIGNAL
+        <div className="w-full h-full bg-zinc-900/50 flex flex-col items-center justify-center gap-sm cursor-pointer group"
+             onClick={() => window.location.href = '/devices'}>
+          <VideoOff size={32} className="text-white/10 group-hover:text-primary/50 transition-colors" />
+          <span className="text-body-lg font-mono text-white/15">NO SIGNAL</span>
+          <span className="text-body-sm text-primary/0 group-hover:text-primary/70 transition-all">点击接入摄像头</span>
         </div>
       )}
 

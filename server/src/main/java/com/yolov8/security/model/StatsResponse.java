@@ -50,9 +50,6 @@ public class StatsResponse {
         @JsonProperty("离岗")
         @JsonAlias({"absent", "离岗"})
         private int absent;
-        @JsonProperty("疲劳")
-        @JsonAlias({"fatigue", "疲劳"})
-        private int fatigue;
         @JsonProperty("人员聚集")
         @JsonAlias({"gather", "人员聚集"})
         private int gather;
@@ -60,24 +57,21 @@ public class StatsResponse {
         public BehaviorCounts() {
         }
 
-        public BehaviorCounts(int fall, int fight, int absent, int fatigue, int gather) {
+        public BehaviorCounts(int fall, int fight, int absent, int gather) {
             this.fall = fall;
             this.fight = fight;
             this.absent = absent;
-            this.fatigue = fatigue;
             this.gather = gather;
         }
 
         public int getFall() { return fall; }
         public int getFight() { return fight; }
         public int getAbsent() { return absent; }
-        public int getFatigue() { return fatigue; }
         public int getGather() { return gather; }
 
         public void setFall(int fall) { this.fall = fall; }
         public void setFight(int fight) { this.fight = fight; }
         public void setAbsent(int absent) { this.absent = absent; }
-        public void setFatigue(int fatigue) { this.fatigue = fatigue; }
         public void setGather(int gather) { this.gather = gather; }
     }
 }

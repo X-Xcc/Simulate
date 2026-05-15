@@ -26,6 +26,7 @@ export interface Camera {
 export enum AlertLevel {
   CRITICAL = "high",
   WARNING = "medium",
+  MINOR = "minor",
   INFO = "low",
 }
 

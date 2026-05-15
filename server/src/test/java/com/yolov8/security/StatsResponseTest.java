@@ -26,7 +26,7 @@ class StatsResponseTest {
 
     @Test
     void fullConstructor_setsAllFields() {
-        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(1, 2, 3, 4, 0);
+        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(1, 2, 3, 0);
         List<DetectionData> all = Collections.singletonList(new DetectionData());
         List<DetectionData> recent = Collections.singletonList(new DetectionData());
 
@@ -65,17 +65,15 @@ class StatsResponseTest {
         assertEquals(0, bc.getFall());
         assertEquals(0, bc.getFight());
         assertEquals(0, bc.getAbsent());
-        assertEquals(0, bc.getFatigue());
         assertEquals(0, bc.getGather());
     }
 
     @Test
     void behaviorCounts_fullConstructor_setsValues() {
-        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(5, 3, 2, 1, 0);
+        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(5, 3, 2, 0);
         assertEquals(5, bc.getFall());
         assertEquals(3, bc.getFight());
         assertEquals(2, bc.getAbsent());
-        assertEquals(1, bc.getFatigue());
         assertEquals(0, bc.getGather());
     }
 
@@ -85,23 +83,20 @@ class StatsResponseTest {
         bc.setFall(10);
         bc.setFight(20);
         bc.setAbsent(30);
-        bc.setFatigue(40);
 
         assertEquals(10, bc.getFall());
         assertEquals(20, bc.getFight());
         assertEquals(30, bc.getAbsent());
-        assertEquals(40, bc.getFatigue());
         assertEquals(0, bc.getGather());
     }
 
     @Test
     void behaviorCounts_gettersReturnCorrectValues() {
-        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(7, 6, 5, 4, 0);
+        StatsResponse.BehaviorCounts bc = new StatsResponse.BehaviorCounts(7, 6, 5, 0);
 
         assertEquals(7, bc.getFall());
         assertEquals(6, bc.getFight());
         assertEquals(5, bc.getAbsent());
-        assertEquals(4, bc.getFatigue());
         assertEquals(0, bc.getGather());
     }
 
@@ -111,12 +106,10 @@ class StatsResponseTest {
         bc.setFall(100);
         bc.setFight(200);
         bc.setAbsent(300);
-        bc.setFatigue(400);
 
         assertEquals(100, bc.getFall());
         assertEquals(200, bc.getFight());
         assertEquals(300, bc.getAbsent());
-        assertEquals(400, bc.getFatigue());
         assertEquals(0, bc.getGather());
     }
 }

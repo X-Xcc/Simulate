@@ -1,6 +1,7 @@
 package com.yolov8.security.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yolov8.security.config.AppConfig;
 import com.yolov8.security.service.AlertService;
 import com.yolov8.security.service.AuditLogService;
 import com.yolov8.security.service.CameraConfigService;
@@ -20,6 +21,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 @RestController
@@ -33,10 +35,12 @@ public class SseController {
     private final AuditLogService auditLogService;
     private final DetectionService detectionService;
     private final VideoStreamController videoStreamController;
+    private final AppConfig appConfig;
 
     public SseController(ObjectMapper objectMapper, CameraConfigService cameraConfigService,
                          AlertService alertService, AuditLogService auditLogService,
-                         DetectionService detectionService, VideoStreamController videoStreamController) {
+                         DetectionService detectionService, VideoStreamController videoStreamController,
+                         AppConfig appConfig) {
         this.objectMapper = objectMapper;
         this.compactMapper = objectMapper.copy();
         this.compactMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
@@ -45,6 +49,7 @@ public class SseController {
         this.auditLogService = auditLogService;
         this.detectionService = detectionService;
         this.videoStreamController = videoStreamController;
+        this.appConfig = appConfig;
 
         // Subscribe to event bus
         KanbanEventBus.subscribe((eventType, data) -> broadcast(eventType, data));
@@ -90,6 +95,7 @@ public class SseController {
         try {
             json = compactMapper.writeValueAsString(data);
         } catch (Exception e) {
+            System.err.println("SseController broadcast serialization error: " + e.getMessage());
             return;
         }
         for (SseEmitter emitter : emitters) {
@@ -109,6 +115,47 @@ public class SseController {
     @SuppressWarnings("all")
     private Map<String, Object> collectSystemMetrics() {
         Map<String, Object> m = new LinkedHashMap<>();
+
+        // Demo mode: return virtual system metrics
+        if (appConfig.isDemoMode()) {
+            ThreadLocalRandom tlr = ThreadLocalRandom.current();
+            m.put("cpuPercent", 35 + tlr.nextInt(31));
+            m.put("memoryPercent", 45 + tlr.nextInt(26));
+            m.put("gpuPercent", 30 + tlr.nextInt(26));
+            m.put("diskPercent", 42);
+            m.put("totalDevices", 16);
+            m.put("onlineDevices", tlr.nextInt(3));
+            m.put("activeModels", 1);
+            m.put("totalModels", 1);
+            m.put("version", "v2.4.1-stable");
+            m.put("engine", "Spring Boot + YOLOv8 (Demo)");
+            m.put("coreEngine", "YOLOv8n-Pose");
+
+            long uptimeMs = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
+            long days = uptimeMs / 86400000;
+            long hours = (uptimeMs % 86400000) / 3600000;
+            long minutes = (uptimeMs % 3600000) / 60000;
+            m.put("uptime", days + "d " + hours + "h " + minutes + "m");
+
+            try {
+                Map<String, Object> sysInfo = detectionService.getSystemInfo();
+                m.put("dataDirSizeMb", sysInfo.get("dataDirSizeMb"));
+                m.put("detectionCount", sysInfo.get("detectionCount"));
+                m.put("imageCount", sysInfo.get("imageCount"));
+            } catch (Exception e) {
+                m.put("dataDirSizeMb", 0);
+                m.put("detectionCount", 0);
+                m.put("imageCount", 0);
+            }
+
+            List<Map<String, String>> services = new ArrayList<>();
+            services.add(Map.of("name", "API Server", "status", "Running", "uptime", "-", "health", "正常"));
+            services.add(Map.of("name", "YOLOv8 Service", "status", "Running", "uptime", "-", "health", "正常"));
+            services.add(Map.of("name", "Stream Gateway", "status", "Running", "uptime", "-", "health", "正常"));
+            m.put("services", services);
+
+            return m;
+        }
         try {
             com.sun.management.OperatingSystemMXBean osBean =
                     (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();

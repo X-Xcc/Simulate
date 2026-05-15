@@ -1,153 +1,263 @@
-import { useState, useEffect } from "react";
-import { Users, VideoOff, AlertCircle, Maximize2 } from "lucide-react";
-import { Camera, Alert, CameraStatus, AlertLevel, FpsStats } from "../types";
-import { motion } from "motion/react";
-import { cn, formatDate, sanitizeImageUrl } from "../lib/utils";
-import { subscribeToCameras, subscribeToAlerts, subscribeToCameraStats, fetchFpsStats } from "../services/dataService";
-import { useNavigate } from "react-router-dom";
-import { ErrorBanner } from "../components/LoadingError";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import {
+  Maximize2, Minimize2, Play, Pause, ChevronLeft, ChevronRight,
+  VideoOff, Monitor as MonitorIcon, Clock, Loader2,
+} from "lucide-react";
+import { cn } from "../lib/utils";
+import { fetchCameras } from "../services/dataService";
+import { Camera } from "../types";
+
+type GridMode = 1 | 4 | 9 | 16;
 
 export default function Monitor() {
-  const navigate = useNavigate();
-  const [time, setTime] = useState(new Date());
   const [cameras, setCameras] = useState<Camera[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [cameraStats, setCameraStats] = useState<Record<string, number>>({});
-  const [fps, setFps] = useState<FpsStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchParams] = useSearchParams();
 
+  // 加载真实摄像头列表
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    const ac = new AbortController();
-
-    const unsubCameras = subscribeToCameras(setCameras);
-    const unsubAlerts = subscribeToAlerts(setAlerts);
-    const unsubStats = subscribeToCameraStats(setCameraStats);
-    fetchFpsStats(ac.signal).then(setFps).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
-
-    return () => {
-      clearInterval(timer);
-      ac.abort();
-      unsubCameras();
-      unsubAlerts();
-      unsubStats();
-    };
+    let cancelled = false;
+    async function load() {
+      try {
+        const data = await fetchCameras();
+        if (!cancelled) { setCameras(data); setLoading(false); }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    // 每 10 秒刷新在线状态
+    const iv = setInterval(load, 10000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
-  const activeAlertsCount = alerts.filter(a => a.status === 'pending').length;
+  // 网格模式
+  const [gridMode, setGridMode] = useState<GridMode>(4);
+  // 全屏单卡
+  const [fullscreenId, setFullscreenId] = useState<string | null>(null);
+  // 时间轴
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // 0-100
+  const animRef = useRef<number | null>(null);
+
+  // 从 URL 参数定位摄像头（来自 Dashboard/Alerts 跳转）
+  useEffect(() => {
+    const camId = searchParams.get("cam");
+    if (camId) {
+      setFullscreenId(camId);
+    }
+  }, [searchParams]);
+
+  // 播放动画：requestAnimationFrame 驱动进度条
+  useEffect(() => {
+    if (!isPlaying) {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      return;
+    }
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = now - last;
+      last = now;
+      setProgress(p => {
+        if (p >= 100) { setIsPlaying(false); return 100; }
+        return Math.min(100, p + dt / 200); // ~20秒走满（demo用快一点）
+      });
+      animRef.current = requestAnimationFrame(tick);
+    };
+    animRef.current = requestAnimationFrame(tick);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [isPlaying]);
+
+  // 进度条点击
+  const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    setProgress(Math.max(0, Math.min(100, pct)));
+  }, []);
+
+  // 格式化时间
+  const formatTime = (pct: number) => {
+    const totalSec = (pct / 100) * 86400;
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = Math.floor(totalSec % 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  const dateStr = new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
+
+  const gridCols: Record<GridMode, string> = { 1: "grid-cols-1", 4: "grid-cols-2", 9: "grid-cols-3", 16: "grid-cols-4" };
+  const gridRows: Record<GridMode, string> = { 1: "grid-rows-1", 4: "grid-rows-2", 9: "grid-rows-3", 16: "grid-rows-4" };
+
+  const visibleCameras = fullscreenId
+    ? cameras.filter(c => c.id === fullscreenId)
+    : cameras.slice(0, gridMode);
+  const emptySlots = Math.max(0, (fullscreenId ? 1 : gridMode) - visibleCameras.length);
 
   return (
-    <div className="h-full flex flex-col gap-sm -m-xl p-xs bg-[#080c14] min-h-[calc(100vh-52px)]">
-      {/* Mini HUD */}
-      <div className="flex justify-between items-center px-md py-1 border-b border-white/5">
-        <div className="flex items-center gap-lg">
-          <div className="flex items-center gap-xs">
-            <span className="text-body-sm text-outline font-bold uppercase tracking-widest">ACTIVE_ALERTS</span>
-            <span className="text-body-lg font-mono font-bold text-error">{activeAlertsCount.toString().padStart(2, '0')}</span>
-          </div>
-          <div className="flex items-center gap-xs">
-            <span className="text-body-sm text-outline font-bold uppercase tracking-widest">FPS</span>
-            <span className="text-body-lg font-mono font-bold text-success-green">{fps?.avg ?? "—"}</span>
-          </div>
+    <div className="flex flex-col h-full min-h-0 gap-3 animate-fade-in-up">
+      {/* 顶栏 */}
+      <header className="flex items-center justify-between shrink-0">
+        <div>
+          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">监控中心 / 实时</p>
+          <h2 className="text-title font-bold tracking-tight">视频上墙</h2>
         </div>
-        <button 
-          onClick={() => navigate("/monitor/fullscreen")}
-          className="flex items-center gap-2 px-sm py-[2px] bg-primary text-white rounded text-body-lg font-bold hover:bg-primary/90 transition-all active:scale-95"
-          aria-label="进入大屏模式"
-        >
-          <Maximize2 size={12} /> 进入大屏模式
-        </button>
-      </div>
+        <div className="flex items-center gap-2">
+          {([1, 4, 9, 16] as GridMode[]).map(n => (
+            <button key={n} onClick={() => { setGridMode(n); setFullscreenId(null); }}
+              className={cn(
+                "h-8 px-3 rounded-lg text-caption font-semibold border transition-all",
+                gridMode === n && !fullscreenId
+                  ? "bg-primary text-white border-primary"
+                  : "bg-white border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+              )}>
+              {n === 1 ? "1×1" : n === 4 ? "2×2" : n === 9 ? "3×3" : "4×4"}
+            </button>
+          ))}
+        </div>
+      </header>
 
-      {error && <ErrorBanner message={error} />}
-
-      <div className="flex-1 flex gap-xs min-h-0">
-        {/* Camera Grid - Expanded */}
-        <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-xs">
-          {cameras.map((cam) => {
-            const camAlert = alerts.find(a => a.cameraId === cam.id && a.status === 'pending' && a.level === AlertLevel.CRITICAL);
-            return (
-              <div
+      {/* 视频网格 */}
+      <main className="flex-1 min-h-0">
+        {loading ? (
+          <div className="h-full flex items-center justify-center bg-zinc-900/80 rounded-lg border border-white/[0.04]">
+            <div className="text-center">
+              <Loader2 size={32} className="animate-spin mx-auto mb-2 text-primary" />
+              <p className="text-white/40 text-body-sm">加载摄像头列表...</p>
+            </div>
+          </div>
+        ) : cameras.length === 0 ? (
+          <div className="h-full flex items-center justify-center bg-zinc-900/80 rounded-lg border border-white/[0.04]">
+            <div className="text-center">
+              <VideoOff size={48} className="mx-auto mb-2 text-white/[0.08]" />
+              <p className="text-white/40 text-body">暂无摄像头设备</p>
+              <p className="text-white/25 text-caption mt-1">请先在设备管理中添加摄像头</p>
+            </div>
+          </div>
+        ) : (
+          <div className={cn("grid gap-1.5 h-full", gridCols[gridMode], gridRows[gridMode])}>
+            {visibleCameras.map(cam => (
+              <CameraSlot
                 key={cam.id}
-                className={cn(
-                  "relative bg-black rounded border border-white/10 overflow-hidden group transition-all",
-                  camAlert && "border-error ring-1 ring-error shadow-[inset_0_0_20px_rgba(186,26,26,0.3)]"
-                )}
-              >
-                {cam.status === CameraStatus.SIGNAL_LOST ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-outline gap-sm bg-[#0a0f18]">
-                    <VideoOff size={32} className="opacity-30" />
-                    <span className="text-body-lg font-mono tracking-widest opacity-40">SIGNAL LOST</span>
-                  </div>
-                ) : (
-                  <>
-                    <img
-                      src={sanitizeImageUrl(cam.streamUrl)}
-                      alt={cam.name}
-                      className={cn(
-                        "absolute inset-0 w-full h-full object-cover transition-opacity duration-700",
-                        camAlert ? "opacity-70" : "opacity-60 group-hover:opacity-100"
-                      )}
-                    />
-                    {camAlert && (
-                      <motion.div
-                        animate={{ opacity: [0.1, 0.3, 0.1] }}
-                        transition={{ duration: 1, repeat: Infinity }}
-                        className="absolute inset-0 bg-error/20"
-                      />
-                    )}
-                  </>
-                )}
-
-                <div className="absolute top-sm left-sm flex flex-col gap-1 pointer-events-none">
-                  <div className={cn(
-                    "px-1.5 py-[2px] border rounded backdrop-blur-md text-body-lg font-bold",
-                    camAlert ? "bg-error text-white border-error shadow-lg" : "bg-black/60 text-white/80 border-white/10"
-                  )}>
-                    {cam.name}
-                  </div>
-                </div>
-
-                <div className={cn(
-                  "absolute top-sm right-sm w-1.5 h-1.5 rounded-full",
-                  cam.status === CameraStatus.ONLINE ? "bg-success-green shadow-[0_0_8px_#1a7f37]" : "bg-outline"
-                )} />
-
-                <div className="absolute bottom-0 left-0 w-full p-2 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-end text-body-lg font-mono pointer-events-none">
-                  <div className="flex gap-md text-white/60">
-                    <span className="flex items-center gap-xs">
-                      <Users size={12} className="text-primary" /> {cameraStats[cam.id] ?? 0}
-                    </span>
-                  </div>
-                  <span className={cn("text-white/40", camAlert && "text-error font-bold opacity-100")}>
-                    {camAlert ? "DETECTED" : "LIVE"}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        {/* Alert sidebar - 260px */}
-        <aside className="w-[260px] bg-[#0a0f18] border border-white/5 rounded flex flex-col overflow-hidden shrink-0">
-          <div className="px-md py-sm border-b border-white/5 flex items-center gap-2">
-            <AlertCircle size={14} className="text-error" />
-            <span className="text-body-sm font-bold">活跃告警</span>
-            <span className="ml-auto text-body-sm font-mono text-error">{activeAlertsCount}</span>
-          </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {alerts.filter(a => a.status === 'pending').slice(0, 20).map(a => (
-              <div key={a.id} className="px-md py-sm border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={cn("w-1.5 h-1.5 rounded-full", a.level === AlertLevel.CRITICAL ? "bg-error animate-pulse" : "bg-warning-orange")} />
-                  <span className="text-body-sm font-bold">{a.type}</span>
-                </div>
-                <div className="text-body-lg text-white/40 font-mono">{a.cameraName} · {new Date(a.time).toLocaleTimeString()}</div>
+                name={cam.name}
+                id={cam.id}
+                streamUrl={cam.streamUrl}
+                isOnline={cam.status === "online"}
+                isFullscreen={fullscreenId === cam.id}
+                onToggleFullscreen={() => setFullscreenId(fullscreenId === cam.id ? null : cam.id)}
+                fullscreenActive={!!fullscreenId}
+              />
+            ))}
+            {Array.from({ length: emptySlots }).map((_, i) => (
+              <div key={`e-${i}`} className="bg-zinc-900/80 rounded-lg border border-white/[0.04] flex items-center justify-center">
+                <VideoOff size={32} className="text-white/[0.06]" />
               </div>
             ))}
-            {activeAlertsCount === 0 && <div className="text-center text-white/20 text-body-sm py-xl">暂无活跃告警</div>}
           </div>
-        </aside>
+        )}
+      </main>
+
+      {/* 底部时间轴 */}
+      <footer className="shrink-0 bg-white border border-outline-variant rounded-xl p-3 shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 text-body-sm text-on-surface-variant">
+            <Clock size={14} className="text-outline" />
+            <span className="font-mono tabular-nums">{dateStr} {formatTime(progress)} 至 23:59:59</span>
+          </div>
+          <span className="text-caption text-outline font-mono">{fullscreenId ? "1路" : `${gridMode}路`}画面</span>
+        </div>
+        {/* 进度条 */}
+        <div onClick={handleProgressClick}
+          className="relative h-2 bg-surface-container-high rounded-full cursor-pointer group mb-3">
+          <div className="h-full bg-primary rounded-full transition-none" style={{ width: `${progress}%` }} />
+          <div className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white border-2 border-primary rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ left: `calc(${progress}% - 7px)` }} />
+        </div>
+        {/* 控制按钮 */}
+        <div className="flex items-center justify-center gap-2">
+          <button onClick={() => setProgress(p => Math.max(0, p - 0.5))}
+            className="p-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="上一帧">
+            <ChevronLeft size={16} />
+          </button>
+          <button onClick={() => setIsPlaying(!isPlaying)}
+            className={cn("p-2.5 rounded-xl transition-all",
+              isPlaying ? "bg-danger-red/10 text-danger-red hover:bg-danger-red/20" : "bg-primary text-white hover:shadow-md"
+            )} title={isPlaying ? "暂停" : "播放"}>
+            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+          </button>
+          <button onClick={() => setProgress(p => Math.min(100, p + 0.5))}
+            className="p-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="下一帧">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+// ── 摄像头卡片（独立组件避免闭包 stale） ──
+
+function CameraSlot({
+  name, id, streamUrl, isOnline, isFullscreen, onToggleFullscreen, fullscreenActive,
+}: {
+  name: string;
+  id: string;
+  streamUrl: string;
+  isOnline: boolean;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
+  fullscreenActive: boolean;
+}) {
+  const [now, setNow] = useState("");
+
+  useEffect(() => {
+    const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  return (
+    <div className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
+      {/* 占位背景 */}
+      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
+        style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
+      {/* MJPEG 视频流 */}
+      {isOnline && streamUrl ? (
+        <img
+          src={streamUrl}
+          alt={name}
+          className="absolute inset-0 w-full h-full object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center">
+            <VideoOff size={fullscreenActive ? 48 : 28} className="mx-auto text-white/[0.08]" />
+            {!isOnline && <span className="block mt-1 text-white/20 text-caption">离线</span>}
+          </div>
+        </div>
+      )}
+      {/* 左上角名称 + 在线状态 */}
+      <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
+        <span className={cn("w-2 h-2 rounded-full", isOnline ? "bg-success-green animate-pulse" : "bg-outline")} />
+        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
+          {name}
+        </span>
       </div>
+      {/* 右上角时间戳 */}
+      <div className="absolute top-2 right-2 z-10">
+        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/60 text-caption font-mono tabular-nums">
+          {now}
+        </span>
+      </div>
+      {/* 右下角全屏按钮 */}
+      <button onClick={onToggleFullscreen}
+        className="absolute bottom-2 right-2 z-10 p-1.5 bg-black/50 backdrop-blur-sm rounded text-white/50 hover:text-white hover:bg-primary/80 opacity-0 group-hover:opacity-100 transition-all"
+        title={isFullscreen ? "退出全屏" : "全屏"}>
+        {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+      </button>
     </div>
   );
 }

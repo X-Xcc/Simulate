@@ -106,6 +106,42 @@ export async function apiPost<T>(path: string, body: any, signal?: AbortSignal):
   return json.data !== undefined ? json.data : json;
 }
 
+/** Upload a file via multipart/form-data. */
+export async function apiUpload<T>(path: string, file: File, onProgress?: (pct: number) => void): Promise<T> {
+  const token = getToken();
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}${path}`);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      try {
+        const json = JSON.parse(xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(json.data !== undefined ? json.data : json);
+        } else {
+          reject(new Error(json.error || json.message || "上传失败"));
+        }
+      } catch {
+        reject(new Error("上传失败"));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("网络错误"));
+    xhr.onabort = () => reject(new Error("上传已取消"));
+
+    const form = new FormData();
+    form.append("file", file);
+    xhr.send(form);
+  });
+}
+
 export async function apiPatch<T>(path: string, body: any, signal?: AbortSignal): Promise<T> {
   invalidateCache(path);
   const res = await apiFetch(path, { method: "PATCH", body: JSON.stringify(body), signal });
@@ -148,46 +184,47 @@ const SSE_EVENT_TYPES = ["cameras", "alerts", "system_metrics", "audit_logs", "c
 const sseSubscribers = new Map<string, Set<SseCallback>>();
 let sseEventSource: EventSource | null = null;
 let sseSubscriberCount = 0;
-const SSE_MAX_ERRORS = 3;
-let sseErrorCount = 0;
+let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 function ensureSseConnection(): void {
-  if (sseEventSource) return;
+  if (sseEventSource && sseEventSource.readyState !== EventSource.CLOSED) return;
+  if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
 
   const es = new EventSource(`${API_BASE}/api/sse/stream`);
 
-  for (const eventType of SSE_EVENT_TYPES) {
-    es.addEventListener(eventType, (e: MessageEvent) => {
-      sseErrorCount = 0;
-      const subs = sseSubscribers.get(eventType);
-      if (!subs || subs.size === 0) return;
-      let data: any;
-      try { data = JSON.parse(e.data); } catch (err) { console.error("SSE parse error", eventType, err); return; }
-      subs.forEach(cb => { try { cb(data); } catch (err) { console.error("SSE callback error", eventType, err); } });
-    });
-  }
+  es.addEventListener("system_metrics", (e: MessageEvent) => handleSseEvent("system_metrics", e));
+  es.addEventListener("cameras", (e: MessageEvent) => handleSseEvent("cameras", e));
+  es.addEventListener("alerts", (e: MessageEvent) => handleSseEvent("alerts", e));
+  es.addEventListener("audit_logs", (e: MessageEvent) => handleSseEvent("audit_logs", e));
+  es.addEventListener("camera_stats", (e: MessageEvent) => handleSseEvent("camera_stats", e));
 
   es.onerror = () => {
-    sseErrorCount++;
-    console.error(`SSE connection error (${sseErrorCount}/${SSE_MAX_ERRORS})`);
-    if (sseErrorCount >= SSE_MAX_ERRORS) {
-      sseErrorCount = 0;
-      const token = getToken();
-      if (!token) return;
-      // Verify auth via GET; if 401, clear token to trigger logout
-      fetch(`${API_BASE}/api/me`, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } })
-        .then(res => {
-          if (res.status === 401) {
-            clearToken();
-            window.dispatchEvent(new Event("rtk:token-invalid"));
-            if (sseEventSource) { sseEventSource.close(); sseEventSource = null; }
-          }
-        })
-        .catch(() => { sseErrorCount = 0; });
+    es.close();
+    sseEventSource = null;
+    // Auto-reconnect if subscribers still active
+    if (sseSubscriberCount > 0) {
+      sseReconnectTimer = setTimeout(() => ensureSseConnection(), 3000);
     }
   };
 
   sseEventSource = es;
+}
+
+function handleSseEvent(eventType: string, e: MessageEvent) {
+  const subs = sseSubscribers.get(eventType);
+  if (!subs || subs.size === 0) return;
+  let data: any;
+  try {
+    data = JSON.parse(e.data);
+    // Backend double-JSON-encodes SSE data — first parse yields a string
+    if (typeof data === "string") {
+      data = JSON.parse(data);
+    }
+  } catch (err) {
+    console.error("SSE parse error", eventType, err);
+    return;
+  }
+  subs.forEach(cb => { try { cb(data); } catch (err) { console.error("SSE callback error", eventType, err); } });
 }
 
 export function subscribeSse(eventType: string, callback: SseCallback): () => void {
@@ -248,4 +285,27 @@ export function apiDownload(path: string, signal?: AbortSignal): void {
       URL.revokeObjectURL(url);
     })
     .catch(err => { if ((err as Error).name !== 'AbortError') console.error(err); });
+}
+
+// --- Detection control ---
+
+export async function startDetection(): Promise<{ status: string; pid?: number; message?: string }> {
+  const res = await apiFetch("/api/detection/start", { method: "POST" });
+  const body = await res.json();
+  if (!res.ok) handleResponseError(res, body);
+  return body.data;
+}
+
+export async function stopDetection(): Promise<{ status: string; pid?: number }> {
+  const res = await apiFetch("/api/detection/stop", { method: "POST" });
+  const body = await res.json();
+  if (!res.ok) handleResponseError(res, body);
+  return body.data;
+}
+
+export async function getDetectionStatus(): Promise<{ running: boolean }> {
+  const res = await apiFetch("/api/detection/status");
+  const body = await res.json();
+  if (!res.ok) handleResponseError(res, body);
+  return body.data;
 }

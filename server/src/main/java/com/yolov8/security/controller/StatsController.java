@@ -10,6 +10,7 @@ import com.yolov8.security.service.AlertService;
 import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.DetectionService;
 import com.yolov8.security.service.ModelInfoService;
+import com.yolov8.security.service.PythonScriptService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
@@ -45,11 +47,12 @@ public class StatsController {
     private final AlertService alertService;
     private final CameraConfigService cameraConfigService;
     private final DataCleanupTask dataCleanupTask;
+    private final PythonScriptService pythonScriptService;
 
     public StatsController(DetectionService detectionService, ModelInfoService modelInfoService,
                            VideoStreamController videoStreamController, AppConfig appConfig,
                            AlertService alertService, CameraConfigService cameraConfigService,
-                           DataCleanupTask dataCleanupTask) {
+                           DataCleanupTask dataCleanupTask, PythonScriptService pythonScriptService) {
         this.detectionService = detectionService;
         this.modelInfoService = modelInfoService;
         this.videoStreamController = videoStreamController;
@@ -57,12 +60,63 @@ public class StatsController {
         this.alertService = alertService;
         this.cameraConfigService = cameraConfigService;
         this.dataCleanupTask = dataCleanupTask;
+        this.pythonScriptService = pythonScriptService;
     }
 
     @GetMapping("/stats/summary")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getStatsSummary() {
         try {
-            Map<String, Object> summary = detectionService.getStatsSummary();
+            List<Alert> alerts = alertService.getAllAlerts();
+            String today = java.time.LocalDate.now().toString();
+            String yesterday = java.time.LocalDate.now().minusDays(1).toString();
+            String[] behaviors = {"打架", "跌倒", "离岗", "人员聚集"};
+
+            // Count today & yesterday per behavior
+            Map<String, Integer> todayCounts = new LinkedHashMap<>();
+            Map<String, Integer> yesterdayCounts = new LinkedHashMap<>();
+            for (String b : behaviors) {
+                todayCounts.put(b, 0);
+                yesterdayCounts.put(b, 0);
+            }
+
+            for (Alert a : alerts) {
+                if (a.getTime() == null) continue;
+                String date = a.getTime().substring(0, 10);
+                String type = a.getType();
+                if (today.equals(date)) {
+                    todayCounts.merge(type, 1, Integer::sum);
+                } else if (yesterday.equals(date)) {
+                    yesterdayCounts.merge(type, 1, Integer::sum);
+                }
+            }
+
+            // behaviorCounts = today's counts
+            Map<String, Integer> behaviorCounts = new LinkedHashMap<>();
+            int total = 0;
+            for (String b : behaviors) {
+                int count = todayCounts.getOrDefault(b, 0);
+                behaviorCounts.put(b, count);
+                total += count;
+            }
+
+            // compare = today vs yesterday with change %
+            Map<String, Object> compare = new LinkedHashMap<>();
+            for (String b : behaviors) {
+                int t = todayCounts.getOrDefault(b, 0);
+                int y = yesterdayCounts.getOrDefault(b, 0);
+                double change = y > 0 ? ((double)(t - y) / y * 100) : (t > 0 ? 100.0 : 0.0);
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("today", t);
+                item.put("yesterday", y);
+                item.put("change", Math.round(change * 10.0) / 10.0);
+                compare.put(b, item);
+            }
+
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("behaviorCounts", behaviorCounts);
+            summary.put("total", total);
+            summary.put("compare", compare);
+
             return ResponseEntity.ok(ApiResponse.success(summary));
         } catch (Exception e) {
             log.error("Error getting stats summary", e);
@@ -150,6 +204,37 @@ public class StatsController {
                     .body(resource);
         } catch (Exception e) {
             log.error("Error getting image: {}", filename, e);
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/images/{folder}/{filename}")
+    public ResponseEntity<Resource> getImageInFolder(@PathVariable String folder,
+                                                      @PathVariable String filename) {
+        try {
+            Path base = Paths.get(appConfig.getFile().getUploadDir()).toAbsolutePath().normalize();
+            String fullPath = folder + "/" + filename;
+            Path imagePath = base.resolve(fullPath).normalize();
+            if (!imagePath.startsWith(base)) {
+                return ResponseEntity.notFound().build();
+            }
+            if (!Files.exists(imagePath) || !Files.isRegularFile(imagePath)) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Resource resource = new FileSystemResource(imagePath);
+            String lower = filename.toLowerCase();
+            MediaType mediaType = lower.endsWith(".png")
+                    ? MediaType.IMAGE_PNG
+                    : MediaType.IMAGE_JPEG;
+
+            return ResponseEntity.ok()
+                    .contentType(mediaType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + filename + "\"")
+                    .body(resource);
+        } catch (Exception e) {
+            log.error("Error getting image: {}/{}", folder, filename, e);
             return ResponseEntity.notFound().build();
         }
     }
@@ -308,33 +393,48 @@ public class StatsController {
 
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
 
-        // Initialize buckets
+        // Initialize 4 behavior buckets
         List<String> labels = new ArrayList<>();
-        java.util.Map<String, Integer> bucketCounts = new java.util.LinkedHashMap<>();
-        for (int i = dataPoints - 1; i >= 0; i--) {
-            java.time.LocalDateTime point = now.minusHours("day".equals(range) ? i : i * 24L);
-            String label = point.format(labelFmt);
-            labels.add(label);
-            bucketCounts.put(label, 0);
+        String[] behaviorTypes = {"打架", "跌倒", "离岗", "人员聚集"};
+        java.util.Map<String, java.util.Map<String, Integer>> behaviorBuckets = new java.util.LinkedHashMap<>();
+        for (String type : behaviorTypes) {
+            java.util.Map<String, Integer> bucket = new java.util.LinkedHashMap<>();
+            for (int i = dataPoints - 1; i >= 0; i--) {
+                java.time.LocalDateTime point = now.minusHours("day".equals(range) ? i : i * 24L);
+                String label = point.format(labelFmt);
+                bucket.put(label, 0);
+            }
+            behaviorBuckets.put(type, bucket);
         }
+        labels.addAll(behaviorBuckets.get(behaviorTypes[0]).keySet());
 
-        // Aggregate detections into buckets
+        // Aggregate from alerts (spread across the day, not just recent detection files)
         try {
-            List<com.yolov8.security.model.DetectionData> detections = detectionService.getDetections();
-            for (com.yolov8.security.model.DetectionData det : detections) {
+            List<Alert> alerts = alertService.getAllAlerts();
+            for (Alert alert : alerts) {
                 try {
-                    java.time.LocalDateTime detTime = java.time.LocalDateTime.parse(det.getTimestamp(), parseFmt);
-                    String bucket = detTime.format(labelFmt);
-                    if (detTime.isAfter(now.minusHours("day".equals(range) ? dataPoints : dataPoints * 24L))) {
-                        bucketCounts.merge(bucket, 1, Integer::sum);
+                    java.time.LocalDateTime alertTime = java.time.LocalDateTime.parse(alert.getTime(), parseFmt);
+                    String bucket = alertTime.format(labelFmt);
+                    if (alertTime.isAfter(now.minusHours("day".equals(range) ? dataPoints : dataPoints * 24L))) {
+                        String type = alert.getType();
+                        java.util.Map<String, Integer> behBucket = behaviorBuckets.get(type);
+                        if (behBucket != null && behBucket.containsKey(bucket)) {
+                            behBucket.merge(bucket, 1, Integer::sum);
+                        }
                     }
                 } catch (Exception ignored) {}
             }
         } catch (Exception e) {
-            log.warn("Failed to aggregate trend data", e);
+            log.warn("Failed to aggregate trend data from alerts", e);
         }
 
-        return ResponseEntity.ok(ApiResponse.success(Map.of("labels", labels, "data", new ArrayList<>(bucketCounts.values()))));
+        // Build per-behavior data lists
+        java.util.Map<String, List<Integer>> dataByBehavior = new java.util.LinkedHashMap<>();
+        for (String type : behaviorTypes) {
+            dataByBehavior.put(type, new ArrayList<>(behaviorBuckets.get(type).values()));
+        }
+
+        return ResponseEntity.ok(ApiResponse.success(Map.of("labels", labels, "data", dataByBehavior)));
     }
 
     @GetMapping("/stats/regional")
@@ -386,6 +486,74 @@ public class StatsController {
         }
     }
 
+    @GetMapping("/evidence/list")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getEvidenceList(
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) String camera,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false, name = "actions_only") String actionsOnly,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        try {
+            List<DetectionData> allDetections = detectionService.getDetections();
+            java.util.stream.Stream<DetectionData> stream = allDetections.stream();
+
+            if (date != null && !date.isEmpty()) {
+                String prefix = date;
+                stream = stream.filter(d -> d.getTimestamp() != null && d.getTimestamp().startsWith(prefix));
+            }
+            if (camera != null && !camera.isEmpty()) {
+                stream = stream.filter(d -> camera.equals(d.getCameraId()));
+            }
+            if (type != null && !type.isEmpty()) {
+                stream = stream.filter(d -> d.getActions() != null && d.getActions().contains(type));
+            }
+            // When browsing "all clips", only show detections that have images
+            if (!"true".equals(actionsOnly)) {
+                stream = stream.filter(d -> d.getImageFilename() != null);
+            }
+
+            // Sort newest first
+            List<DetectionData> filtered = stream
+                .sorted((a, b) -> {
+                    String ta = a.getTimestamp() != null ? a.getTimestamp() : "";
+                    String tb = b.getTimestamp() != null ? b.getTimestamp() : "";
+                    return tb.compareTo(ta);
+                })
+                .collect(Collectors.toList());
+            int total = filtered.size();
+            int from = Math.min(page * size, total);
+            int to = Math.min(from + size, total);
+            List<DetectionData> pageItems = filtered.subList(from, to);
+
+            // Build response with image URLs
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (DetectionData det : pageItems) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", det.getId());
+                item.put("timestamp", det.getTimestamp());
+                item.put("actions", det.getActions());
+                item.put("personCount", det.getPersonCount());
+                item.put("cameraName", det.getCameraName());
+                item.put("cameraId", det.getCameraId());
+                item.put("imageFilename", det.getImageFilename());
+                item.put("snapshotUrl", det.getImageFilename() != null ? "/api/images/" + det.getImageFilename() : null);
+                item.put("confidence", det.getFps());
+                items.add(item);
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("items", items);
+            result.put("total", total);
+            result.put("page", page);
+            result.put("size", size);
+            return ResponseEntity.ok(ApiResponse.success(result));
+        } catch (Exception e) {
+            log.error("Error getting evidence list", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @GetMapping("/evidence/stats")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getEvidenceStats() {
         try {
@@ -417,6 +585,82 @@ public class StatsController {
         } catch (Exception e) {
             log.error("Error getting evidence stats", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/detection/start")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> startDetection() {
+        try {
+            Map<String, Object> result = pythonScriptService.startMonitoring();
+            return ResponseEntity.ok(ApiResponse.success(result));
+        } catch (Exception e) {
+            log.error("Error starting detection", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/detection/stop")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> stopDetection() {
+        try {
+            Map<String, Object> result = pythonScriptService.stopMonitoring();
+            return ResponseEntity.ok(ApiResponse.success(result));
+        } catch (Exception e) {
+            log.error("Error stopping detection", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/detection/status")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDetectionStatus() {
+        try {
+            boolean running = pythonScriptService.isRunning();
+            return ResponseEntity.ok(ApiResponse.success(Map.of("running", running)));
+        } catch (Exception e) {
+            log.error("Error getting detection status", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/upload_training_resource")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> uploadTrainingResource(
+            @RequestParam("file") MultipartFile file) {
+        try {
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("文件为空"));
+            }
+
+            String originalName = file.getOriginalFilename();
+            if (originalName == null) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("文件名为空"));
+            }
+
+            String ext = originalName.substring(originalName.lastIndexOf('.')).toLowerCase();
+            if (!ext.matches("\\.(mp4|avi|jpg|jpeg|png)")) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("仅支持 MP4/AVI/JPG/PNG 格式"));
+            }
+
+            String type = (ext.equals(".mp4") || ext.equals(".avi")) ? "video" : "image";
+            String uniqueName = "training_" + System.currentTimeMillis() + ext;
+
+            Path dir = Paths.get(appConfig.getFile().getUploadDir(), "training");
+            Files.createDirectories(dir);
+            Path target = dir.resolve(uniqueName);
+            Files.copy(file.getInputStream(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+            log.info("训练素材已上传: {} -> {}", originalName, target);
+
+            Map<String, Object> result = Map.of(
+                "filename", uniqueName,
+                "originalName", originalName,
+                "size", file.getSize(),
+                "type", type,
+                "path", "/data/training/" + uniqueName
+            );
+            return ResponseEntity.ok(ApiResponse.success("上传成功", result));
+        } catch (Exception e) {
+            log.error("训练素材上传失败", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("上传失败: " + e.getMessage()));
         }
     }
 }

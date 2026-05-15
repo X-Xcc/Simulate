@@ -22,6 +22,9 @@ public class AppConfig {
 
     // Qwen VL configuration
     private QwenVLConfig qwenVl = new QwenVLConfig();
+
+    // Demo mode
+    private boolean demoMode = false;
     
     // Getters
     public FileConfig getFile() {
@@ -83,6 +86,14 @@ public class AppConfig {
     
     public void setQwenVl(QwenVLConfig qwenVl) {
         this.qwenVl = qwenVl;
+    }
+
+    public boolean isDemoMode() {
+        return demoMode;
+    }
+
+    public void setDemoMode(boolean demoMode) {
+        this.demoMode = demoMode;
     }
     
     public static class FileConfig {

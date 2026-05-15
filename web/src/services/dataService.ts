@@ -1,5 +1,29 @@
-import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, StatsCompare, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse } from "../types";
+import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse } from "../types";
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
+
+// --- Camera Config ---
+
+export async function fetchCameras(signal?: AbortSignal): Promise<Camera[]> {
+  const raw = await apiGet<any[]>("/api/camera_config", signal);
+  if (!Array.isArray(raw)) return [];
+  // Merge with active camera IDs to determine online status
+  let activeIds = new Set<string>();
+  try {
+    const active = await apiGet<{ cameras: string[] }>("/api/cameras", signal);
+    activeIds = new Set(active.cameras || []);
+  } catch {}
+  return raw.map((c: any) => ({
+    id: c.id || "",
+    name: c.name || "未命名",
+    type: c.type || "usb",
+    address: c.address ?? "",
+    user: c.user,
+    password: c.password,
+    status: activeIds.has(c.id || "") ? CameraStatus.ONLINE : CameraStatus.OFFLINE,
+    streamUrl: c.id ? `/video_feed?cam=${c.id}` : "",
+    personCount: 0,
+  }));
+}
 
 // --- Auth ---
 
@@ -99,7 +123,7 @@ export async function fetchStatsSummary(signal?: AbortSignal): Promise<StatsSumm
   return apiGet("/api/stats/summary", signal);
 }
 
-export async function fetchTrendData(range: "day" | "week" | "month" = "day", signal?: AbortSignal): Promise<{ labels: string[]; data: number[] }> {
+export async function fetchTrendData(range: "day" | "week" | "month" = "day", signal?: AbortSignal): Promise<{ labels: string[]; data: Record<string, number[]> }> {
   return apiGet(`/api/stats/trend?range=${range}`, signal);
 }
 
@@ -201,8 +225,43 @@ export async function fetchEvidenceStats(signal?: AbortSignal): Promise<Evidence
   return apiGet("/api/evidence/stats", signal);
 }
 
-export async function fetchStatsCompare(signal?: AbortSignal): Promise<StatsCompare> {
-  return apiGet("/api/stats/compare", signal);
+export interface EvidenceItem {
+  id: string;
+  timestamp: string;
+  actions: string[];
+  personCount: number;
+  cameraName: string;
+  cameraId: string;
+  imageFilename: string;
+  snapshotUrl: string | null;
+  confidence: number;
+}
+
+export interface EvidenceListResponse {
+  items: EvidenceItem[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export async function fetchEvidenceList(params: {
+  date?: string;
+  camera?: string;
+  type?: string;
+  page?: number;
+  size?: number;
+}, signal?: AbortSignal): Promise<EvidenceListResponse> {
+  const query = new URLSearchParams();
+  if (params.date) query.set("date", params.date);
+  if (params.camera) query.set("camera", params.camera);
+  if (params.type) query.set("type", params.type);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.size != null) query.set("size", String(params.size));
+  return apiGet(`/api/evidence/list?${query.toString()}`, signal);
+}
+
+export async function openFolder(folderType: string): Promise<{ status: string; path: string; message: string }> {
+  return apiPost("/api/open_folder", { folder_type: folderType });
 }
 
 export async function fetchFpsStats(signal?: AbortSignal): Promise<FpsStats> {
@@ -235,6 +294,10 @@ function transformCamera(raw: any, activeCamIds?: Set<string>): Camera {
 }
 
 function transformSystemMetrics(raw: any): SystemStatus {
+  // Handle double-encoded JSON from SSE
+  if (typeof raw === "string") {
+    try { raw = JSON.parse(raw); } catch { raw = {}; }
+  }
   return {
     cpuUsage: raw.cpuPercent ?? 0,
     memoryUsage: raw.memoryPercent ?? 0,

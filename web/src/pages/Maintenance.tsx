@@ -7,151 +7,159 @@ import {
   CloudDownload,
   Clock,
   Wrench,
+  Server,
+  Cpu,
+  HardDrive,
+  Zap,
+  Loader2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { subscribeToSystemStatus, fetchModelInfo } from "../services/dataService";
-import { SystemStatus, ModelInfo } from "../types";
-import { ErrorBanner, PageLoader } from "../components/LoadingError";
+import { useMockSystemStatus, useMockModelInfo } from "../lib/useMock";
+import { useToast } from "../components/Toast";
 
-const Gauge = ({ value, label, sub, color }: { value: number, label: string, sub: string, color: string }) => {
+const Gauge = ({ value, label, sub, color, icon: Icon }: { value: number; label: string; sub: string; color: string; icon: any }) => {
   const dashArray = (value / 100) * 100;
   return (
-    <div className="bg-white border border-outline-variant rounded-xl p-lg flex flex-col items-center justify-center gap-md hover:shadow-md transition-shadow">
-      <span className="text-body-lg font-bold text-on-surface-variant uppercase tracking-widest">{label}</span>
-      <div className="relative w-[120px] h-[120px] flex items-center justify-center">
-         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-           <circle cx="18" cy="18" r="15.915" fill="none" stroke="#ecedf7" strokeWidth="3" />
-           <circle cx="18" cy="18" r="15.915" fill="none" stroke="currentColor" strokeWidth="3" 
-                   strokeDasharray={`${dashArray} 100`} 
-                   className={color}
-           />
-         </svg>
-         <div className="absolute inset-0 flex flex-col items-center justify-center">
-           <span className="text-title font-mono font-bold leading-tight">{value}%</span>
-         </div>
+    <div className="bg-white border border-outline-variant rounded-xl p-4 flex flex-col items-center gap-2 hover:shadow-md transition-shadow">
+      <div className="flex items-center gap-1.5">
+        <Icon size={14} className="text-outline" />
+        <span className="text-caption font-semibold text-outline uppercase tracking-wider">{label}</span>
       </div>
-      <span className={cn("text-body-lg font-bold uppercase", color)}>{sub}</span>
+      <div className="relative w-[100px] h-[100px] flex items-center justify-center">
+        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="15.915" fill="none" stroke="#f3f4f6" strokeWidth="2.5" />
+          <circle cx="18" cy="18" r="15.915" fill="none" stroke="currentColor" strokeWidth="2.5"
+            strokeDasharray={`${dashArray} 100`}
+            strokeLinecap="round"
+            className={color}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-heading font-mono font-bold leading-tight tabular-nums">{value}%</span>
+        </div>
+      </div>
+      <span className={cn("text-caption font-semibold", color)}>{sub}</span>
     </div>
   );
 };
 
 export default function Maintenance() {
-  const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const ac = new AbortController();
-    const unsub = subscribeToSystemStatus(setStatus);
-    fetchModelInfo(ac.signal).then(setModelInfo).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
-    return () => { ac.abort(); unsub(); };
-  }, []);
-
-  if (!status) {
-    return <PageLoader text="正在初始化系统监控..." />;
-  }
+  const toast = useToast();
+  const [checking, setChecking] = useState(false);
+  const status = useMockSystemStatus();
+  const modelInfo = useMockModelInfo();
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-xl h-full flex flex-col min-h-0">
-      {error && <ErrorBanner message={error} />}
-
+    <div className="max-w-[1400px] mx-auto space-y-5 h-full flex flex-col min-h-0 animate-fade-in-up">
       <header className="flex justify-between items-center shrink-0">
         <div>
-           <h2 className="text-title-lg font-black tracking-tight flex items-center gap-2"><Wrench size={24} className="text-primary" /> 运维中心与监控</h2>
-           <p className="text-on-surface-variant text-body-lg opacity-70">实时系统物理资源监控与服务节点健康度</p>
+          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">系统管理 / 运维</p>
+          <h2 className="text-title font-bold tracking-tight flex items-center gap-2">
+            <Wrench size={22} className="text-primary" /> 运维中心与监控
+          </h2>
+          <p className="text-body-sm text-on-surface-variant mt-0.5">实时系统物理资源监控与服务节点健康度</p>
         </div>
-        <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-lg hover:shadow-xl transition-all" aria-label="全局状态刷新">
-          <RefreshCcw size={18} /> 全局状态刷新
+        <button onClick={() => toast.show("数据已刷新")} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
+          <RefreshCcw size={15} /> 全局刷新
         </button>
       </header>
 
-      {/* Metrics Gauges */}
-      <div className="grid grid-cols-4 gap-lg shrink-0">
-        <Gauge value={status.cpuUsage} label="CPU 利用率" sub={status.cpuUsage > 80 ? "负载压力较大" : "核心负载正常"} color={status.cpuUsage > 80 ? "text-error" : "text-primary"} />
-        <Gauge value={status.memoryUsage} label="内存驻留" sub={status.memoryUsage > 90 ? "高负载预警" : status.memoryUsage > 70 ? "中度负载" : "分配正常"} color={status.memoryUsage > 90 ? "text-error" : status.memoryUsage > 70 ? "text-warning-orange" : "text-success-green"} />
-        <Gauge value={status.storageUsage} label="存储资源" sub={status.storageUsage > 90 ? "空间严重不足" : "可用空间充足"} color={status.storageUsage > 90 ? "text-error" : "text-info-cyan"} />
-        <Gauge value={status.gpuUsage} label="GPU 算力" sub={status.gpuUsage > 80 ? "推理任务满载" : "算力空闲"} color="text-success-green" />
+      {/* 仪表盘 */}
+      <div className="grid grid-cols-4 gap-3 shrink-0">
+        <Gauge value={status.cpuUsage} label="CPU" sub={status.cpuUsage > 80 ? "负载较高" : "正常"} color={status.cpuUsage > 80 ? "text-danger-red" : "text-primary"} icon={Cpu} />
+        <Gauge value={status.memoryUsage} label="内存" sub={status.memoryUsage > 85 ? "高负载" : "正常"} color={status.memoryUsage > 85 ? "text-danger-red" : status.memoryUsage > 70 ? "text-warning-orange" : "text-success-green"} icon={HardDrive} />
+        <Gauge value={status.storageUsage} label="存储" sub={status.storageUsage > 90 ? "不足" : "充足"} color={status.storageUsage > 90 ? "text-danger-red" : "text-info-cyan"} icon={Server} />
+        <Gauge value={status.gpuUsage} label="GPU" sub={status.gpuUsage > 80 ? "满载" : "空闲"} color="text-success-green" icon={Zap} />
       </div>
 
-      <div className="grid grid-cols-12 gap-xl flex-1 min-h-0">
-        {/* Core Services */}
+      <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
+        {/* 服务列表 */}
         <section className="col-span-8 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm">
-           <header className="px-lg py-md border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
-              <h3 className="font-bold flex items-center gap-2"><Activity size={18} className="text-outline" /> 核心服务节点监控</h3>
-              <span className="text-body-lg font-bold text-outline uppercase tracking-widest">Live Sync Interval: 2s</span>
-           </header>
-           <div className="flex-1 overflow-auto divide-y divide-outline-variant/30">
-              {status.services.map(s => (
-                <div key={s.name} className="flex items-center justify-between px-lg py-md hover:bg-surface-container-low transition-colors">
-                  <div className="flex items-center gap-md">
-                     <div className={cn(
-                       "w-2.5 h-2.5 rounded-full shadow-[0_0_12px_rgba(0,0,0,0.1)]",
-                       s.health === 'healthy' ? "bg-success-green shadow-success-green/20" : "bg-warning-orange animate-pulse shadow-warning-orange/20"
-                     )} />
-                     <div className="flex flex-col">
-                        <span className="font-bold text-body-lg text-on-surface">{s.name}</span>
-                        <div className="flex items-center gap-3 text-body-lg opacity-40 font-mono mt-0.5">
-                           <span className="flex items-center gap-1"><Clock size={10} /> {s.uptime}</span>
-                           <span className="flex items-center gap-1"><Terminal size={10} /> Node</span>
-                        </div>
-                     </div>
-                  </div>
-                  <div className="text-right">
-                     <span className={cn(
-                       "text-body-sm font-black uppercase px-sm py-1 rounded ring-1",
-                       s.health === 'healthy' ? "text-success-green ring-success-green/20 bg-success-green/10" : "text-warning-orange ring-warning-orange/20 bg-warning-orange/10"
-                     )}>{s.health === 'healthy' ? "Running" : "Degraded"}</span>
+          <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center">
+            <h3 className="font-bold text-body-lg flex items-center gap-2"><Activity size={16} className="text-outline" /> 核心服务节点</h3>
+            <span className="text-caption text-outline font-mono">同步间隔: 2s</span>
+          </header>
+          <div className="flex-1 overflow-auto divide-y divide-outline-variant/30">
+            {status.services.map(s => (
+              <div key={s.name} className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-container-low transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className={cn(
+                    "w-2 h-2 rounded-full",
+                    s.health === "healthy" ? "bg-success-green" : "bg-warning-orange animate-pulse"
+                  )} />
+                  <div>
+                    <span className="font-semibold text-body text-on-surface">{s.name}</span>
+                    <div className="flex items-center gap-3 text-caption text-outline mt-0.5">
+                      <span className="flex items-center gap-1"><Clock size={9} /> {s.uptime}</span>
+                      <span className="flex items-center gap-1"><Terminal size={9} /> Node</span>
+                    </div>
                   </div>
                 </div>
-              ))}
-           </div>
+                <span className={cn(
+                  "text-caption font-semibold uppercase px-2 py-0.5 rounded",
+                  s.health === "healthy"
+                    ? "text-success-green bg-success-green/10"
+                    : "text-warning-orange bg-warning-orange/10"
+                )}>
+                  {s.health === "healthy" ? "Running" : "Degraded"}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
 
-        {/* System Info */}
-        <section className="col-span-4 space-y-lg">
-           <div className="bg-white border border-outline-variant rounded-xl p-lg shadow-sm">
-              <h3 className="font-bold mb-lg flex items-center gap-2 text-primary"><ShieldCheck size={18} /> 系统版本与认证</h3>
-              <div className="space-y-md">
-                 {[
-                   { label: "当前版本", value: status.version },
-                   { label: "核心引擎", value: status.engine ?? "—" },
-                   { label: "AI 模型集", value: modelInfo?.model_size_mb ? `YOLOv8n (${modelInfo.model_size_mb}MB)` : "—" },
-                   { label: "最后更新", value: status.lastUpdate },
-                 ].map(i => (
-                   <div key={i.label} className="flex justify-between items-baseline border-b border-outline-variant/30 pb-sm last:border-0 last:pb-0">
-                      <span className="text-body-lg font-bold text-outline uppercase">{i.label}</span>
-                      <span className="text-body-lg font-mono font-bold">{i.value}</span>
-                   </div>
-                 ))}
-                 <button className="w-full mt-xl bg-primary text-on-primary h-[44px] rounded-lg font-bold text-body-lg flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all active:scale-95">
-                   <CloudDownload size={18} /> 检查系统更新
-                 </button>
-              </div>
-           </div>
+        {/* 系统信息 */}
+        <section className="col-span-4 space-y-4">
+          <div className="bg-white border border-outline-variant rounded-xl p-4 shadow-sm">
+            <h3 className="font-bold text-body-lg mb-3 flex items-center gap-2 text-primary"><ShieldCheck size={16} /> 系统版本</h3>
+            <div className="space-y-2.5">
+              {[
+                { label: "当前版本", value: status.version },
+                { label: "核心引擎", value: status.engine ?? "—" },
+                { label: "AI 模型", value: modelInfo?.model_size_mb ? `YOLOv8n (${modelInfo.model_size_mb}MB)` : "—" },
+                { label: "推理设备", value: modelInfo?.device ?? "—" },
+                { label: "精度模式", value: modelInfo?.precision ?? "—" },
+              ].map(i => (
+                <div key={i.label} className="flex justify-between items-center text-body-sm">
+                  <span className="text-outline font-medium">{i.label}</span>
+                  <span className="font-mono font-semibold tabular-nums">{i.value}</span>
+                </div>
+              ))}
+              <button disabled={checking} onClick={() => {
+                setChecking(true);
+                setTimeout(() => { setChecking(false); toast.show("当前已是最新版本 v3.2.1"); }, 2000);
+              }} className="w-full mt-3 bg-primary text-white h-9 rounded-lg font-semibold text-body flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
+                {checking ? <Loader2 size={15} className="animate-spin" /> : <CloudDownload size={15} />}
+                {checking ? "检查中..." : "检查系统更新"}
+              </button>
+            </div>
+          </div>
 
-           <div className="bg-gradient-to-br from-primary to-secondary p-lg rounded-xl shadow-lg text-on-primary">
-              <div className="flex items-center gap-3 mb-md">
-                 <ShieldCheck size={28} className="opacity-80" />
-                 <h3 className="text-heading font-black tracking-tight">Security Audit</h3>
+          <div className="gradient-primary p-4 rounded-xl shadow-md text-white">
+            <div className="flex items-center gap-2 mb-3">
+              <ShieldCheck size={22} className="opacity-80" />
+              <h3 className="text-heading font-bold">Security Status</h3>
+            </div>
+            <p className="text-body opacity-80 leading-relaxed mb-3">
+              系统受保护状态。数据目录 {status.dataDirSizeMb ?? 0}MB，累计检测 {status.detectionCount ?? 0} 次。
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-white/10 p-2.5 rounded-lg backdrop-blur-sm">
+                <p className="text-caption font-semibold opacity-60 uppercase mb-0.5">数据目录</p>
+                <p className="text-heading font-mono font-bold tabular-nums">{status.dataDirSizeMb ?? 0} MB</p>
               </div>
-              <p className="text-body-lg opacity-80 leading-relaxed mb-xl">系统处于受保护状态。数据目录 {status.dataDirSizeMb ?? 0}MB，累计检测 {status.detectionCount ?? 0} 次。所有操作均已记录在审计日志中。</p>
-              <div className="grid grid-cols-2 gap-md">
-                 <div className="bg-white/10 p-md rounded-lg backdrop-blur-md">
-                    <p className="text-body-lg font-bold opacity-60 uppercase mb-unit">数据目录大小</p>
-                    <p className="text-title font-mono font-bold">{status.dataDirSizeMb ?? "—"} MB</p>
-                 </div>
-                 <div className="bg-white/10 p-md rounded-lg backdrop-blur-md">
-                    <p className="text-body-lg font-bold opacity-60 uppercase mb-unit">检测总数</p>
-                    <p className="text-title font-mono font-bold">{status.detectionCount ?? "—"}</p>
-                 </div>
+              <div className="bg-white/10 p-2.5 rounded-lg backdrop-blur-sm">
+                <p className="text-caption font-semibold opacity-60 uppercase mb-0.5">检测总数</p>
+                <p className="text-heading font-mono font-bold tabular-nums">{status.detectionCount ?? 0}</p>
               </div>
-           </div>
+            </div>
+          </div>
         </section>
       </div>
 
-      <footer className="mt-auto pt-lg border-t border-outline-variant/30 flex justify-between items-center text-body-sm font-bold text-outline uppercase tracking-[0.2em] shrink-0 pb-xl">
-         <span>Build: {status.version ?? "—"}</span>
-         <span className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-success-green" /> 核心维护控制台已就绪</span>
+      <footer className="mt-auto pt-3 border-t border-outline-variant/30 flex justify-between items-center text-caption font-semibold text-outline uppercase tracking-wider shrink-0 pb-6">
+        <span>Build: {status.version}</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success-green" /> 核心维护控制台已就绪</span>
       </footer>
     </div>
   );

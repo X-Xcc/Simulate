@@ -27,6 +27,11 @@ Thumbs.db
 
 # Data (auto-generated)
 server/data/
+data/
+
+# Node
+node_modules/
+web/node_modules/
 
 # Videos (auto-generated)
 results/

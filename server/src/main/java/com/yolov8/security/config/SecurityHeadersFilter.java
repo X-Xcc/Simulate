@@ -43,7 +43,7 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
                 "default-src 'self'; " +
                 "script-src 'self' https://cdn.jsdelivr.net; " +
                 "style-src 'self' https://fonts.googleapis.com; " +
-                "img-src 'self' data:; " +
+                "img-src 'self' data: blob:; " +
                 "connect-src 'self'; " +
                 "font-src 'self' https://fonts.gstatic.com;");
         response.setHeader("X-Content-Type-Options", "nosniff");

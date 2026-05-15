@@ -147,9 +147,9 @@ class DetectionServiceTest {
 
         Thread.sleep(50);
 
-        // File with absent + fatigue
+        // File with absent
         Files.writeString(tempDir.resolve("detection_002.json"),
-                "{\"id\":\"d2\",\"actions\":[\"离岗\",\"疲劳\"],\"person_count\":1}",
+                "{\"id\":\"d2\",\"actions\":[\"离岗\"],\"person_count\":1}",
                 StandardCharsets.UTF_8);
 
         StatsResponse stats = service.getStats();
@@ -160,7 +160,6 @@ class DetectionServiceTest {
         assertEquals(1, stats.getBehaviorCounts().getFall());
         assertEquals(1, stats.getBehaviorCounts().getFight());
         assertEquals(1, stats.getBehaviorCounts().getAbsent());
-        assertEquals(1, stats.getBehaviorCounts().getFatigue());
 
         // Recent detections (limit 50, so all 2 should appear)
         assertEquals(2, stats.getRecentDetections().size());

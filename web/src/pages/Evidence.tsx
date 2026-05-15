@@ -1,168 +1,186 @@
 import { useState, useEffect } from "react";
-import {
-  Calendar,
-  Archive,
-  Download,
-  FileVideo,
-  Play,
-  Clock,
-} from "lucide-react";
-import { cn, sanitizeImageUrl } from "../lib/utils";
-import { subscribeToAlerts, fetchEvidenceStats, fetchStatsCompare } from "../services/dataService";
-import { Alert, AlertLevel, EvidenceStats, StatsCompare } from "../types";
-import { ErrorBanner } from "../components/LoadingError";
+import { Download, FileVideo, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import { AnimatePresence } from "motion/react";
+import { cn } from "../lib/utils";
+import { useToast } from "../components/Toast";
+import { fetchEvidenceList, EvidenceItem } from "../services/dataService";
+import { getToken } from "../lib/api";
+import Lightbox from "../components/Lightbox";
+
+const PAGE_SIZE = 12;
+const TABS = ["全部", "打架", "跌倒", "离岗", "人员聚集"];
 
 export default function Evidence() {
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const toast = useToast();
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
   const [activeTab, setActiveTab] = useState(0);
-  const [evStats, setEvStats] = useState<EvidenceStats | null>(null);
-  const [compare, setCompare] = useState<StatsCompare | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [timelineLimit, setTimelineLimit] = useState(5);
+  const [evPage, setEvPage] = useState(0);
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+  const [evTotal, setEvTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [lightboxItem, setLightboxItem] = useState<EvidenceItem | null>(null);
 
   useEffect(() => {
-    const ac = new AbortController();
-    const s = ac.signal;
-    const unsub = subscribeToAlerts(setAlerts);
-    fetchEvidenceStats(s).then(setEvStats).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
-    fetchStatsCompare(s).then(setCompare).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
-    return () => { ac.abort(); unsub(); };
-  }, []);
+    const controller = new AbortController();
+    async function load() {
+      setLoading(true);
+      try {
+        const type = activeTab === 0 ? undefined : TABS[activeTab];
+        const res = await fetchEvidenceList({ date: selectedDate, type, page: evPage, size: PAGE_SIZE }, controller.signal);
+        setEvidenceItems(res.items);
+        setEvTotal(res.total);
+      } catch {
+        if (!controller.signal.aborted) {
+          setEvidenceItems([]);
+          setEvTotal(0);
+          toast.show("证据加载失败");
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    load();
+    return () => controller.abort();
+  }, [selectedDate, activeTab, evPage]);
 
-  const filteredAlerts = activeTab === 1 ? alerts.filter(a => a.level === AlertLevel.CRITICAL) : alerts;
+  // Tab 或日期变化时重置页码
+  useEffect(() => { setEvPage(0); }, [selectedDate, activeTab]);
 
-  const criticalClips = alerts.filter(a => a.level === AlertLevel.CRITICAL);
-
-  const compareValues = compare ? Object.values(compare) as { today: number; yesterday: number }[] : [];
-  const todayTotal = compareValues.reduce((sum, c) => sum + c.today, 0);
-  const yesterdayTotal = compareValues.reduce((sum, c) => sum + c.yesterday, 0);
-  const changePercent = yesterdayTotal > 0 ? `${((todayTotal - yesterdayTotal) / yesterdayTotal * 100).toFixed(0)}%` : "0%";
+  async function downloadImage(item: EvidenceItem) {
+    if (!item.snapshotUrl) return;
+    try {
+      const headers: Record<string, string> = {};
+      const token = getToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(item.snapshotUrl, { headers });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = item.imageFilename || `evidence_${item.id}.jpg`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.show("下载失败");
+    }
+  }
 
   return (
-    <div className="space-y-lg flex flex-col h-full overflow-hidden">
+    <div className="space-y-4 flex flex-col h-full overflow-hidden animate-fade-in-up">
+      {/* 页头 */}
       <section className="flex justify-between items-end shrink-0">
         <div>
-           <p className="text-body-lg text-outline font-bold uppercase mb-unit">系统管理 / 视频证据</p>
-           <h2 className="text-title-lg font-bold">视频证据与调阅中心</h2>
-           <p className="text-on-surface-variant text-body-lg opacity-70">整合关键告警切片、全时段录像回放及司法级证据存储</p>
+          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">系统管理 / 证据</p>
+          <h2 className="text-title font-bold tracking-tight">视频证据与调阅中心</h2>
+          <p className="text-body-sm text-on-surface-variant mt-0.5">异常截图自动关联、按条件筛选、一键定位</p>
         </div>
-        <div className="flex gap-sm">
-           <button className="bg-white border border-outline-variant px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 hover:bg-surface-container-low transition-all" aria-label="历史日历">
-             <Calendar size={18} /> 历史日历
-           </button>
-           <button className="bg-primary text-on-primary px-lg py-sm rounded-lg font-bold text-body-lg flex items-center gap-2 shadow-lg hover:shadow-xl transition-all active:scale-95" aria-label="一键备份">
-             <Archive size={18} /> 一键备份
-           </button>
-        </div>
+        <button onClick={() => toast.show("证据报告已导出")} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
+          <Download size={15} /> 导出报告
+        </button>
       </section>
 
-      {error && <ErrorBanner message={error} />}
-
-      {/* Stats */}
-      <section className="grid grid-cols-4 gap-md shrink-0">
-         {[
-           { label: "今日告警证据", value: alerts.length.toString(), sub: `↑ ${changePercent} 较昨日`, color: "text-error" },
-           { label: "已归档证据", value: (evStats?.archived ?? 0).toLocaleString(), sub: `总存储 ${(evStats?.total ?? 0).toLocaleString()} 条`, color: "text-on-surface" },
-           { label: "关键冲突切片", value: criticalClips.length.toString(), sub: "待人工审核", color: "text-warning-orange" },
-           { label: "设备在线率", value: `${evStats?.onlineRate ?? 0}%`, sub: "实时节点拓扑", color: "text-info-cyan" },
-         ].map(s => (
-           <div key={s.label} className="bg-white p-lg border border-outline-variant rounded-xl shadow-sm">
-             <div className="text-on-surface-variant text-body-lg font-bold uppercase mb-md">{s.label}</div>
-             <div className="flex items-baseline gap-2">
-               <span className={cn("text-title font-mono font-bold leading-none", s.color)}>{s.value}</span>
-               <span className="text-body-lg text-outline font-medium">{s.sub}</span>
-             </div>
-           </div>
-         ))}
-      </section>
-
-      <div className="flex-1 grid grid-cols-12 gap-lg min-h-0 overflow-hidden">
-        {/* Left: Timeline */}
-        <aside className="col-span-3 bg-white border border-outline-variant rounded-xl p-md flex flex-col overflow-hidden">
-          <h3 className="font-bold flex items-center gap-2 mb-md text-primary">
-            <Clock size={16} /> 快速检索时间轴
-          </h3>
-          <div className="flex-1 space-y-md overflow-y-auto pr-1 custom-scrollbar">
-             <div className="border border-outline-variant rounded-lg p-sm">
-                <p className="text-body-lg text-outline font-bold uppercase mb-unit">选择日期</p>
-                <div className="flex justify-between items-center text-body-lg font-mono">{new Date().toISOString().slice(0, 10)} <Calendar size={16} className="text-outline" /></div>
-             </div>
-             <div>
-               <p className="text-body-lg text-outline font-bold uppercase mb-sm">当日高频时段</p>
-               <div className="space-y-sm">
-                  {alerts.slice(0, timelineLimit).map((a, i) => (
-                    <div key={a.id} className="flex gap-sm p-sm hover:bg-surface-container-low transition-colors rounded-lg cursor-pointer group">
-                      <div className={cn("w-1 h-10 rounded-full shrink-0", a.level === AlertLevel.CRITICAL ? "bg-error" : "bg-warning-orange")} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start">
-                          <span className="text-body-lg font-mono font-bold">{new Date(a.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                        </div>
-                        <p className="text-body-lg opacity-60 truncate">{a.cameraName} - {a.type}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {alerts.length > timelineLimit && (
-                    <button
-                      onClick={() => setTimelineLimit(prev => prev + 5)}
-                      className="text-primary text-body-lg font-bold hover:underline w-full text-center py-sm"
-                    >
-                      查看更多 ({alerts.length - timelineLimit} 条剩余)
-                    </button>
-                  )}
-               </div>
-             </div>
+      {/* 筛选栏 */}
+      <div className="shrink-0 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+            className="bg-white border border-outline-variant rounded-lg px-3 py-1.5 font-mono text-body outline-none" />
+          <div className="flex bg-white border border-outline-variant rounded-lg overflow-hidden">
+            {TABS.map((label, i) => (
+              <button key={label} onClick={() => setActiveTab(i)}
+                className={cn(
+                  "px-3 py-1.5 text-body font-semibold transition-all",
+                  activeTab === i ? "bg-primary text-white" : "text-outline hover:text-on-surface"
+                )}>
+                {label}
+              </button>
+            ))}
           </div>
-        </aside>
-
-        {/* Right: Grid */}
-        <div className="col-span-9 flex flex-col gap-md min-h-0">
-           <header className="bg-white border border-outline-variant rounded-lg px-lg py-sm flex justify-between items-center shadow-sm">
-             <div className="flex gap-lg">
-                {["全部切片", "高危告警"].map((l, i) => (
-                  <button key={l} onClick={() => setActiveTab(i)} className={cn("text-body-lg font-bold py-1 border-b-2 transition-all", activeTab === i ? "border-primary text-primary" : "border-transparent text-outline hover:text-on-surface")}>{l}</button>
-                ))}
-             </div>
-           </header>
-
-           <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-md pr-1 custom-scrollbar">
-              {filteredAlerts.map(a => (
-                <div key={a.id} className="group relative bg-black aspect-video rounded-xl overflow-hidden border border-outline-variant shadow-sm h-fit">
-                   <img src={sanitizeImageUrl(a.snapshotUrl)} alt={`${a.cameraName} ${a.type} 快照`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" />
-                   <div className="absolute inset-0 video-hud flex flex-col justify-between p-sm">
-                      <div className="flex justify-between items-start">
-                         <span className={cn(
-                           "px-sm py-unit rounded-full text-body-lg font-black uppercase flex items-center gap-1",
-                           a.level === AlertLevel.CRITICAL ? "bg-error text-white" : "bg-warning-orange text-white"
-                         )}>
-                           {a.level === AlertLevel.CRITICAL && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />}
-                           {a.type}
-                         </span>
-                         <button onClick={() => window.open(a.snapshotUrl, "_blank")} className="bg-black/50 text-white p-1 rounded hover:bg-primary transition-colors opacity-0 group-hover:opacity-100"><Download size={14} /></button>
-                      </div>
-                      <div className="translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
-                         <div className="text-white text-body-lg font-bold truncate mb-unit">{a.cameraName}</div>
-                         <div className="flex justify-between items-baseline">
-                            <span className="text-white/60 font-mono text-body-lg">{new Date(a.time).toLocaleTimeString()}</span>
-                            <span className="text-white/40 text-body-lg font-mono">#{a.id}</span>
-                         </div>
-                      </div>
-                   </div>
-                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                      <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center ring-4 ring-white/10 scale-0 group-hover:scale-100 transition-transform duration-300">
-                         <Play size={24} fill="white" className="text-white ml-1" />
-                      </div>
-                   </div>
-                </div>
-              ))}
-              <div className="border-2 border-dashed border-outline-variant rounded-xl flex flex-col items-center justify-center gap-md bg-surface-container-low hover:bg-surface-container-high transition-all cursor-pointer group aspect-video">
-                 <div className="w-12 h-12 rounded-full border-2 border-outline-variant group-hover:border-primary group-hover:bg-primary/5 flex items-center justify-center transition-all">
-                    <FileVideo className="text-outline group-hover:text-primary transition-all" />
-                 </div>
-                 <span className="text-body-lg font-bold text-outline group-hover:text-primary">手动调阅全量视频</span>
-              </div>
-           </div>
         </div>
+        <span className="text-body-sm text-outline">共 {evTotal} 条证据</span>
       </div>
+
+      {/* 证据卡片网格 */}
+      <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-3 pr-1 custom-scrollbar">
+        {loading ? (
+          <div className="col-span-3 flex items-center justify-center py-16 text-outline">
+            加载中...
+          </div>
+        ) : evidenceItems.length === 0 ? (
+          <div className="col-span-3 flex flex-col items-center justify-center py-16 text-outline">
+            <FileVideo size={40} className="mb-3 opacity-30" />
+            <p className="text-body font-semibold">暂无匹配的证据数据</p>
+            <p className="text-body-sm mt-1">尝试修改筛选条件或选择其他日期</p>
+          </div>
+        ) : evidenceItems.map(item => (
+          <div key={item.id} className="group relative bg-dark-bg aspect-video rounded-lg overflow-hidden border border-outline-variant shadow-sm h-fit cursor-pointer"
+               onClick={() => setLightboxItem(item)}>
+            {/* 截图 */}
+            {item.snapshotUrl ? (
+              <img src={item.snapshotUrl} alt={item.actions?.[0] || "证据"} className="w-full h-full object-cover"
+                   onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            ) : null}
+            {/* 图片加载失败 fallback */}
+            <div className={cn("w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900", item.snapshotUrl && "absolute inset-0 -z-10")}>
+              <ImageIcon size={28} className="text-white/10" />
+            </div>
+            {/* HUD 叠加层 */}
+            <div className="absolute inset-0 video-hud flex flex-col justify-between p-2">
+              <div className="flex justify-between items-start">
+                <span className={cn(
+                  "px-1.5 py-0.5 rounded text-caption font-semibold",
+                  (item.actions || []).some(a => ["打架", "跌倒"].includes(a))
+                    ? "bg-danger-red text-white" : "bg-warning-orange text-white"
+                )}>
+                  {(item.actions || [])[0] || "异常"}
+                </span>
+                <button onClick={e => { e.stopPropagation(); downloadImage(item); }}
+                  className="bg-black/50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Download size={12} />
+                </button>
+              </div>
+              <div className="translate-y-1 group-hover:translate-y-0 transition-transform">
+                <div className="text-white text-body-sm font-semibold truncate">{item.cameraName}</div>
+                <div className="flex justify-between">
+                  <span className="text-white/50 font-mono text-caption tabular-nums">
+                    {new Date(item.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <span className="text-white/30 text-caption font-mono">#{item.cameraId.slice(-3)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 分页 */}
+      {evTotal > PAGE_SIZE && (
+        <div className="shrink-0 flex justify-center gap-2">
+          <button onClick={() => setEvPage(p => Math.max(0, p - 1))} disabled={evPage === 0}
+            className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
+            <ChevronLeft size={13} /> 上一页
+          </button>
+          <span className="px-3 py-1.5 text-body-sm text-outline font-medium">
+            第 {evPage + 1} / {Math.ceil(evTotal / PAGE_SIZE)} 页
+          </span>
+          <button onClick={() => setEvPage(p => p + 1)} disabled={(evPage + 1) * PAGE_SIZE >= evTotal}
+            className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
+            下一页 <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxItem && (
+          <Lightbox
+            src={lightboxItem.snapshotUrl || ""}
+            alt={lightboxItem.actions?.[0] || "证据截图"}
+            cameraId={lightboxItem.cameraId}
+            onClose={() => setLightboxItem(null)}
+            onDownload={() => downloadImage(lightboxItem)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

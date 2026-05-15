@@ -1,291 +1,338 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import {
-  BarChart, Bar, ResponsiveContainer, XAxis, YAxis, Tooltip, Cell
+  BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Cell
 } from "recharts";
 import {
-  Activity,
-  ShieldAlert,
-  Search,
-  Download,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
+  Activity, ShieldAlert, Search, Download, CheckCircle2, AlertTriangle,
+  ChevronLeft, ChevronRight, Clock, X,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { subscribeToAuditLogs, fetchAuditLogsPage, fetchAuditTrend, exportAuditLogs, fetchAutomationRate } from "../services/dataService";
-import { AuditLog, PageResponse } from "../types";
-import { ErrorBanner } from "../components/LoadingError";
+import { useMockAuditLogs, useMockAutomationRate, useMockAuditTrend } from "../lib/useMock";
+import { useToast } from "../components/Toast";
+
+const OPERATOR_OPTIONS = ["用户1", "用户2", "用户3", "用户4"];
+const CATEGORY_OPTIONS = ["登录管理", "设备配置", "告警处理", "系统设置", "数据导出", "用户管理"];
+const ACTION_OPTIONS = [
+  "用户登录系统", "修改摄像头配置", "确认打架告警", "调整AI灵敏度",
+  "导出月度报表", "添加新设备", "删除过期数据", "修改通知策略",
+  "重置密码", "查看监控回放", "批量确认告警", "更新系统固件",
+];
+const RISK_OPTIONS = [
+  { value: "high", label: "高危" },
+  { value: "medium", label: "中危" },
+  { value: "low", label: "低危" },
+];
+const TIME_OPTIONS = [
+  { value: "all", label: "全部" },
+  { value: "today", label: "今天" },
+  { value: "week", label: "近7天" },
+  { value: "month", label: "近30天" },
+];
 
 export default function Audit() {
-  const [auditTrend, setAuditTrend] = useState<{ name: string; value: number }[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [auditPage, setAuditPage] = useState<PageResponse<AuditLog>>({ items: [], total: 0, page: 0, size: 20 });
-  const [automationRate, setAutomationRate] = useState(0);
+  const toast = useToast();
+  const [auditLogs] = useMockAuditLogs();
+  const automationRate = useMockAutomationRate();
   const [trendRange, setTrendRange] = useState<"day" | "week">("week");
-  const [auditPageNum, setAuditPageNum] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [auditLoading, setAuditLoading] = useState(true);
+  const auditTrendRaw = useMockAuditTrend(trendRange);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterOperator, setFilterOperator] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [filterAction, setFilterAction] = useState("");
+  const [filterRisk, setFilterRisk] = useState("");
+  const [filterTime, setFilterTime] = useState("all");
+  const [currentPage, setCurrentPage] = useState(0);
+  const pageSize = 15;
 
-  const searchTermRef = useRef(searchTerm);
-  searchTermRef.current = searchTerm;
+  const auditTrend = useMemo(() => {
+    if (!auditTrendRaw?.labels) return [];
+    return auditTrendRaw.labels.map((l: string, i: number) => ({ name: l, value: auditTrendRaw.data[i] ?? 0 }));
+  }, [auditTrendRaw]);
 
-  const trendAbortRef = useRef<AbortController | null>(null);
-  const fetchAbortRef = useRef<AbortController | null>(null);
-
-  const loadTrend = (range: "day" | "week") => {
-    trendAbortRef.current?.abort();
-    setTrendRange(range);
-    setAuditTrend([]);
-    const ac = new AbortController();
-    trendAbortRef.current = ac;
-    fetchAuditTrend(range, ac.signal).then(data => {
-      if (data?.labels && data?.data) {
-        setAuditTrend(data.labels.map((l: string, i: number) => ({ name: l, value: data.data[i] ?? 0 })));
-      }
-    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-  };
-
-  // Load trend data
-  useEffect(() => {
-    const ac = new AbortController();
-    trendAbortRef.current = ac;
-    const s = ac.signal;
-    fetchAuditTrend("week", s).then(data => {
-      if (data?.labels && data?.data) {
-        setAuditTrend(data.labels.map((l: string, i: number) => ({ name: l, value: data.data[i] ?? 0 })));
-      }
-    }).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    fetchAutomationRate(s).then(d => setAutomationRate(d.rate)).catch(err => { if (err.name !== 'AbortError') console.error(err); });
-    return () => ac.abort();
-  }, []);
-
-  // Search with debounce (also handles page changes)
-  useEffect(() => {
-    fetchAbortRef.current?.abort();
-    const ac = new AbortController();
-    fetchAbortRef.current = ac;
-    const timer = setTimeout(() => {
-      fetchAuditLogsPage({ search: searchTerm || undefined, page: auditPageNum, size: 20 }, ac.signal).then(page => { setAuditPage(page); setError(null); }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } }).finally(() => setAuditLoading(false));
-    }, 300);
-    return () => { clearTimeout(timer); ac.abort(); };
-  }, [searchTerm, auditPageNum]);
-
-  // Reset page on search
-  useEffect(() => { setAuditPageNum(0); }, [searchTerm]);
-
-  // SSE live updates
-  useEffect(() => {
-    const unsub = subscribeToAuditLogs(() => {
-      setAuditPageNum(0);
-      fetchAbortRef.current?.abort();
-      const ac = new AbortController();
-      fetchAbortRef.current = ac;
-      fetchAuditLogsPage({ search: searchTermRef.current || undefined, page: 0, size: 20 }, ac.signal).then(page => { setAuditPage(page); setError(null); }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
-    });
-    return () => unsub();
-  }, []);
-
-  const highRiskCount = auditPage.items.filter(l => l.riskLevel === 'high').length;
-
-  // Weekly report: aggregate from auditPage.items by category
-  const weeklyReports = (() => {
-    const highItems = auditPage.items.filter(l => l.riskLevel === "high");
-    if (highItems.length === 0 && auditPage.total === 0) {
-      return null; // no data
+  const filteredLogs = useMemo(() => {
+    let logs = auditLogs;
+    // 文本搜索
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      logs = logs.filter(l =>
+        l.action.toLowerCase().includes(term) ||
+        l.category.toLowerCase().includes(term) ||
+        l.operatorName.toLowerCase().includes(term)
+      );
     }
-    const categories: Record<string, { count: number; detail: string }> = {};
-    for (const item of auditPage.items) {
-      if (!categories[item.category]) {
-        categories[item.category] = { count: 0, detail: item.action };
-      }
-      categories[item.category].count++;
+    // 时间筛选
+    if (filterTime !== "all") {
+      const now = Date.now();
+      const cutoff = filterTime === "today"
+        ? now - 24 * 60 * 60 * 1000
+        : filterTime === "week"
+          ? now - 7 * 24 * 60 * 60 * 1000
+          : now - 30 * 24 * 60 * 60 * 1000;
+      logs = logs.filter(l => new Date(l.timestamp).getTime() >= cutoff);
     }
-    const entries = Object.entries(categories);
-    if (entries.length === 0) return null;
-    return entries.slice(0, 3).map(([cat, info]) => ({
-      title: cat,
-      risk: highItems.some(h => h.category === cat) ? "high" : "medium",
-      color: highItems.some(h => h.category === cat) ? "border-danger-red" : "border-warning-orange",
-      detail: `${cat}相关操作 ${info.count} 次，最近：${info.detail}`,
-    }));
-  })();
+    // 操作员筛选
+    if (filterOperator) {
+      logs = logs.filter(l => l.operatorName === filterOperator);
+    }
+    // 类别筛选
+    if (filterCategory) {
+      logs = logs.filter(l => l.category === filterCategory);
+    }
+    // 详细筛选
+    if (filterAction) {
+      logs = logs.filter(l => l.action === filterAction);
+    }
+    // 风险筛选
+    if (filterRisk) {
+      logs = logs.filter(l => l.riskLevel === filterRisk);
+    }
+    return logs;
+  }, [auditLogs, searchTerm, filterTime, filterOperator, filterCategory, filterAction, filterRisk]);
+
+  const hasActiveFilter = filterOperator || filterCategory || filterAction || filterRisk || filterTime !== "all";
+
+  function clearFilters() {
+    setFilterOperator("");
+    setFilterCategory("");
+    setFilterAction("");
+    setFilterRisk("");
+    setFilterTime("all");
+    setCurrentPage(0);
+  }
+
+  const totalPages = Math.ceil(filteredLogs.length / pageSize) || 1;
+  const pagedLogs = filteredLogs.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const highRiskCount = filteredLogs.filter(l => l.riskLevel === "high").length;
+
+  // 周报
+  const categories = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredLogs.forEach(l => { map[l.category] = (map[l.category] || 0) + 1; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  }, [filteredLogs]);
 
   return (
-    <div className="space-y-lg flex flex-col h-full overflow-hidden">
-      {/* Metrics */}
-      <section className="grid grid-cols-3 gap-xl shrink-0">
+    <div className="space-y-4 flex flex-col h-full overflow-hidden animate-fade-in-up">
+      {/* 指标 */}
+      <section className="grid grid-cols-3 gap-4 shrink-0">
         {[
-          { label: "本期操作总量", value: auditLoading ? "—" : auditPage.total.toLocaleString(), change: "总计", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
-          { label: "高危预警次数", value: highRiskCount.toString(), change: "当前页高危", icon: ShieldAlert, color: "text-danger-red", bg: "bg-error-container/40" },
-          { label: "系统自动化率", value: `${automationRate}%`, change: "核心稳定", icon: CheckCircle2, color: "text-success-green", bg: "bg-success-green/10", bar: automationRate },
+          { label: "操作总量", value: filteredLogs.length.toLocaleString(), change: "总计", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
+          { label: "高危预警", value: highRiskCount.toString(), change: "当前筛选", icon: ShieldAlert, color: "text-danger-red", bg: "bg-error-container/30" },
+          { label: "系统自动化率", value: `${automationRate.rate}%`, change: "核心稳定", icon: CheckCircle2, color: "text-success-green", bg: "bg-success-green/10" },
         ].map(s => (
-          <div key={s.label} className="bg-white p-lg border border-outline-variant rounded-xl shadow-sm hover:shadow-md transition-all">
-             <div className="flex justify-between items-start mb-md">
-                <div>
-                   <p className="text-body-lg font-bold text-on-surface-variant uppercase tracking-widest mb-unit">{s.label}</p>
-                   <h3 className={cn("text-title font-bold font-mono tracking-tighter", s.color)}>{s.value}</h3>
-                </div>
-                <div className={cn("p-sm rounded-lg", s.bg)}>
-                   <s.icon className={s.color} size={20} />
-                </div>
-             </div>
-             <div className="flex items-center gap-xs text-body-lg font-bold opacity-60">
-                {s.change}
-             </div>
-             {s.bar && (
-               <div className="mt-md w-full h-1 bg-surface-container rounded-full overflow-hidden">
-                  <div className="bg-success-green h-full" style={{ width: `${s.bar}%` }} />
-               </div>
-             )}
+          <div key={s.label} className="bg-white p-3 border border-outline-variant rounded-xl shadow-sm hover:shadow-md transition-all">
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <p className="text-caption font-semibold text-outline uppercase tracking-wider mb-0.5">{s.label}</p>
+                <h3 className={cn("text-heading font-bold font-mono tabular-nums", s.color)}>{s.value}</h3>
+              </div>
+              <div className={cn("p-1.5 rounded-lg", s.bg)}>
+                <s.icon className={s.color} size={16} />
+              </div>
+            </div>
+            <div className="text-caption text-outline font-medium">{s.change}</div>
+            {s.label === "系统自动化率" && (
+              <div className="mt-2 w-full h-1 bg-surface-container-high rounded-full overflow-hidden">
+                <div className="bg-success-green h-full rounded-full" style={{ width: `${automationRate.rate}%` }} />
+              </div>
+            )}
           </div>
         ))}
       </section>
 
-      {error && <ErrorBanner message={error} onRetry={() => { setError(null); setAuditPageNum(0); }} />}
-
-      <div className="grid grid-cols-12 gap-lg shrink-0">
-         {/* Active Trends Chart */}
-         <section className="col-span-8 bg-white border border-outline-variant rounded-xl p-lg shadow-sm flex flex-col h-[300px]">
-            <header className="flex justify-between items-center mb-xl">
-               <h3 className="font-bold flex items-center gap-2">管理人员活跃趋势 <span className="text-body-lg opacity-40">(近7日)</span></h3>
-               <div className="flex bg-surface-container-high rounded-full p-1 h-8">
-                  <button onClick={() => loadTrend("day")} className={cn("px-lg rounded-full text-body-lg font-bold", trendRange === "day" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-white/50")}>按日</button>
-                  <button onClick={() => loadTrend("week")} className={cn("px-lg rounded-full text-body-lg font-bold", trendRange === "week" ? "bg-primary text-on-primary" : "text-on-surface-variant hover:bg-white/50")}>按周</button>
-               </div>
-            </header>
-            <div className="flex-1 chart-grid rounded-lg pt-4 px-lg relative">
-               <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={auditTrend.length > 0 ? auditTrend : [{ name: "暂无", value: 0 }]}>
-                     <XAxis dataKey="name" hide />
-                     <Tooltip
-                        contentStyle={{ backgroundColor: '#080c14', border: 'none', borderRadius: '8px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', color: '#fff' }}
-                        cursor={{ fill: 'rgba(0,81,174,0.05)' }}
-                     />
-                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                        {auditTrend.map((_entry, index) => (
-                           <Cell key={`cell-${index}`} fill={index === auditTrend.length - 1 ? '#0051ae' : '#adc6ff'} />
-                        ))}
-                     </Bar>
-                  </BarChart>
-               </ResponsiveContainer>
-               <div className="flex justify-between text-body-lg font-bold text-outline px-lg mt-md">
-                   {auditTrend.length > 0 && (
-                     <>
-                       <span>{auditTrend[0]?.name}</span>
-                       <span>{auditTrend[Math.floor(auditTrend.length / 2)]?.name}</span>
-                       <span>{auditTrend[auditTrend.length - 1]?.name}</span>
-                     </>
-                   )}
-               </div>
+      <div className="grid grid-cols-12 gap-4 shrink-0">
+        {/* 趋势图 */}
+        <section className="col-span-8 bg-white border border-outline-variant rounded-xl p-4 shadow-sm flex flex-col h-[260px]">
+          <header className="flex justify-between items-center mb-3">
+            <h3 className="font-bold text-body-lg">管理人员活跃趋势</h3>
+            <div className="flex bg-surface-container-high rounded-lg p-0.5">
+              <button onClick={() => setTrendRange("day")}
+                className={cn("px-3 py-1 rounded-md text-caption font-semibold", trendRange === "day" ? "bg-white text-primary shadow-sm" : "text-on-surface-variant")}>
+                按日
+              </button>
+              <button onClick={() => setTrendRange("week")}
+                className={cn("px-3 py-1 rounded-md text-caption font-semibold", trendRange === "week" ? "bg-white text-primary shadow-sm" : "text-on-surface-variant")}>
+                按周
+              </button>
             </div>
-         </section>
+          </header>
+          <div className="flex-1 chart-grid rounded-lg">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={auditTrend.length > 0 ? auditTrend : [{ name: "暂无", value: 0 }]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                <XAxis dataKey="name" interval={trendRange === "day" ? 1 : 0}
+                  tick={{ fontSize: 11, fill: "#6b7280" }} axisLine={{ stroke: "#d1d5db" }} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} axisLine={false} tickLine={false} width={32} />
+                <Tooltip contentStyle={{ backgroundColor: "#111928", border: "none", borderRadius: "8px", color: "#fff", fontSize: "12px" }} cursor={{ fill: "rgba(26,86,219,0.05)" }} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  {auditTrend.map((_, index) => (
+                    <Cell key={index} fill={index === auditTrend.length - 1 ? "#1a56db" : "#a4c2f5"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
 
-         {/* Weekly Reports */}
-         <section className="col-span-4 bg-white border border-outline-variant rounded-xl p-lg shadow-sm flex flex-col h-[300px]">
-            <h3 className="font-bold mb-lg">每周异常行为周报</h3>
-            <div className="flex-1 overflow-y-auto space-y-md custom-scrollbar pr-1">
-               {weeklyReports ? weeklyReports.map(r => (
-                 <div key={r.title} className={cn("p-md rounded-xl bg-surface-container-low border-l-4", r.color)}>
-                    <div className="flex justify-between items-center mb-xs">
-                       <span className="font-bold text-body-lg">{r.title}</span>
-                       <span className={cn("text-body-lg font-black uppercase px-sm py-unit rounded", r.risk === "high" ? "bg-error text-white" : r.risk === "medium" ? "bg-warning-orange text-white" : "bg-info-cyan text-white")}>{r.risk}</span>
-                    </div>
-                    <p className="text-body-lg leading-relaxed opacity-70">{r.detail}</p>
-                 </div>
-               )) : (
-                 <div className="text-center text-outline text-body-lg py-xl">暂无数据</div>
-               )}
-            </div>
-         </section>
+        {/* 周报 */}
+        <section className="col-span-4 bg-white border border-outline-variant rounded-xl p-4 shadow-sm flex flex-col h-[260px]">
+          <h3 className="font-bold text-body-lg mb-3">类别分布</h3>
+          <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
+            {categories.map(([cat, count]) => {
+              const maxCount = categories[0]?.[1] || 1;
+              return (
+                <div key={cat} className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/50">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="font-semibold text-body">{cat}</span>
+                    <span className="font-mono text-caption font-bold tabular-nums">{count} 次</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden">
+                    <div className="bg-primary h-full rounded-full" style={{ width: `${(count / maxCount) * 100}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </div>
 
-      {/* Main Table */}
+      {/* 审计日志表 */}
       <section className="flex-1 bg-white border border-outline-variant rounded-xl shadow-sm overflow-hidden flex flex-col min-h-0">
-         <header className="px-lg py-md border-b border-outline-variant bg-surface-container-lowest flex justify-between items-center shrink-0">
-            <h3 className="font-bold">详细操作审计日志</h3>
-            <div className="flex gap-md">
-               <div className="relative group">
-                  <Search className="absolute left-sm top-1/2 -translate-y-1/2 text-outline" size={16} />
-                  <input
-                    type="text"
-                    placeholder="搜索日志..."
-                    value={searchTerm}
-                    aria-label="搜索审计日志"
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="bg-surface-container-high border border-outline-variant rounded-full h-8 pl-xl pr-md text-body-lg w-48 focus:w-64 transition-all"
-                  />
-               </div>
-               <button
-                 onClick={() => exportAuditLogs()}
-                 className="bg-primary text-on-primary px-lg h-8 rounded-lg font-bold text-body-lg flex items-center gap-2"
-               >
-                 <Download size={16} /> 导出数据
-               </button>
+        <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center shrink-0">
+          <h3 className="font-bold text-body-lg">操作审计日志</h3>
+          <div className="flex gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-outline" size={14} />
+              <input type="text" placeholder="搜索日志..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(0); }}
+                className="bg-surface-container-high border border-outline-variant rounded-lg h-8 pl-8 pr-3 text-body w-48 focus:w-56 transition-all outline-none" />
             </div>
-         </header>
-         <div className="overflow-auto flex-1">
-            <table className="w-full text-left border-collapse">
-               <thead className="bg-surface-container-low sticky top-0 z-10 text-body-sm uppercase font-bold text-outline tracking-widest border-b border-outline-variant">
-                  <tr>
-                    <th className="px-lg py-md">时间戳</th>
-                    <th className="px-lg py-md">操作员 ID</th>
-                    <th className="px-lg py-md">类别</th>
-                    <th className="px-lg py-md">详细说明</th>
-                    <th className="px-lg py-md">风险级别</th>
-                    <th className="px-lg py-md text-right">状态</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-outline-variant/30 text-[12.5px]">
-                  {auditPage.items.map((log) => (
-                    <tr key={log.id} className="hover:bg-surface-container-low transition-colors group">
-                      <td className="px-lg py-md font-mono text-on-surface-variant">{new Date(log.timestamp).toLocaleString()}</td>
-                      <td className="px-lg py-md flex items-center gap-sm">
-                        <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-body-lg font-black", log.operatorId.startsWith('A') ? "bg-primary/20 text-primary" : "bg-outline/20 text-outline")}>{log.operatorId}</div>
-                        <span className="font-bold">{log.operatorName}</span>
-                      </td>
-                      <td className="px-lg py-md">
-                        <span className="px-lg py-unit bg-surface-container-highest rounded-full text-body-sm font-bold text-outline uppercase">{log.category}</span>
-                      </td>
-                      <td className="px-lg py-md opacity-80">{log.action}</td>
-                      <td className="px-lg py-md uppercase">
-                         <span className={cn("text-body-sm font-black flex items-center gap-1", log.riskLevel === 'high' ? 'text-error' : log.riskLevel === 'medium' ? 'text-warning-orange' : 'text-info-cyan')}>
-                           <div className={cn("w-1.5 h-1.5 rounded-full", log.riskLevel === 'high' ? "bg-error animate-pulse" : log.riskLevel === 'medium' ? "bg-warning-orange" : "bg-info-cyan")} />
-                           {log.riskLevel}
-                         </span>
-                      </td>
-                      <td className="px-lg py-md text-right">
-                         {log.status ? (
-                           <span className="text-success-green"><CheckCircle2 size={18} /></span>
-                         ) : (
-                           <span className="text-warning-orange"><AlertTriangle size={18} /></span>
-                         )}
-                      </td>
-                    </tr>
-                  ))}
-               </tbody>
-            </table>
-         </div>
-
-         <footer className="h-12 border-t border-outline-variant bg-surface-container-lowest px-lg flex items-center justify-between text-outline text-body-sm shrink-0">
-           <span>第 {auditPageNum + 1} 页 / 共 {Math.ceil(auditPage.total / 20) || 1} 页</span>
-           <div className="flex gap-1">
-             <button
-               onClick={() => setAuditPageNum(p => Math.max(0, p - 1))}
-               disabled={auditPageNum === 0}
-               className="h-6 w-6 rounded border border-outline-variant flex items-center justify-center hover:bg-surface-variant disabled:opacity-30"
-             >
-               <ChevronLeft size={14} />
-             </button>
-             <button
-               onClick={() => setAuditPageNum(p => p + 1)}
-               disabled={(auditPageNum + 1) * 20 >= auditPage.total}
-               className="h-6 w-6 rounded border border-outline-variant flex items-center justify-center hover:bg-surface-variant disabled:opacity-30"
-             >
-               <ChevronRight size={14} />
-             </button>
-           </div>
-         </footer>
+            <button onClick={() => toast.show("审计日志已导出")} className="bg-primary text-white px-3 h-8 rounded-lg font-semibold text-body flex items-center gap-1.5">
+              <Download size={14} /> 导出
+            </button>
+          </div>
+        </header>
+        <div className="overflow-auto flex-1">
+          <table className="w-full text-left">
+            <thead className="bg-surface-container-low sticky top-0 z-10 border-b border-outline-variant">
+              <tr>
+                {[
+                  {
+                    label: "时间",
+                    node: (
+                      <select value={filterTime} onChange={e => { setFilterTime(e.target.value); setCurrentPage(0); }}
+                        className="bg-white border border-outline-variant rounded text-caption h-6 px-1 outline-none">
+                        {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ),
+                  },
+                  {
+                    label: "操作员",
+                    node: (
+                      <select value={filterOperator} onChange={e => { setFilterOperator(e.target.value); setCurrentPage(0); }}
+                        className="bg-white border border-outline-variant rounded text-caption h-6 px-1 outline-none">
+                        <option value="">全部</option>
+                        {OPERATOR_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ),
+                  },
+                  {
+                    label: "类别",
+                    node: (
+                      <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setCurrentPage(0); }}
+                        className="bg-white border border-outline-variant rounded text-caption h-6 px-1 outline-none">
+                        <option value="">全部</option>
+                        {CATEGORY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ),
+                  },
+                  {
+                    label: "详细",
+                    node: (
+                      <select value={filterAction} onChange={e => { setFilterAction(e.target.value); setCurrentPage(0); }}
+                        className="bg-white border border-outline-variant rounded text-caption h-6 px-1 outline-none">
+                        <option value="">全部</option>
+                        {ACTION_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ),
+                  },
+                  {
+                    label: "风险",
+                    node: (
+                      <select value={filterRisk} onChange={e => { setFilterRisk(e.target.value); setCurrentPage(0); }}
+                        className="bg-white border border-outline-variant rounded text-caption h-6 px-1 outline-none">
+                        <option value="">全部</option>
+                        {RISK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ),
+                  },
+                  { label: "状态", node: null },
+                ].map(col => (
+                  <th key={col.label} className={cn(
+                    "px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider",
+                    col.label === "状态" && "text-right"
+                  )}>
+                    <div className="flex items-center gap-1.5">
+                      <span>{col.label}</span>
+                      {col.node}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/30 text-body-sm">
+              {pagedLogs.map((log) => (
+                <tr key={log.id} className="hover:bg-surface-container-low transition-colors">
+                  <td className="px-4 py-2.5 font-mono text-caption text-on-surface-variant tabular-nums">
+                    {new Date(log.timestamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className="font-semibold">{log.operatorName}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className="px-2 py-0.5 bg-surface-container-high rounded text-caption font-semibold text-outline">{log.category}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-on-surface-variant">{log.action}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={cn("flex items-center gap-1 text-caption font-semibold",
+                      log.riskLevel === "high" ? "text-danger-red" : log.riskLevel === "medium" ? "text-warning-orange" : "text-info-cyan"
+                    )}>
+                      <span className={cn("w-1.5 h-1.5 rounded-full",
+                        log.riskLevel === "high" ? "bg-danger-red" : log.riskLevel === "medium" ? "bg-warning-orange" : "bg-info-cyan"
+                      )} />
+                      {log.riskLevel === "high" ? "高危" : log.riskLevel === "medium" ? "中危" : "低危"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    {log.status
+                      ? <CheckCircle2 size={16} className="text-success-green inline" />
+                      : <AlertTriangle size={16} className="text-warning-orange inline" />}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <footer className="h-9 border-t border-outline-variant bg-surface-container-low/50 px-4 flex items-center justify-between text-caption text-outline shrink-0">
+          <div className="flex items-center gap-2">
+            <span>共 {filteredLogs.length} 条 · 第 {currentPage + 1}/{totalPages} 页</span>
+            {hasActiveFilter && (
+              <button onClick={clearFilters}
+                className="flex items-center gap-1 text-primary hover:text-primary/80 font-semibold">
+                <X size={12} /> 清除筛选
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1">
+            <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}
+              className="h-6 w-6 rounded border border-outline-variant flex items-center justify-center hover:bg-surface-container disabled:opacity-30">
+              <ChevronLeft size={13} />
+            </button>
+            <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1}
+              className="h-6 w-6 rounded border border-outline-variant flex items-center justify-center hover:bg-surface-container disabled:opacity-30">
+              <ChevronRight size={13} />
+            </button>
+          </div>
+        </footer>
       </section>
     </div>
   );

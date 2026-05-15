@@ -30,7 +30,9 @@ public class AuthFilter extends OncePerRequestFilter {
         "/video_feed", "/api/images/**",
         "/dashboard", "/monitor", "/alerts", "/devices",
         "/evidence", "/analysis", "/maintenance", "/audit",
-        "/monitor/**", "/assets/**"
+        "/monitor/**", "/assets/**",
+        "/api/detection/start", "/api/detection/stop", "/api/detection/status",
+        "/api/upload_training_resource"
     };
 
     // GET-only public API paths (monitor dashboard data)

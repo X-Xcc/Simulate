@@ -40,6 +40,7 @@ public class DetectionService {
     private volatile DirScan scanCache;
     private volatile long scanCacheTimeMs;
     private static final long SCAN_CACHE_TTL_MS = 15000L;
+    private volatile boolean snapshotUrlsResolved = false;
 
     // Separate cache for system info (expensive totalSize computation)
     private volatile Map<String, Object> systemInfoCache;
@@ -90,7 +91,7 @@ public class DetectionService {
         List<Path> jsonPaths = new ArrayList<>();
         List<Path> jpgPaths = new ArrayList<>();
 
-        try (Stream<Path> paths = Files.list(dataDir.toPath())) {
+        try (Stream<Path> paths = Files.walk(dataDir.toPath(), 2)) {
             paths.filter(Files::isRegularFile).forEach(p -> {
                 String name = p.getFileName().toString();
                 if (name.startsWith("detection_") && name.endsWith(".json")) {
@@ -122,7 +123,10 @@ public class DetectionService {
                 .collect(Collectors.toList());
 
         List<String> images = jpgPaths.stream()
-                .map(p -> p.getFileName().toString())
+                .map(p -> {
+                    Path relative = dataDir.toPath().relativize(p);
+                    return relative.toString().replace(File.separatorChar, '/');
+                })
                 .collect(Collectors.toList());
 
         log.info("Scanned {}: {} JSON files (parsed {}), {} JPG files",
@@ -148,7 +152,6 @@ public class DetectionService {
             counts.put("跌倒", bc.getFall());
             counts.put("打架", bc.getFight());
             counts.put("离岗", bc.getAbsent());
-            counts.put("疲劳", bc.getFatigue());
             counts.put("人员聚集", bc.getGather());
             summary.put("behaviorCounts", counts);
 
@@ -161,6 +164,12 @@ public class DetectionService {
 
     public StatsResponse getStats() {
         try {
+            // One-time resolve: backfill snapshotUrl on alerts created before imageFilename was added
+            if (!snapshotUrlsResolved) {
+                snapshotUrlsResolved = true;
+                alertService.resolveSnapshotUrls(appConfig.getFile().getUploadDir());
+            }
+
             DirScan scan = getOrScanUploadDir();
             List<DetectionData> allDetections = scan.detections();
             List<String> imageFiles = scan.imageFiles();
@@ -222,7 +231,6 @@ public class DetectionService {
                         case "跌倒": behaviorCounts.setFall(behaviorCounts.getFall() + 1); break;
                         case "打架": behaviorCounts.setFight(behaviorCounts.getFight() + 1); break;
                         case "离岗": behaviorCounts.setAbsent(behaviorCounts.getAbsent() + 1); break;
-                        case "疲劳": behaviorCounts.setFatigue(behaviorCounts.getFatigue() + 1); break;
                         case "人员聚集": behaviorCounts.setGather(behaviorCounts.getGather() + 1); break;
                     }
                 }
@@ -297,17 +305,18 @@ public class DetectionService {
         try {
             File dataDir = new File(appConfig.getFile().getUploadDir());
             if (dataDir.exists() && dataDir.isDirectory()) {
-                File[] files = dataDir.listFiles((dir, name) ->
-                        name.startsWith("frame_") && name.endsWith(".jpg") ||
-                                name.startsWith("detection_") && name.endsWith(".json")
-                );
-
-                if (files != null) {
-                    for (File file : files) {
-                        if (!file.delete()) {
-                            log.warn("Failed to delete file: {}", file.getAbsolutePath());
+                try (Stream<Path> walk = Files.walk(dataDir.toPath(), 2)) {
+                    walk.filter(Files::isRegularFile).forEach(p -> {
+                        String name = p.getFileName().toString();
+                        if ((name.startsWith("frame_") && name.endsWith(".jpg")) ||
+                                (name.startsWith("detection_") && name.endsWith(".json"))) {
+                            try {
+                                Files.delete(p);
+                            } catch (IOException e) {
+                                log.warn("Failed to delete file: {}", p.toAbsolutePath(), e);
+                            }
                         }
-                    }
+                    });
                 }
             }
 
@@ -405,11 +414,13 @@ public class DetectionService {
             long totalSize = 0;
             File dataDir = new File(appConfig.getFile().getUploadDir());
             if (dataDir.exists() && dataDir.isDirectory()) {
-                File[] files = dataDir.listFiles();
-                if (files != null) {
-                    for (File f : files) {
-                        if (f.isFile()) totalSize += f.length();
-                    }
+                try (Stream<Path> walk = Files.walk(dataDir.toPath(), 2)) {
+                    totalSize = walk.filter(Files::isRegularFile)
+                            .mapToLong(p -> {
+                                try { return Files.size(p); }
+                                catch (IOException e) { return 0; }
+                            })
+                            .sum();
                 }
             }
 
@@ -442,7 +453,7 @@ public class DetectionService {
 
             Map<String, Integer> todayCounts = new LinkedHashMap<>();
             Map<String, Integer> yesterdayCounts = new LinkedHashMap<>();
-            String[] behaviors = {"跌倒", "打架", "离岗", "疲劳", "人员聚集"};
+            String[] behaviors = {"跌倒", "打架", "离岗", "人员聚集"};
             for (String b : behaviors) {
                 todayCounts.put(b, 0);
                 yesterdayCounts.put(b, 0);
@@ -482,7 +493,6 @@ public class DetectionService {
         return switch (action) {
             case "跌倒", "打架" -> "critical";
             case "离岗" -> "high";
-            case "疲劳" -> "medium";
             case "人员聚集" -> "low";
             default -> "medium";
         };

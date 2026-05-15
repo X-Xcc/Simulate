@@ -14,15 +14,23 @@ const AuthContext = createContext<AuthCtx>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [authenticated, setAuthenticated] = useState(() => !!getToken());
+  const [authenticated, setAuthenticated] = useState(() => {
+    // Mock 模式：检查 localStorage
+    if (localStorage.getItem("mock_auth") === "true") return true;
+    return !!getToken();
+  });
 
-  const login = useCallback(() => setAuthenticated(true), []);
+  const login = useCallback(() => {
+    localStorage.setItem("mock_auth", "true");
+    setAuthenticated(true);
+  }, []);
+
   const logout = useCallback(() => {
     clearToken();
+    localStorage.removeItem("mock_auth");
     setAuthenticated(false);
   }, []);
 
-  // Listen for 401-triggered token invalidation from api layer
   useEffect(() => {
     const handler = () => setAuthenticated(false);
     window.addEventListener("rtk:token-invalid", handler);

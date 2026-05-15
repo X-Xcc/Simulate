@@ -49,15 +49,17 @@ public class DataCleanupTask {
         if (files == null) return;
 
         AtomicInteger deleted = new AtomicInteger();
-        for (File f : files) {
-            String name = f.getName();
-            if (!f.isFile() || (!name.startsWith("detection_") && !name.startsWith("frame_"))) continue;
-            try {
-                LocalDate fileDate = parseDateFromName(name);
-                if (fileDate.isBefore(cutoff)) {
-                    if (f.delete()) deleted.incrementAndGet();
+        for (File entry : files) {
+            if (entry.isDirectory()) {
+                File[] subFiles = entry.listFiles();
+                if (subFiles != null) {
+                    for (File f : subFiles) {
+                        deleteIfOld(f, cutoff, deleted);
+                    }
                 }
-            } catch (DateTimeParseException ignored) {}
+            } else {
+                deleteIfOld(entry, cutoff, deleted);
+            }
         }
 
         if (deleted.get() > 0) {
@@ -65,6 +67,17 @@ public class DataCleanupTask {
                     deleted.get(), retentionDays, cutoff);
             detectionService.invalidateScanCache();
         }
+    }
+
+    private void deleteIfOld(File f, LocalDate cutoff, AtomicInteger deleted) {
+        String name = f.getName();
+        if (!f.isFile() || (!name.startsWith("detection_") && !name.startsWith("frame_"))) return;
+        try {
+            LocalDate fileDate = parseDateFromName(name);
+            if (fileDate.isBefore(cutoff)) {
+                if (f.delete()) deleted.incrementAndGet();
+            }
+        } catch (DateTimeParseException ignored) {}
     }
 
     /**
