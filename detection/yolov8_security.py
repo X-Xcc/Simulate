@@ -21,7 +21,6 @@ import torch
 from typing import List, Tuple, Optional
 from dataclasses import dataclass, field
 from PIL import ImageFont, ImageDraw, Image
-import math
 
 # 快速忽略警告，不进行复杂配置
 import warnings
@@ -104,26 +103,37 @@ class Config:
     USE_TENSORRT = False  # 设为 True 启用 TensorRT（需要安装 tensorrt）
 
     # 检测参数
-    FATIGUE_THRESHOLD = 0.05  # 归一化坐标下的移动阈值
-    FATIGUE_DURATION = 3
     FIGHTING_THRESHOLD = 0.3
     # 推理跳帧 — 每N帧推理一次，中间帧复用结果（2=每2帧推理1次，推理开销减半）
     INFERENCE_EVERY = 2
-    # 眼疲劳参数
-    EYE_AR_THRESHOLD = 0.2  # EAR阈值，低于此值认为是闭眼
-    EYE_FATIGUE_FRAMES = 30  # 连续多少帧EAR过低判定为疲劳
-    EYE_FATIGUE_GRACE_FRAMES = 5  # 关键点无效时保持计数器的宽限期帧数
-    USE_HEAD_TILT_FOR_FATIGUE = True  # 使用头部倾斜替代 EAR 检测（EAR 无法真正检测眨眼）
-    # 点头检测参数（微睡眠检测）
-    HEAD_NOD_Y_THRESHOLD = 0.03  # 鼻子下移阈值（归一化坐标）
-    HEAD_NOD_COUNT = 3           # 60秒内点头次数阈值
-    HEAD_NOD_WINDOW = 60.0       # 点头计数窗口（秒）
     # 跌倒检测时序平滑
     FALL_CONFIRM_FRAMES = 2  # 连续N帧确认跌倒才触发
+    # 跌倒检测细粒度阈值（从 thresholds.json 加载，默认值见 _load_thresholds）
+    FALL_SCORE_THRESHOLD = 0.5
+    FALL_MIN_KP_CONF = 0.5
+    FALL_MIN_VALID_KP = 5
+    FALL_ASPECT_RATIO_HIGH = 0.7
+    FALL_ASPECT_RATIO_LOW = 0.55
+    FALL_HEAD_HIP_RATIO = -0.05
+    FALL_KNEE_ANGLE_BEND = 60
+    FALL_KNEE_ANGLE_STRAIGHT = 170
+    FALL_VERTICALITY_RATIO = 0.25
+    FALL_HIP_ANKLE_DIFF = 0.03
+    FALL_TRUNK_ANGLE = 40
+    FALL_HEAD_GROUND_RATIO = 0.65
+    FALL_MIN_FEATURES = 2
+    # 打架检测细粒度阈值
+    FIGHT_TRUNK_DISTANCE = 0.15
+    FIGHT_BBOX_OVERLAP = 0.1
+    FIGHT_ARM_ELBOW_OFFSET = 0.05
+    FIGHT_ARM_WRIST_OFFSET = 0.1
     # 人员聚集参数（讲稿要求：阈值3人、聚集半径<1.5m、持续≥3s）
     GATHER_THRESHOLD = 3        # 聚集人数阈值
     GATHER_RADIUS = 0.08       # 归一化聚集半径（约占画面8%，实际按像素换算）
     GATHER_DURATION = 3.0       # 聚集持续秒数
+    GATHER_CONF_DIVISOR = 8.0   # 聚集置信度归一化除数
+    # 跨帧追踪
+    TRACKING_IOU_THRESHOLD = 0.3
 
     # 报警参数
     ALERT_COOLDOWN = 5.0
@@ -145,13 +155,64 @@ class Config:
         'normal': (0, 255, 0),
         'warning': (0, 165, 255),
         'danger': (0, 0, 255),
-        'fatigue': (0, 255, 255),
         'leave': (150, 150, 150),
         'live_green': (0, 255, 0),
         'live_red': (0, 0, 255),
         'card_bg': (50, 50, 50),
         'card_border': (60, 60, 60)
     }
+
+    def __init__(self):
+        self._load_thresholds()
+
+    def _load_thresholds(self):
+        """从 thresholds.json 加载阈值，缺失字段保留默认值"""
+        config_path = os.path.join(self.SCRIPT_DIR, "thresholds.json")
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return
+
+        m = data.get("model", {})
+        self.IMG_SIZE = m.get("img_size", self.IMG_SIZE)
+        self.CONF_THRESH = m.get("conf_thresh", self.CONF_THRESH)
+        self.INFERENCE_EVERY = m.get("inference_every", self.INFERENCE_EVERY)
+
+        f = data.get("fall", {})
+        self.FALL_CONFIRM_FRAMES = f.get("confirm_frames", self.FALL_CONFIRM_FRAMES)
+        self.FALL_SCORE_THRESHOLD = f.get("score_threshold", 0.5)
+        self.FALL_MIN_KP_CONF = f.get("min_keypoint_conf", 0.5)
+        self.FALL_MIN_VALID_KP = f.get("min_valid_keypoints", 5)
+        self.FALL_ASPECT_RATIO_HIGH = f.get("aspect_ratio_high", 0.7)
+        self.FALL_ASPECT_RATIO_LOW = f.get("aspect_ratio_low", 0.55)
+        self.FALL_HEAD_HIP_RATIO = f.get("head_hip_ratio", -0.05)
+        self.FALL_KNEE_ANGLE_BEND = f.get("knee_angle_bend", 60)
+        self.FALL_KNEE_ANGLE_STRAIGHT = f.get("knee_angle_straight", 170)
+        self.FALL_VERTICALITY_RATIO = f.get("verticality_ratio", 0.25)
+        self.FALL_HIP_ANKLE_DIFF = f.get("hip_ankle_diff", 0.03)
+        self.FALL_TRUNK_ANGLE = f.get("trunk_angle", 40)
+        self.FALL_HEAD_GROUND_RATIO = f.get("head_ground_ratio", 0.65)
+        self.FALL_MIN_FEATURES = f.get("min_features", 2)
+
+        fi = data.get("fight", {})
+        self.FIGHTING_THRESHOLD = fi.get("threshold", self.FIGHTING_THRESHOLD)
+        self.FIGHT_TRUNK_DISTANCE = fi.get("trunk_distance", 0.15)
+        self.FIGHT_BBOX_OVERLAP = fi.get("bbox_overlap", 0.1)
+        self.FIGHT_ARM_ELBOW_OFFSET = fi.get("arm_elbow_offset", 0.05)
+        self.FIGHT_ARM_WRIST_OFFSET = fi.get("arm_wrist_offset", 0.1)
+
+        g = data.get("gathering", {})
+        self.GATHER_THRESHOLD = g.get("threshold", self.GATHER_THRESHOLD)
+        self.GATHER_RADIUS = g.get("radius", self.GATHER_RADIUS)
+        self.GATHER_DURATION = g.get("duration", self.GATHER_DURATION)
+        self.GATHER_CONF_DIVISOR = g.get("confidence_divisor", 8.0)
+
+        t = data.get("tracking", {})
+        self.TRACKING_IOU_THRESHOLD = t.get("iou_threshold", 0.3)
+
+        a = data.get("alert", {})
+        self.ALERT_COOLDOWN = a.get("cooldown", self.ALERT_COOLDOWN)
 
 
 # ===================== GPU 上报 =====================
@@ -447,65 +508,6 @@ class Utils:
         except (OSError, IOError, AttributeError):
             return 80, 20
 
-    @staticmethod
-    def calculate_eye_aspect_ratio(keypoints: np.ndarray) -> Tuple[float, bool]:
-        """计算双眼高度与宽度的比例（Eye Aspect Ratio - EAR）
-        Returns:
-            (ear值, 是否有效)
-        """
-        if len(keypoints) < 17:
-            return 0.0, False
-
-        left_eye = keypoints[1]
-        right_eye = keypoints[2]
-        left_ear = keypoints[3]
-        right_ear = keypoints[4]
-
-        left_eye_valid = left_eye[2] > 0.5 and left_ear[2] > 0.5
-        right_eye_valid = right_eye[2] > 0.5 and right_ear[2] > 0.5
-
-        if not (left_eye_valid and right_eye_valid):
-            return 0.0, False
-
-        eye_width = Utils.calculate_distance(left_eye, right_eye)
-        if eye_width == 0:
-            return 0.0, False
-
-        left_eye_height = Utils.calculate_distance(left_eye, left_ear)
-        right_eye_height = Utils.calculate_distance(right_eye, right_ear)
-        avg_eye_height = (left_eye_height + right_eye_height) / 2.0
-
-        ear = avg_eye_height / eye_width
-        return ear, True
-
-    @staticmethod
-    def detect_head_tilt(keypoints: np.ndarray) -> Tuple[bool, float]:
-        """通过头部倾斜角度检测困倦状态（替代眼疲劳检测）
-
-        使用 left_eye(1)、right_eye(2) 计算眼部连线与水平线的夹角，
-        夹角过大表示头部侧倾，可能处于困倦状态。
-        """
-        if len(keypoints) < 17:
-            return False, 0.0
-
-        left_eye = keypoints[1]
-        right_eye = keypoints[2]
-        nose = keypoints[0]
-
-        if left_eye[2] < 0.5 or right_eye[2] < 0.5 or nose[2] < 0.5:
-            return False, 0.0
-
-        dy = right_eye[1] - left_eye[1]
-        dx = right_eye[0] - left_eye[0]
-        if dx == 0:
-            return False, 0.0
-
-        angle = abs(math.degrees(math.atan2(dy, dx)))
-        is_tilted = angle > 20.0
-        confidence = min(angle / 45.0, 1.0)
-
-        return is_tilted, confidence
-
 
 # ===================== 检测结果封装 =====================
 @dataclass
@@ -514,16 +516,11 @@ class DetectionResult:
     actions: List[str] = field(default_factory=list)
     person_count: int = 0
     fighting_persons: List[int] = field(default_factory=list)
-    fatigued_persons: List[int] = field(default_factory=list)
-    eye_fatigued_persons: List[int] = field(default_factory=list)
     prev_centers: List[Optional[np.ndarray]] = field(default_factory=list)
     last_move_times: List[float] = field(default_factory=list)
-    eye_fatigue_counts: List[int] = field(default_factory=list)
-    eye_fatigue_invalid_counts: List[int] = field(default_factory=list)
     action_confidences: dict = field(default_factory=dict)
     gather_start_times: dict = field(default_factory=dict)
     prev_bboxes: list = field(default_factory=list)
-    head_nod_states: list = field(default_factory=list)
     fall_confirm_counts: List[int] = field(default_factory=list)
 
 
@@ -534,15 +531,14 @@ class DetectionModule:
     def __init__(self, config: Config):
         self.config = config
 
-    @staticmethod
-    def detect_fall(keypoints: np.ndarray) -> Tuple[bool, float]:
+    def detect_fall(self, keypoints: np.ndarray) -> Tuple[bool, float]:
         """基于多维度特征检测跌倒行为 - 优化版本，返回检测结果和置信度"""
         if len(keypoints) < 17:
             return False, 0.0
 
         # 1. 计算人体包围框的长宽比（跌倒时宽>高）
-        valid_kp = keypoints[keypoints[:, 2] > 0.5]  # 只使用置信度>0.5的关键点
-        if len(valid_kp) < 5:
+        valid_kp = keypoints[keypoints[:, 2] > self.config.FALL_MIN_KP_CONF]
+        if len(valid_kp) < self.config.FALL_MIN_VALID_KP:
             return False, 0.0
 
         min_x, max_x = valid_kp[:, 0].min(), valid_kp[:, 0].max()
@@ -590,56 +586,55 @@ class DetectionModule:
         required_features = 0
 
         # 特征1：长宽比（归一化坐标下，站立者 ~0.3-0.5，躺卧者 >0.7）
-        if aspect_ratio > 0.7:
+        if aspect_ratio > self.config.FALL_ASPECT_RATIO_HIGH:
             fall_score += 0.25
             required_features += 1
-        elif aspect_ratio > 0.55:
+        elif aspect_ratio > self.config.FALL_ASPECT_RATIO_LOW:
             fall_score += 0.1
 
         # 特征2：头部低于臀部（调整阈值）
-        if head_hip_ratio < -0.05:
+        if head_hip_ratio < self.config.FALL_HEAD_HIP_RATIO:
             fall_score += 0.2
             required_features += 1
 
         # 特征3：腿部角度（放松一点，坐着时也可能弯曲）
-        if (left_knee_angle < 60 or left_knee_angle > 170) and \
-                (right_knee_angle < 60 or right_knee_angle > 170):
+        if (left_knee_angle < self.config.FALL_KNEE_ANGLE_BEND or left_knee_angle > self.config.FALL_KNEE_ANGLE_STRAIGHT) and \
+                (right_knee_angle < self.config.FALL_KNEE_ANGLE_BEND or right_knee_angle > self.config.FALL_KNEE_ANGLE_STRAIGHT):
             fall_score += 0.15
 
         # 特征4：躯干垂直度（调整阈值）
-        if verticality_ratio < 0.25:
+        if verticality_ratio < self.config.FALL_VERTICALITY_RATIO:
             fall_score += 0.15
             required_features += 1
 
         # 特征5：脚踝位置
-        if hip_ankle_diff > 0.03:
+        if hip_ankle_diff > self.config.FALL_HIP_ANKLE_DIFF:
             fall_score += 0.1
 
         # 特征6：躯干倾斜角度（新增，关键特征）
-        if trunk_angle > 40:
+        if trunk_angle > self.config.FALL_TRUNK_ANGLE:
             fall_score += 0.15
             required_features += 1
 
         # 特征7：头部接近地面（归一化坐标）
-        if head_ground_ratio > 0.65:
+        if head_ground_ratio > self.config.FALL_HEAD_GROUND_RATIO:
             fall_score += 0.1
 
         # 特征8：关键点置信度
         fall_score *= confidence_score
 
         # 综合判定：必须满足多个条件才判定为跌倒
-        is_fall = fall_score > 0.5 and required_features >= 2
+        is_fall = fall_score > self.config.FALL_SCORE_THRESHOLD and required_features >= self.config.FALL_MIN_FEATURES
         return is_fall, fall_score
 
-    @staticmethod
-    def _is_arm_raised(keypoints: np.ndarray) -> bool:
+    def _is_arm_raised(self, keypoints: np.ndarray) -> bool:
         """检测手臂是否抬起"""
         if len(keypoints) < 10:
             return False
         shoulder_y = (keypoints[5][1] + keypoints[6][1]) / 2
         elbow_y = (keypoints[7][1] + keypoints[8][1]) / 2
         wrist_y = (keypoints[9][1] + keypoints[10][1]) / 2
-        return (elbow_y < shoulder_y - 0.05) or (wrist_y < shoulder_y - 0.1)
+        return (elbow_y < shoulder_y - self.config.FIGHT_ARM_ELBOW_OFFSET) or (wrist_y < shoulder_y - self.config.FIGHT_ARM_WRIST_OFFSET)
 
     def detect_fighting(self, keypoints_list: List[np.ndarray], bboxes: List[List[float]],
                         img_shape: Tuple[int, int]) -> Tuple[bool, List[int]]:
@@ -664,15 +659,15 @@ class DetectionModule:
             fight_score = 0
 
             # 1. 计算躯干中心距离（归一化）
-            if Utils.calculate_distance(center1, center2) / max_dim < 0.15:
+            if Utils.calculate_distance(center1, center2) / max_dim < self.config.FIGHT_TRUNK_DISTANCE:
                 fight_score += 0.4
 
             # 2. 计算人体框重叠度
-            if Utils.calculate_overlap(bboxes[i], bboxes[j], img_shape) > 0.1:
+            if Utils.calculate_overlap(bboxes[i], bboxes[j], img_shape) > self.config.FIGHT_BBOX_OVERLAP:
                 fight_score += 0.3
 
             # 3. 检测手臂是否抬起（打架时通常手臂抬起）
-            if DetectionModule._is_arm_raised(kp1) and DetectionModule._is_arm_raised(kp2):
+            if self._is_arm_raised(kp1) and self._is_arm_raised(kp2):
                 fight_score += 0.3
 
             if fight_score > self.config.FIGHTING_THRESHOLD:
@@ -741,136 +736,15 @@ class DetectionModule:
         start_time = gather_start_times.get(cluster_key, current_time)
         duration = current_time - start_time
 
-        confidence = min(gather_count / 8.0, 1.0)  # 人数越多置信度越高
+        confidence = min(gather_count / self.config.GATHER_CONF_DIVISOR, 1.0)  # 人数越多置信度越高
 
         is_gathering = duration >= self.config.GATHER_DURATION
         return is_gathering, gather_count, confidence
 
-    def detect_fatigue(self, keypoints: np.ndarray, prev_center: Optional[np.ndarray],
-                       last_move_time: float) -> Tuple[bool, float, np.ndarray, float]:
-        """检测疲劳状态，返回检测结果、置信度、新的中心和时间"""
-        current_time = time.time()
-        center = Utils.get_body_center(keypoints)
-
-        if center is None:
-            return False, 0.0, prev_center, last_move_time
-
-        if prev_center is not None:
-            distance = Utils.calculate_distance(center, prev_center)
-
-            if distance > self.config.FATIGUE_THRESHOLD:
-                last_move_time = current_time
-                return False, 0.0, center, last_move_time
-            else:
-                static_duration = current_time - last_move_time
-                static_ratio = min(static_duration / self.config.FATIGUE_DURATION, 1.0)
-
-                if static_duration > self.config.FATIGUE_DURATION:
-                    return True, static_ratio, center, last_move_time
-                else:
-                    return False, static_ratio, center, last_move_time
-        else:
-            last_move_time = current_time
-            return False, 0.0, center, last_move_time
-
-    def detect_eye_fatigue(self, keypoints: np.ndarray, eye_fatigue_count: int,
-                           invalid_frame_count: int = 0) -> Tuple[bool, int, int]:
-        """检测眼疲劳状态（带宽限期容错）
-        Returns:
-            (是否疲劳, 累计低EAR帧数, 连续无效帧数)
-        """
-        # 优先使用头部倾斜检测（EAR 使用耳朵关键点，无法真正检测眨眼）
-        if self.config.USE_HEAD_TILT_FOR_FATIGUE:
-            is_tilted, _ = Utils.detect_head_tilt(keypoints)
-            if is_tilted:
-                eye_fatigue_count += 1
-            else:
-                invalid_frame_count += 1
-                if invalid_frame_count > self.config.EYE_FATIGUE_GRACE_FRAMES:
-                    eye_fatigue_count = 0  # 超过宽限期，重置
-                # 宽限期内保持计数器不变
-            is_fatigued = eye_fatigue_count >= self.config.EYE_FATIGUE_FRAMES
-            return is_fatigued, eye_fatigue_count, invalid_frame_count if not is_tilted else 0
-
-        # 原有 EAR 逻辑保留作为后备
-        ear, is_valid = Utils.calculate_eye_aspect_ratio(keypoints)
-
-        if not is_valid:
-            invalid_frame_count += 1
-            if invalid_frame_count > self.config.EYE_FATIGUE_GRACE_FRAMES:
-                return False, 0, 0  # 超过宽限期，重置
-            return False, eye_fatigue_count, invalid_frame_count  # 宽限期内保持计数器
-
-        # 有效帧：重置无效计数
-        if ear < self.config.EYE_AR_THRESHOLD:
-            eye_fatigue_count += 1
-        else:
-            eye_fatigue_count = 0
-
-        is_fatigued = eye_fatigue_count >= self.config.EYE_FATIGUE_FRAMES
-        return is_fatigued, eye_fatigue_count, 0
-
-    def detect_head_nodding(self, keypoints: np.ndarray, nod_state: Optional[dict]) -> Tuple[bool, dict]:
-        """检测点头（微睡眠）行为
-        跟踪鼻子Y坐标相对肩部中心的变化，检测反复低头-恢复模式。
-        Returns:
-            (是否困倦, 更新后的nod_state)
-        """
-        if nod_state is None:
-            nod_state = {'state': 'idle', 'nod_count': 0, 'first_nod_time': 0.0, 'last_nose_y': 0.0}
-
-        if len(keypoints) < 7:
-            return False, nod_state
-
-        nose_y = float(keypoints[0][1])
-        shoulder_y = (float(keypoints[5][1]) + float(keypoints[6][1])) / 2.0
-
-        # 鼻子相对肩部的偏移（正值表示鼻子低于肩部）
-        relative_y = nose_y - shoulder_y
-        threshold = self.config.HEAD_NOD_Y_THRESHOLD
-        current_time = time.time()
-
-        state = nod_state['state']
-
-        if state == 'idle':
-            # 鼻子下移超过阈值 → 进入下垂状态
-            if relative_y > threshold:
-                nod_state['state'] = 'dropping'
-                nod_state['last_nose_y'] = relative_y
-        elif state == 'dropping':
-            # 鼻子回到肩部附近 → 完成一次点头
-            if relative_y <= threshold * 0.5:
-                nod_state['state'] = 'idle'
-                nod_count = nod_state['nod_count'] + 1
-                first_time = nod_state['first_nod_time']
-
-                # 如果是窗口内的第一次点头，记录时间
-                if nod_count == 1:
-                    nod_state['first_nod_time'] = current_time
-                # 超出窗口则重置计数
-                elif current_time - first_time > self.config.HEAD_NOD_WINDOW:
-                    nod_state['nod_count'] = 1
-                    nod_state['first_nod_time'] = current_time
-                    return False, nod_state
-
-                nod_state['nod_count'] = nod_count
-
-                # 达到阈值 → 标记困倦
-                if nod_count >= self.config.HEAD_NOD_COUNT:
-                    nod_state['nod_count'] = 0
-                    nod_state['first_nod_time'] = 0.0
-                    return True, nod_state
-
-        is_drowsy = False
-        return is_drowsy, nod_state
-
     def detect_security_actions(self, pose_results: List, prev_centers: Optional[List[np.ndarray]],
                                 last_move_times: Optional[List[float]],
-                                eye_fatigue_counts: Optional[List[int]] = None,
                                 gather_start_times: Optional[dict] = None,
                                 prev_bboxes: Optional[List] = None,
-                                eye_fatigue_invalid_counts: Optional[List[int]] = None,
-                                head_nod_states: Optional[List] = None,
                                 fall_confirm_counts: Optional[List[int]] = None) -> DetectionResult:
         """检测所有安全行为，支持多人检测（IoU 跟踪 + 时序平滑）"""
         detected_actions = set()
@@ -880,8 +754,6 @@ class DetectionModule:
         img_shape = None
         new_gather_start_times = gather_start_times if gather_start_times is not None else {}
         fighting_persons = []
-        fatigued_persons = []
-        eye_fatigued_persons = []
         action_confidences = {}
 
         for r in pose_results:
@@ -913,9 +785,6 @@ class DetectionModule:
             # === IoU 人体跟踪：匹配前后帧 ===
             new_prev_centers = [None] * person_count
             new_last_move_times = [time.time()] * person_count
-            new_eye_fatigue_counts = [0] * person_count
-            new_eye_fatigue_invalid_counts = [0] * person_count
-            new_head_nod_states = [None] * person_count
             new_fall_confirm_counts = [0] * person_count
             new_prev_bboxes_list = [None] * person_count
 
@@ -945,7 +814,7 @@ class DetectionModule:
                                 continue
                             if iou_matrix[ni, pi] > best_iou:
                                 best_iou, best_ni, best_pi = iou_matrix[ni, pi], ni, pi
-                    if best_iou < 0.3:
+                    if best_iou < self.config.TRACKING_IOU_THRESHOLD:
                         break
                     matched_new.add(best_ni)
                     matched_prev.add(best_pi)
@@ -954,12 +823,6 @@ class DetectionModule:
                         new_prev_centers[best_ni] = prev_centers[best_pi]
                     if last_move_times and best_pi < len(last_move_times):
                         new_last_move_times[best_ni] = last_move_times[best_pi]
-                    if eye_fatigue_counts and best_pi < len(eye_fatigue_counts):
-                        new_eye_fatigue_counts[best_ni] = eye_fatigue_counts[best_pi]
-                    if eye_fatigue_invalid_counts and best_pi < len(eye_fatigue_invalid_counts):
-                        new_eye_fatigue_invalid_counts[best_ni] = eye_fatigue_invalid_counts[best_pi]
-                    if head_nod_states and best_pi < len(head_nod_states):
-                        new_head_nod_states[best_ni] = head_nod_states[best_pi]
                     if fall_confirm_counts and best_pi < len(fall_confirm_counts):
                         new_fall_confirm_counts[best_ni] = fall_confirm_counts[best_pi]
 
@@ -968,7 +831,7 @@ class DetectionModule:
                 new_prev_bboxes_list[i] = current_bboxes[i] if i < len(current_bboxes) else None
 
                 # 跌倒检测（带时序平滑）
-                is_fall, fall_confidence = DetectionModule.detect_fall(kp_np)
+                is_fall, fall_confidence = self.detect_fall(kp_np)
                 if is_fall:
                     new_fall_confirm_counts[i] += 1
                     if new_fall_confirm_counts[i] >= self.config.FALL_CONFIRM_FRAMES:
@@ -976,36 +839,6 @@ class DetectionModule:
                         action_confidences["跌倒"] = fall_confidence
                 else:
                     new_fall_confirm_counts[i] = 0
-
-                # 疲劳检测（支持多人）
-                is_fatigue, fatigue_confidence, center, move_time = self.detect_fatigue(
-                    kp_np, new_prev_centers[i], new_last_move_times[i]
-                )
-                if is_fatigue:
-                    detected_actions.add("疲劳")
-                    fatigued_persons.append(i)
-                    action_confidences["疲劳"] = fatigue_confidence
-                new_prev_centers[i] = center
-                new_last_move_times[i] = move_time
-
-                # 眼疲劳检测（带宽限期）
-                is_eye_fatigue, eye_fatigue_count, invalid_count = self.detect_eye_fatigue(
-                    kp_np, new_eye_fatigue_counts[i], new_eye_fatigue_invalid_counts[i]
-                )
-                if is_eye_fatigue:
-                    detected_actions.add("疲劳")
-                    eye_fatigued_persons.append(i)
-                    action_confidences["疲劳"] = 1.0
-                new_eye_fatigue_counts[i] = eye_fatigue_count
-                new_eye_fatigue_invalid_counts[i] = invalid_count
-
-                # 点头检测（微睡眠）
-                is_nodding, nod_state = self.detect_head_nodding(kp_np, new_head_nod_states[i])
-                if is_nodding:
-                    detected_actions.add("疲劳")
-                    if "疲劳" not in action_confidences:
-                        action_confidences["疲劳"] = 0.8
-                new_head_nod_states[i] = nod_state
 
             # 打架检测
             if person_count >= 2 and img_shape is not None:
@@ -1033,16 +866,11 @@ class DetectionModule:
             actions=list(detected_actions),
             person_count=person_count,
             fighting_persons=fighting_persons,
-            fatigued_persons=fatigued_persons,
-            eye_fatigued_persons=eye_fatigued_persons,
             prev_centers=new_prev_centers,
             last_move_times=new_last_move_times,
-            eye_fatigue_counts=new_eye_fatigue_counts,
-            eye_fatigue_invalid_counts=new_eye_fatigue_invalid_counts,
             action_confidences=action_confidences,
             gather_start_times=new_gather_start_times,
             prev_bboxes=new_prev_bboxes_list,
-            head_nod_states=new_head_nod_states,
             fall_confirm_counts=new_fall_confirm_counts,
         )
 
@@ -1050,6 +878,8 @@ class DetectionModule:
 # ===================== 数据保存模块 =====================
 class DataSaver:
     """数据保存模块 - 批量写入优化"""
+
+    ACTION_PRIORITY = ["打架", "跌倒", "离岗", "人员聚集"]
 
     def __init__(self, config: Config):
         self.config = config
@@ -1083,6 +913,15 @@ class DataSaver:
 
         return timestamp
 
+    def _get_target_dir(self, actions: List[str]) -> str:
+        """按 ACTION_PRIORITY 优先级确定目标子文件夹"""
+        for action in self.ACTION_PRIORITY:
+            if action in actions:
+                target = os.path.join(self.config.DATASET_DIR, action)
+                os.makedirs(target, exist_ok=True)
+                return target
+        return self.config.DATASET_DIR
+
     def _flush(self):
         """批量写入待处理的检测数据"""
         if not self._pending_detections:
@@ -1090,7 +929,8 @@ class DataSaver:
 
         for timestamp, data in self._pending_detections:
             try:
-                json_path = os.path.join(self.config.DATASET_DIR,
+                target_dir = self._get_target_dir(data.get("actions", []))
+                json_path = os.path.join(target_dir,
                                         f"detection_{timestamp}.json")
                 with open(json_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
@@ -1104,7 +944,8 @@ class DataSaver:
         """保存帧图像（仅当检测到行为时）"""
         if actions and self.config.SAVE_IMAGE_ON_ACTION:
             try:
-                frame_path = os.path.join(self.config.DATASET_DIR, f"frame_{timestamp}.jpg")
+                target_dir = self._get_target_dir(actions)
+                frame_path = os.path.join(target_dir, f"frame_{timestamp}.jpg")
                 cv2.imwrite(frame_path, frame)
             except OSError as e:
                 print(f"保存帧图像失败: {e}")
@@ -1209,8 +1050,6 @@ class UIManager:
             color = self.config.COLORS['danger']
         elif behavior == "打架":
             color = self.config.COLORS['warning']
-        elif behavior == "疲劳":
-            color = self.config.COLORS['fatigue']
         elif behavior == "离岗":
             color = self.config.COLORS['leave']
         else:
@@ -1272,7 +1111,6 @@ class UIManager:
             color = self.config.COLORS.get('normal', (0, 255, 0))
             if action == "跌倒": color = self.config.COLORS['danger']
             elif action == "打架": color = self.config.COLORS['warning']
-            elif action == "疲劳": color = self.config.COLORS['fatigue']
             elif action == "离岗": color = self.config.COLORS['leave']
             text = f"  {action} {confidence:.2f}  "
             tw, _ = Utils.measure_text_size(text, 16)
@@ -1609,11 +1447,8 @@ class SecurityMonitor:
         # 状态变量
         prev_centers = []
         last_move_times = []
-        eye_fatigue_counts = []
         gather_start_times = {}
         prev_bboxes = []
-        eye_fatigue_invalid_counts = []
-        head_nod_states = []
         fall_confirm_counts = []
         logs = deque(maxlen=20)
         prev_actions = []
@@ -1626,8 +1461,6 @@ class SecurityMonitor:
         cached_actions = []
         cached_person_num = 0
         cached_fighting_persons = []
-        cached_fatigued_persons = []
-        cached_eye_fatigued_persons = []
         cached_action_confidences = {}
         inference_every = max(1, self.config.INFERENCE_EVERY)
 
@@ -1663,22 +1496,17 @@ class SecurityMonitor:
 
                     # 3. 检测行为
                     det = self.detection_module.detect_security_actions(
-                        results, prev_centers, last_move_times, eye_fatigue_counts, gather_start_times,
-                        prev_bboxes, eye_fatigue_invalid_counts, head_nod_states, fall_confirm_counts
+                        results, prev_centers, last_move_times, gather_start_times,
+                        prev_bboxes, fall_confirm_counts
                     )
                     actions = det.actions
                     person_num = det.person_count
                     fighting_persons = det.fighting_persons
-                    fatigued_persons = det.fatigued_persons
-                    eye_fatigued_persons = det.eye_fatigued_persons
                     prev_centers = det.prev_centers
                     last_move_times = det.last_move_times
-                    eye_fatigue_counts = det.eye_fatigue_counts
                     action_confidences = det.action_confidences
                     gather_start_times = det.gather_start_times
                     prev_bboxes = det.prev_bboxes
-                    eye_fatigue_invalid_counts = det.eye_fatigue_invalid_counts
-                    head_nod_states = det.head_nod_states
                     fall_confirm_counts = det.fall_confirm_counts
 
                     # 缓存结果
@@ -1686,8 +1514,6 @@ class SecurityMonitor:
                     cached_actions = actions
                     cached_person_num = person_num
                     cached_fighting_persons = fighting_persons
-                    cached_fatigued_persons = fatigued_persons
-                    cached_eye_fatigued_persons = eye_fatigued_persons
                     cached_action_confidences = action_confidences
                 else:
                     # 复用缓存结果
@@ -1695,8 +1521,6 @@ class SecurityMonitor:
                     actions = cached_actions
                     person_num = cached_person_num
                     fighting_persons = cached_fighting_persons
-                    fatigued_persons = cached_fatigued_persons
-                    eye_fatigued_persons = cached_eye_fatigued_persons
                     action_confidences = cached_action_confidences
 
                 # 4. 可视化关键点
@@ -1705,11 +1529,6 @@ class SecurityMonitor:
                 # 5. 框选打架人员
                 if "打架" in actions and results and len(results) > 0:
                     self._draw_fighting_persons(results[0], fighting_persons, frame_out)
-
-                # 6. 标红疲劳人员
-                if "疲劳" in actions and results and len(results) > 0:
-                    all_fatigued = list(set(fatigued_persons + eye_fatigued_persons))
-                    self._draw_fatigued_persons(results[0], all_fatigued, frame_out)
 
                 # 7. 绘制人员聚集框
                 if "人员聚集" in actions and results and len(results) > 0:
@@ -1828,21 +1647,6 @@ class SecurityMonitor:
                                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         except Exception as e:
             print(f"框选打架人员失败: {e}")
-
-    def _draw_fatigued_persons(self, result, fatigued_persons, frame_out):
-        """标红疲劳人员的关键点"""
-        try:
-            if result.keypoints is not None:
-                keypoints = result.keypoints.data
-                for i in fatigued_persons:
-                    if i < len(keypoints):
-                        kp = keypoints[i].cpu().numpy() if hasattr(keypoints[i], 'cpu') else keypoints[i]
-                        for j in range(len(kp)):
-                            if kp[j][2] > 0.5:
-                                x, y = int(kp[j][0]), int(kp[j][1])
-                                cv2.circle(frame_out, (x, y), 5, (0, 0, 255), -1)
-        except Exception as e:
-            print(f"标红疲劳人员关键点失败: {e}")
 
     def _draw_gathering_persons(self, result, keypoints_list, frame_out):
         """用黄色圆弧框选聚集人员"""
