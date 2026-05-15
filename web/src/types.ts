@@ -34,7 +34,6 @@ export enum AlertType {
   FALL = "跌倒",
   CROWD = "人员聚集",
   ABSENCE = "离岗",
-  INTRUSION = "非法闯入",
 }
 
 export interface Alert {
@@ -108,7 +107,7 @@ export interface PageResponse<T> {
 
 export interface TrendData {
   labels: string[];
-  data: number[];
+  data: Record<string, number[]>;
 }
 
 export interface RegionalStat {
@@ -180,7 +179,8 @@ export interface FpsStats {
 
 export interface StatsSummary {
   behaviorCounts: Record<string, number>;
-  totalDetections: number;
+  total: number;
+  compare: StatsCompare;
 }
 
 export interface ModelInfo {
