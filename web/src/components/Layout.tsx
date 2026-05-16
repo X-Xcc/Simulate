@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Video, AlertTriangle, FolderLock, Settings2,
   BarChart3, History, Wrench, BrainCircuit, Search, Bell,
-  Sun, Moon, UserCircle, Shield, LogOut, PencilRuler, Cpu,
+  Sun, Moon, UserCircle, Shield, LogOut, Cpu, PencilRuler,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { useAuth } from "../lib/auth";
