@@ -4,47 +4,12 @@ import {
   AlertTriangle, Volume2, CheckCircle2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { fetchCameras } from "../services/dataService";
+import { fetchCameras, takeScreenshot } from "../services/dataService";
+import { useAlarmSound } from "../hooks/useAlarmSound";
 import { Camera } from "../types";
 
 type GridMode = 2 | 4 | 6;
 type AlarmType = "fight" | "fall" | "suicide" | "gathering";
-
-// ── 报警声音 ──
-
-let alarmCtx: AudioContext | null = null;
-let alarmTimer: ReturnType<typeof setInterval> | null = null;
-
-function playAlarmTone(ctx: AudioContext) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.type = "square";
-  osc.frequency.setValueAtTime(880, ctx.currentTime);
-  osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.15);
-  osc.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
-  gain.gain.setValueAtTime(0.3, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.5);
-}
-
-function startAlarmSound() {
-  try {
-    stopAlarmSound();
-    alarmCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    playAlarmTone(alarmCtx);
-    alarmTimer = setInterval(() => {
-      if (alarmCtx) playAlarmTone(alarmCtx);
-    }, 800);
-  } catch { /* audio not supported */ }
-}
-
-function stopAlarmSound() {
-  if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; }
-  if (alarmCtx) { alarmCtx.close().catch(() => {}); alarmCtx = null; }
-}
 
 // ── 报警类型配置 ──
 
@@ -113,15 +78,6 @@ function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: () => vo
 // ── 报警覆盖层（多个报警叠加） ──
 
 function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: AlarmType) => void }) {
-  // 和 Training.tsx ComparisonWindow 一样的声控逻辑
-  const prevAlarming = useRef(false);
-  useEffect(() => {
-    if (alarms.length > 0 && !prevAlarming.current) startAlarmSound();
-    if (alarms.length === 0 && prevAlarming.current) stopAlarmSound();
-    prevAlarming.current = alarms.length > 0;
-  }, [alarms]);
-  useEffect(() => { return () => { stopAlarmSound(); }; }, []);
-
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[2px]"
       style={{ animation: "alarm-flash-overlay 0.6s ease-in-out infinite" }}>
@@ -136,7 +92,7 @@ function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: Al
 
 // ── 报警触发小圆点 ──
 
-function AlarmDots({ onTrigger }: { onTrigger: (type: Exclude<AlarmType, null>) => void }) {
+function AlarmDots({ onTrigger }: { onTrigger: (type: AlarmType) => void }) {
   return (
     <div className="flex items-center gap-2 justify-center shrink-0 py-1">
       {ALARM_DOTS.map(({ type, tip }) => (
@@ -159,6 +115,8 @@ export default function Monitor() {
   const [gridMode, setGridMode] = useState<GridMode>(2);
   const [activeAlarms, setActiveAlarms] = useState<Set<AlarmType>>(new Set());
 
+  useAlarmSound(activeAlarms.size > 0);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -179,6 +137,10 @@ export default function Monitor() {
       const next = new Set(prev);
       next.add(type);
       return next;
+    });
+    // 异步截图，不阻塞报警卡片弹出
+    takeScreenshot(type).catch(err => {
+      console.warn("截图失败:", err);
     });
   }, []);
 
@@ -332,7 +294,7 @@ function LiveCameraSlot({ name, activeAlarms, onAck }: {
 
   useEffect(() => {
     return () => {
-      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
     };
   }, []);
 
