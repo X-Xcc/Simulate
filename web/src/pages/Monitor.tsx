@@ -113,6 +113,15 @@ function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: () => vo
 // ── 报警覆盖层（多个报警叠加） ──
 
 function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: AlarmType) => void }) {
+  // 和 Training.tsx ComparisonWindow 一样的声控逻辑
+  const prevAlarming = useRef(false);
+  useEffect(() => {
+    if (alarms.length > 0 && !prevAlarming.current) startAlarmSound();
+    if (alarms.length === 0 && prevAlarming.current) stopAlarmSound();
+    prevAlarming.current = alarms.length > 0;
+  }, [alarms]);
+  useEffect(() => { return () => { stopAlarmSound(); }; }, []);
+
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[2px]"
       style={{ animation: "alarm-flash-overlay 0.6s ease-in-out infinite" }}>
@@ -166,7 +175,6 @@ export default function Monitor() {
   }, []);
 
   const handleAlarmTrigger = useCallback((type: AlarmType) => {
-    startAlarmSound();
     setActiveAlarms(prev => {
       const next = new Set(prev);
       next.add(type);
@@ -180,14 +188,6 @@ export default function Monitor() {
       next.delete(type);
       return next;
     });
-  }, []);
-
-  useEffect(() => {
-    if (activeAlarms.size === 0) stopAlarmSound();
-  }, [activeAlarms]);
-
-  useEffect(() => {
-    return () => { stopAlarmSound(); };
   }, []);
 
   const gridCols: Record<GridMode, string> = { 2: "grid-cols-2", 4: "grid-cols-2", 6: "grid-cols-3" };
@@ -393,9 +393,11 @@ function CameraSlot({
   cameraId: string;
 }) {
   const [now, setNow] = useState("");
-  const [useWebRTC, setUseWebRTC] = useState(true);
-  const [iframeError, setIframeError] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasGo2rtc = !!go2rtcId;
   const go2rtcUrl = `http://${window.location.hostname}:1984/ui.html?src=${go2rtcId || "cam_" + cameraId}`;
+  const fallbackUrl = `/video_feed?cam=${cameraId}`;
 
   useEffect(() => {
     const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
@@ -404,31 +406,39 @@ function CameraSlot({
     return () => clearInterval(iv);
   }, []);
 
+  useEffect(() => {
+    if (!hasGo2rtc) return;
+    loadTimerRef.current = setTimeout(() => {
+      setLoadFailed(true);
+    }, 3000);
+    return () => {
+      if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    };
+  }, [hasGo2rtc]);
+
+  const handleIframeLoad = () => {
+    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+  };
+
   return (
     <div className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
         style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
-      {useWebRTC && !iframeError ? (
+      {hasGo2rtc && !loadFailed ? (
         <iframe
           src={go2rtcUrl}
           className="absolute inset-0 w-full h-full border-0"
+          sandbox="allow-scripts allow-same-origin"
           allow="autoplay"
-          onError={() => setIframeError(true)}
+          onLoad={handleIframeLoad}
         />
-      ) : streamUrl ? (
+      ) : (
         <img
-          src={streamUrl}
+          src={fallbackUrl}
           alt={name}
           className="absolute inset-0 w-full h-full object-cover"
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center">
-            <VideoOff size={28} className="mx-auto text-white/[0.08]" />
-            <span className="block mt-1 text-white/20 text-caption">无视频源</span>
-          </div>
-        </div>
       )}
       <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
         <span className={cn("w-2 h-2 rounded-full", isOnline ? "bg-success-green animate-pulse" : "bg-outline")} />
