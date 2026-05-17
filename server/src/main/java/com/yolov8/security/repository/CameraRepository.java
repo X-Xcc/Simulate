@@ -27,7 +27,8 @@ public class CameraRepository {
         c.setModel(rs.getString("model"));
         c.setIp(rs.getString("ip"));
         c.setPort(rs.getInt("port"));
-        c.setAddress(rs.getString("type").equals("usb")
+        String camType = rs.getString("type");
+        c.setAddress("usb".equals(camType)
                 ? rs.getInt("port")
                 : rs.getString("rtsp_url") != null ? rs.getString("rtsp_url") : rs.getString("http_url"));
         c.setChannel(rs.getInt("channel"));
@@ -35,6 +36,7 @@ public class CameraRepository {
         c.setEnabled(rs.getBoolean("enabled"));
         c.setUsername(rs.getString("username"));
         c.setPassword(rs.getString("password"));
+        c.setGo2rtcId(rs.getString("go2rtc_id"));
         return c;
     };
 

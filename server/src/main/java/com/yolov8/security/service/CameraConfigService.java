@@ -1,9 +1,11 @@
 package com.yolov8.security.service;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
 import com.yolov8.security.repository.CameraRepository;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,10 @@ public class CameraConfigService {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.camerasJsonPath = Paths.get(appConfig.getPython().getScriptPath()).getParent().resolve("cameras.json");
+    }
+
+    @PostConstruct
+    public void init() {
         migrateFromJson();
     }
 
@@ -111,7 +117,13 @@ public class CameraConfigService {
             return "摄像头地址不能为空";
         }
         if (camera.getType().equals("usb")) {
-            if (!(camera.getAddress() instanceof Integer)) {
+            if (camera.getAddress() instanceof String) {
+                try {
+                    Integer.parseInt((String) camera.getAddress());
+                } catch (NumberFormatException e) {
+                    return "USB摄像头地址必须是整数";
+                }
+            } else if (!(camera.getAddress() instanceof Integer)) {
                 return "USB摄像头地址必须是整数";
             }
         } else {
@@ -140,7 +152,8 @@ public class CameraConfigService {
         private String type;
         private Object address;
         private String name;
-        private String user;
+        @JsonAlias("user")
+        private String username;
         private String password;
         private String brand;
         private String model;
@@ -149,6 +162,7 @@ public class CameraConfigService {
         private int channel = 1;
         private String status = "offline";
         private boolean enabled = true;
+        private String go2rtcId;
 
         public Camera() {}
 
@@ -160,8 +174,6 @@ public class CameraConfigService {
         public void setAddress(Object address) { this.address = address; }
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }
-        public String getUser() { return user; }
-        public void setUser(String user) { this.user = user; }
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
         public String getBrand() { return brand; }
@@ -178,7 +190,9 @@ public class CameraConfigService {
         public void setStatus(String status) { this.status = status; }
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
-        public String getUsername() { return user; }
-        public void setUsername(String username) { this.user = username; }
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+        public String getGo2rtcId() { return go2rtcId; }
+        public void setGo2rtcId(String go2rtcId) { this.go2rtcId = go2rtcId; }
     }
 }
