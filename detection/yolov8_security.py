@@ -266,43 +266,83 @@ def detect_cameras(max_index=5):
     return available
 
 
-def load_cameras_config(config_path=None):
-    """从 cameras.json 加载摄像头配置。
+def load_cameras_config(api_base=None):
+    """从 Java 后端 API 获取摄像头列表"""
+    if api_base is None:
+        api_base = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000")
 
-    Returns:
-        list[dict]: 摄像头列表，每个元素包含 id, type, address, name。
-                    如果文件不存在或解析失败，返回空列表。
-    """
-    if config_path is None:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cameras.json")
+    rtsp_host = os.environ.get("GO2RTC_RTSP_HOST", "rtsp://127.0.0.1:8554")
 
+    if not HAS_REQUESTS:
+        print("requests 库不可用，回退到本地 cameras.json")
+        return _load_cameras_config_fallback()
+
+    try:
+        resp = requests.get(f"{api_base}/api/camera_config", timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        cameras_data = data.get("data", data) if isinstance(data, dict) else data
+
+        cameras = []
+        for cam in cameras_data:
+            if cam.get("type") == "usb":
+                cameras.append({
+                    "id": cam["id"],
+                    "type": "usb",
+                    "address": int(cam.get("address", cam.get("port", 0))),
+                    "name": cam.get("name", f"Camera {cam['id']}"),
+                    "go2rtc_id": cam.get("go2rtcId"),
+                })
+            elif cam.get("type") == "rtsp":
+                # 从 go2rtc 拉流，不再直接连摄像头
+                go2rtc_id = cam.get("go2rtcId", f"cam_{cam['id']}")
+                cameras.append({
+                    "id": cam["id"],
+                    "type": "rtsp",
+                    "address": f"{rtsp_host}/{go2rtc_id}",
+                    "name": cam.get("name", f"Camera {cam['id']}"),
+                    "go2rtc_id": go2rtc_id,
+                })
+            elif cam.get("type") == "http_snapshot":
+                cameras.append({
+                    "id": cam["id"],
+                    "type": "http_snapshot",
+                    "address": cam.get("address", cam.get("httpUrl", "")),
+                    "name": cam.get("name", f"Camera {cam['id']}"),
+                    "go2rtc_id": cam.get("go2rtcId"),
+                })
+
+        print(f"从 API 加载了 {len(cameras)} 个摄像头")
+        return cameras
+
+    except Exception as e:
+        print(f"从 API 获取摄像头列表失败: {e}")
+        # Fallback: 尝试读本地 cameras.json（向后兼容）
+        return _load_cameras_config_fallback()
+
+
+def _load_cameras_config_fallback():
+    """回退方案：读本地 cameras.json"""
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cameras.json")
     if not os.path.exists(config_path):
         return []
-
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
-        print(f"警告: 读取 cameras.json 失败: {e}")
+        cameras = []
+        for cam in data.get("cameras", []):
+            if cam.get("type") == "rtsp":
+                continue  # fallback 时仍然跳过 RTSP
+            cameras.append({
+                "id": cam.get("id", ""),
+                "type": cam.get("type", "usb"),
+                "address": cam.get("address", 0),
+                "name": cam.get("name", ""),
+            })
+        return cameras
+    except Exception as e:
+        print(f"读取 cameras.json 失败: {e}")
         return []
-
-    cameras = data.get("cameras", [])
-    valid = []
-    for cam in cameras:
-        if not isinstance(cam, dict):
-            continue
-        if "type" not in cam or "address" not in cam:
-            print(f"警告: 跳过无效摄像头配置（缺少 type 或 address）: {cam}")
-            continue
-        # 跳过RTSP — 由Java MJPEG代理处理，Python只管USB
-        if cam.get("type") == "rtsp":
-            continue
-        # 确保有 id 和 name 默认值
-        cam.setdefault("id", f"cam{len(valid)}")
-        cam.setdefault("name", str(cam["address"]))
-        valid.append(cam)
-
-    return valid
 
 
 # ===================== 工具函数 =====================
@@ -1180,8 +1220,9 @@ class SecurityMonitor:
     def __init__(self):
         self.config = Config()
 
-        # 从 cameras.json 加载摄像头配置，不存在时回退到 USB 自动检测
+        # 从 Java API 加载摄像头配置，回退到本地 cameras.json
         self.config.SOURCES = load_cameras_config()
+        self._check_go2rtc()
         if not self.config.SOURCES:
             print("未找到 cameras.json 或配置为空，回退到 USB 摄像头自动检测...")
             usb_cams = detect_cameras(max_index=5)
@@ -1233,6 +1274,21 @@ class SecurityMonitor:
         self._frame_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="frame_sender") if HAS_REQUESTS else None
         self._pending_frames = 0  # 待处理帧计数，防止队列无限增长
         self._frame_lock = threading.Lock()
+
+    def _check_go2rtc(self):
+        """检查 go2rtc 是否可用"""
+        go2rtc_api = os.environ.get("GO2RTC_API", "http://127.0.0.1:1984")
+        if not HAS_REQUESTS:
+            return False
+        try:
+            resp = requests.get(f"{go2rtc_api}/api", timeout=2)
+            if resp.status_code == 200:
+                print("go2rtc 可用")
+                return True
+        except Exception:
+            pass
+        print("go2rtc 不可用，RTSP 摄像头可能无法拉流")
+        return False
 
     def _init_video_source(self, source=0):
         """初始化视频源"""
