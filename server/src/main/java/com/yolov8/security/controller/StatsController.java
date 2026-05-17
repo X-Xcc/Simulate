@@ -688,7 +688,7 @@ public class StatsController {
                     // 创建 Alert
                     Alert alert = new Alert();
                     alert.setType(zhType);
-                    alert.setLevel("high".equals(type) ? "high" : "medium");
+                    alert.setLevel("suicide".equals(type) ? "high" : "medium");
                     alert.setTime(det.getTimestamp());
                     alert.setCameraId(cam.getId());
                     alert.setCameraName(cam.getName());
