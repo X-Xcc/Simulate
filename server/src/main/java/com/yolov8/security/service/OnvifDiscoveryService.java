@@ -4,10 +4,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
+
+import java.io.StringReader;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.*;
 
 @Service
 public class OnvifDiscoveryService {
@@ -19,12 +25,12 @@ public class OnvifDiscoveryService {
     private static final int TIMEOUT_MS = 3000;
 
     public List<DiscoveredCamera> discover() {
-        List<DiscoveredCamera> results = new CopyOnWriteArrayList<>();
+        List<DiscoveredCamera> results = new ArrayList<>();
 
         String probe = buildProbeMessage();
 
         try (DatagramSocket socket = new DatagramSocket()) {
-            socket.setSoTimeout(TIMEOUT_MS);
+            socket.setSoTimeout(500);
 
             InetAddress group = InetAddress.getByName(MULTICAST_ADDR);
             byte[] data = probe.getBytes(StandardCharsets.UTF_8);
@@ -55,6 +61,7 @@ public class OnvifDiscoveryService {
             log.error("ONVIF 扫描失败", e);
         }
 
+        results.sort(Comparator.comparing(c -> c.ip));
         return results;
     }
 
@@ -78,15 +85,25 @@ public class OnvifDiscoveryService {
 
     private DiscoveredCamera parseResponse(String xml, String ip) {
         try {
+            DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+            dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            dbf.setNamespaceAware(true);
+            DocumentBuilder db = dbf.newDocumentBuilder();
+            Document doc = db.parse(new InputSource(new StringReader(xml)));
+
             DiscoveredCamera camera = new DiscoveredCamera();
             camera.ip = ip;
 
-            String xaddr = extractTag(xml, "XAddrs");
+            // Extract XAddrs (ignore namespace)
+            String xaddr = getElementTextByLocalName(doc, "XAddrs");
             if (xaddr != null && !xaddr.isEmpty()) {
                 camera.serviceUrl = xaddr.trim().split("\\s+")[0];
             }
 
-            String scopes = extractTag(xml, "Scopes");
+            // Extract Scopes
+            String scopes = getElementTextByLocalName(doc, "Scopes");
             if (scopes != null) {
                 camera.brand = extractScope(scopes, "hardware/");
                 camera.model = extractScope(scopes, "model/");
@@ -97,7 +114,8 @@ public class OnvifDiscoveryService {
                 camera.name = "ONVIF Camera (" + ip + ")";
             }
 
-            camera.rtspUrl = "rtsp://" + ip + ":554/Streaming/Channels/101";
+            // RTSP: guess based on brand
+            camera.rtspUrl = guessRtspUrl(ip, camera.brand);
 
             return camera;
         } catch (Exception e) {
@@ -106,13 +124,28 @@ public class OnvifDiscoveryService {
         }
     }
 
-    private String extractTag(String xml, String tag) {
-        int start = xml.indexOf("<" + tag);
-        if (start == -1) return null;
-        start = xml.indexOf(">", start) + 1;
-        int end = xml.indexOf("</" + tag + ">", start);
-        if (end == -1) return null;
-        return xml.substring(start, end).trim();
+    private String getElementTextByLocalName(Document doc, String localName) {
+        NodeList nodes = doc.getElementsByTagNameNS("*", localName);
+        if (nodes.getLength() > 0) {
+            return nodes.item(0).getTextContent();
+        }
+        return null;
+    }
+
+    private String guessRtspUrl(String ip, String brand) {
+        if (brand != null) {
+            String lower = brand.toLowerCase();
+            if (lower.contains("hikvision") || lower.contains("海康")) {
+                return "rtsp://" + ip + ":554/Streaming/Channels/101";
+            }
+            if (lower.contains("dahua") || lower.contains("大华")) {
+                return "rtsp://" + ip + ":554/cam/realmonitor?channel=1&subtype=0";
+            }
+            if (lower.contains("axis")) {
+                return "rtsp://" + ip + ":554/axis-media/media.amp";
+            }
+        }
+        return "rtsp://" + ip + ":554/";
     }
 
     private String extractScope(String scopes, String prefix) {
