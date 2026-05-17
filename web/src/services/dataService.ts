@@ -166,6 +166,12 @@ export async function addAuditLog(log: Omit<AuditLog, "id" | "timestamp">) {
   await apiPost("/api/audit_logs", log);
 }
 
+// --- Screenshot ---
+
+export async function takeScreenshot(type: string, cameraIds?: string[]): Promise<{ saved: number; alertIds: string[] }> {
+  return apiPost("/api/screenshot", { type, cameraIds });
+}
+
 // --- Settings ---
 
 export async function fetchSettings(signal?: AbortSignal): Promise<Settings> {
