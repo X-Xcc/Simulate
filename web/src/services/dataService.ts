@@ -1,4 +1,4 @@
-import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse, AnnotationData, ImageItem } from "../types";
+import { Camera, DiscoveredCamera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse, AnnotationData, ImageItem } from "../types";
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
 
 // --- Camera Config ---
@@ -19,6 +19,11 @@ export async function fetchCameras(signal?: AbortSignal): Promise<Camera[]> {
     address: c.address ?? "",
     user: c.user,
     password: c.password,
+    brand: c.brand,
+    model: c.model,
+    go2rtcId: c.go2rtcId,
+    ip: c.ip,
+    port: c.port,
     status: activeIds.has(c.id || "") ? CameraStatus.ONLINE : CameraStatus.OFFLINE,
     streamUrl: c.id ? `/video_feed?cam=${c.id}` : "",
     personCount: 0,
@@ -287,6 +292,11 @@ function transformCamera(raw: any, activeCamIds?: Set<string>): Camera {
     address: raw.address ?? "",
     user: raw.user,
     password: raw.password,
+    brand: raw.brand,
+    model: raw.model,
+    go2rtcId: raw.go2rtcId,
+    ip: raw.ip,
+    port: raw.port,
     status: isActive ? CameraStatus.ONLINE : (raw.status ?? CameraStatus.OFFLINE),
     streamUrl: raw.id ? `/video_feed?cam=${raw.id}` : "",
     personCount: raw.personCount ?? 0,
@@ -363,4 +373,20 @@ export async function uploadAnnotationImage(file: File): Promise<{ filename: str
   }
   const data = await res.json();
   return data.data;
+}
+
+// --- ONVIF 自动发现 ---
+
+export async function discoverCameras(): Promise<DiscoveredCamera[]> {
+  const result = await apiPost<any>("/api/discover", undefined);
+  return Array.isArray(result) ? result : (result?.data ?? []);
+}
+
+export async function batchAddCameras(cameras: Partial<Camera>[]): Promise<{ added: number; errors: string[] }> {
+  const result = await apiPost<any>("/api/camera_config/batch", cameras);
+  return result ?? { added: 0, errors: [] };
+}
+
+export async function getStreamStatus(): Promise<{ running: boolean; apiAvailable: boolean }> {
+  return apiGet("/api/streams/status");
 }

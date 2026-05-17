@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Camera, CameraStatus, Settings } from "../types";
+import type { DiscoveredCamera } from "../types";
 import {
   Plus,
   Trash2,
@@ -16,10 +17,11 @@ import {
   Zap,
   Loader2,
   Camera as CameraIcon,
+  Search,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
-import { fetchCameras, addCamera, updateCamera, deleteCamera, testCamera } from "../services/dataService";
+import { fetchCameras, addCamera, updateCamera, deleteCamera, testCamera, discoverCameras, batchAddCameras } from "../services/dataService";
 
 const TYPE_LABELS: Record<string, string> = {
   usb: "USB 摄像头",
@@ -42,6 +44,10 @@ export default function Devices() {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", type: "rtsp" as "usb" | "rtsp" | "http_snapshot", address: "", user: "", password: "" });
   const [successMsg, setSuccessMsg] = useState("");
+  const [discovered, setDiscovered] = useState<DiscoveredCamera[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [showDiscovery, setShowDiscovery] = useState(false);
+  const [selectedDevices, setSelectedDevices] = useState<Set<string>>(new Set());
 
   const loadCameras = useCallback(async () => {
     try {
@@ -112,6 +118,47 @@ export default function Devices() {
     }
   };
 
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+      const result = await discoverCameras();
+      setDiscovered(result);
+      setShowDiscovery(true);
+      setSelectedDevices(new Set(result.map(d => d.ip)));
+      toast.show(`发现 ${result.length} 个摄像头`, "success");
+    } catch (e: any) {
+      toast.show("扫描失败: " + e.message, "error");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleBatchAdd = async () => {
+    const toAdd = discovered
+      .filter(d => selectedDevices.has(d.ip))
+      .map(d => ({
+        name: d.name,
+        type: "rtsp" as const,
+        address: d.rtspUrl,
+        ip: d.ip,
+        brand: d.brand || undefined,
+        model: d.model || undefined,
+        port: 554,
+      }));
+    try {
+      const result = await batchAddCameras(toAdd);
+      toast.show(`成功添加 ${result.added} 个摄像头`, "success");
+      if (result.errors.length > 0) {
+        toast.show(`${result.errors.length} 个失败: ${result.errors.join(", ")}`, "error");
+      }
+      setShowDiscovery(false);
+      setDiscovered([]);
+      await loadCameras();
+    } catch (e: any) {
+      toast.show("批量添加失败: " + e.message, "error");
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto space-y-4 animate-fade-in-up">
       {successMsg && (
@@ -122,12 +169,22 @@ export default function Devices() {
 
       {/* 页头 */}
       <header className="flex justify-between items-center">
-        <button
-          onClick={() => { setEditId(null); setForm({ name: "", type: "rtsp", address: "", user: "", password: "" }); setShowModal(true); }}
-          className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
-        >
-          <Plus size={16} /> 添加摄像头
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setEditId(null); setForm({ name: "", type: "rtsp", address: "", user: "", password: "" }); setShowModal(true); }}
+            className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
+          >
+            <Plus size={16} /> 添加摄像头
+          </button>
+          <button
+            onClick={handleScan}
+            disabled={scanning}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-caption rounded-lg bg-surface-container-low border border-outline-variant hover:bg-surface-container transition-colors disabled:opacity-50"
+          >
+            <Search className="w-3.5 h-3.5" />
+            {scanning ? "扫描中..." : "自动扫描"}
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-12 gap-4">
@@ -154,6 +211,7 @@ export default function Devices() {
                   <thead className="border-b border-outline-variant">
                     <tr>
                       <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider">名称 / 类型</th>
+                      <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider">品牌</th>
                       <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider">地址</th>
                       <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider">状态</th>
                       <th className="px-4 py-2 text-caption font-semibold text-outline uppercase tracking-wider text-right">操作</th>
@@ -165,6 +223,9 @@ export default function Devices() {
                         <td className="px-4 py-3">
                           <div className="font-semibold text-on-surface">{cam.name}</div>
                           <div className="text-caption font-mono text-outline">{TYPE_LABELS[cam.type] ?? cam.type}</div>
+                        </td>
+                        <td className="px-4 py-3 text-body-sm text-on-surface-variant">
+                          {cam.brand || "-"}
                         </td>
                         <td className="px-4 py-3 font-mono text-body-sm text-on-surface-variant truncate max-w-[200px]">
                           {String(cam.address)}
@@ -407,6 +468,74 @@ export default function Devices() {
                 <button onClick={() => setShowModal(false)} className="px-4 py-2 rounded-lg text-body font-semibold text-on-surface-variant hover:bg-surface-container transition-colors">取消</button>
                 <button onClick={editId ? handleEdit : handleAdd} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body shadow-sm">{editId ? "保存" : "添加"}</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ONVIF 自动发现弹窗 */}
+      {showDiscovery && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[700px] mx-4 overflow-hidden animate-fade-in-up">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-outline-variant">
+              <h3 className="font-bold text-body-lg">发现 {discovered.length} 个设备</h3>
+              <button onClick={() => setShowDiscovery(false)} className="p-1 hover:bg-surface-container rounded-lg"><X size={16} /></button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {discovered.length === 0 ? (
+                <p className="text-center text-outline py-8">未发现任何设备</p>
+              ) : (
+                <table className="w-full text-left">
+                  <thead className="border-b border-outline-variant">
+                    <tr>
+                      <th className="px-3 py-2 text-caption font-semibold text-outline uppercase tracking-wider w-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedDevices.size === discovered.length && discovered.length > 0}
+                          onChange={(e) => setSelectedDevices(e.target.checked ? new Set(discovered.map(d => d.ip)) : new Set())}
+                        />
+                      </th>
+                      <th className="px-3 py-2 text-caption font-semibold text-outline uppercase tracking-wider">IP</th>
+                      <th className="px-3 py-2 text-caption font-semibold text-outline uppercase tracking-wider">名称</th>
+                      <th className="px-3 py-2 text-caption font-semibold text-outline uppercase tracking-wider">品牌</th>
+                      <th className="px-3 py-2 text-caption font-semibold text-outline uppercase tracking-wider">型号</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/50 text-body-sm">
+                    {discovered.map((d) => (
+                      <tr key={d.ip} className="hover:bg-surface-container-low transition-colors">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedDevices.has(d.ip)}
+                            onChange={(e) => {
+                              setSelectedDevices(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(d.ip); else next.delete(d.ip);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-mono">{d.ip}</td>
+                        <td className="px-3 py-2 font-semibold text-on-surface">{d.name}</td>
+                        <td className="px-3 py-2 text-on-surface-variant">{d.brand || "-"}</td>
+                        <td className="px-3 py-2 text-on-surface-variant">{d.model || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-4 py-3 bg-surface-container-low border-t border-outline-variant">
+              <button onClick={() => setShowDiscovery(false)} className="px-4 py-2 rounded-lg text-body font-semibold text-on-surface-variant hover:bg-surface-container transition-colors">取消</button>
+              <button
+                onClick={handleBatchAdd}
+                disabled={selectedDevices.size === 0}
+                className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body shadow-sm disabled:opacity-50"
+              >
+                批量添加 ({selectedDevices.size})
+              </button>
             </div>
           </div>
         </div>

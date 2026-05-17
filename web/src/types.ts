@@ -17,10 +17,24 @@ export interface Camera {
   address: string | number;
   user?: string;
   password?: string;
+  brand?: string;
+  model?: string;
+  go2rtcId?: string;
+  ip?: string;
+  port?: number;
   // computed at runtime
   status: CameraStatus;
   streamUrl: string;
   personCount: number;
+}
+
+export interface DiscoveredCamera {
+  ip: string;
+  name: string;
+  brand: string | null;
+  model: string | null;
+  rtspUrl: string;
+  serviceUrl: string;
 }
 
 export enum AlertLevel {
