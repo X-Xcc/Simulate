@@ -3,6 +3,7 @@ package com.yolov8.security.service;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.repository.CameraRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -11,160 +12,91 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class CameraConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(CameraConfigService.class);
-    private final AppConfig appConfig;
+    private final CameraRepository repository;
     private final ObjectMapper objectMapper;
-    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+    private final Path camerasJsonPath;
+    private final AtomicBoolean migrated = new AtomicBoolean(false);
 
-    public CameraConfigService(AppConfig appConfig, ObjectMapper objectMapper) {
-        this.appConfig = appConfig;
+    public CameraConfigService(CameraRepository repository, ObjectMapper objectMapper, AppConfig appConfig) {
+        this.repository = repository;
         this.objectMapper = objectMapper;
+        this.camerasJsonPath = Paths.get(appConfig.getPython().getScriptPath()).getParent().resolve("cameras.json");
+        migrateFromJson();
     }
 
     public Path getCamerasJsonPath() {
-        return Paths.get(appConfig.getPython().getScriptPath()).getParent().resolve("cameras.json");
+        return camerasJsonPath;
     }
 
     public List<Camera> getAllCameras() {
-        lock.readLock().lock();
-        try {
-            CamerasWrapper wrapper = readConfig();
-            return wrapper != null ? wrapper.getCameras() : new ArrayList<>();
-        } finally {
-            lock.readLock().unlock();
-        }
+        return repository.findAll();
     }
 
     public Camera getCameraById(String id) {
-        lock.readLock().lock();
-        try {
-            CamerasWrapper wrapper = readConfig();
-            if (wrapper == null) return null;
-            return wrapper.getCameras().stream()
-                    .filter(c -> c.getId().equals(id))
-                    .findFirst().orElse(null);
-        } finally {
-            lock.readLock().unlock();
-        }
+        return repository.findById(id);
     }
 
     public Camera addCamera(Camera camera) {
-        lock.writeLock().lock();
-        try {
-            CamerasWrapper wrapper = readConfig();
-            if (wrapper == null) {
-                wrapper = new CamerasWrapper();
-                wrapper.setCameras(new ArrayList<>());
-            }
-
-            // Validate
-            String validationError = validateCamera(camera, false);
-            if (validationError != null) {
-                throw new IllegalArgumentException(validationError);
-            }
-
-            // Auto-generate ID if not provided
-            if (camera.getId() == null || camera.getId().isEmpty()) {
-                camera.setId(generateId(wrapper.getCameras()));
-            }
-
-            // Check duplicate ID
-            boolean exists = wrapper.getCameras().stream()
-                    .anyMatch(c -> c.getId().equals(camera.getId()));
-            if (exists) {
-                throw new IllegalArgumentException("摄像头ID已存在: " + camera.getId());
-            }
-
-            wrapper.getCameras().add(camera);
-            writeConfig(wrapper);
-            return camera;
-        } finally {
-            lock.writeLock().unlock();
+        String validationError = validateCamera(camera, false);
+        if (validationError != null) {
+            throw new IllegalArgumentException(validationError);
         }
+        if (camera.getId() == null || camera.getId().isEmpty()) {
+            camera.setId("cam" + System.currentTimeMillis());
+        }
+        if (repository.existsById(camera.getId())) {
+            throw new IllegalArgumentException("摄像头ID已存在: " + camera.getId());
+        }
+        String go2rtcId = "cam_" + camera.getId();
+        repository.insert(camera, go2rtcId);
+        return camera;
     }
 
     public Camera updateCamera(String id, Camera camera) {
-        lock.writeLock().lock();
-        try {
-            CamerasWrapper wrapper = readConfig();
-            if (wrapper == null) {
-                throw new IllegalArgumentException("摄像头配置文件不存在");
-            }
-
-            int index = -1;
-            for (int i = 0; i < wrapper.getCameras().size(); i++) {
-                if (wrapper.getCameras().get(i).getId().equals(id)) {
-                    index = i;
-                    break;
-                }
-            }
-            if (index == -1) {
-                throw new IllegalArgumentException("摄像头不存在: " + id);
-            }
-
-            // Validate
-            String validationError = validateCamera(camera, true);
-            if (validationError != null) {
-                throw new IllegalArgumentException(validationError);
-            }
-
-            camera.setId(id); // preserve original ID
-            wrapper.getCameras().set(index, camera);
-            writeConfig(wrapper);
-            return camera;
-        } finally {
-            lock.writeLock().unlock();
+        if (!repository.existsById(id)) {
+            throw new IllegalArgumentException("摄像头不存在: " + id);
         }
+        String validationError = validateCamera(camera, true);
+        if (validationError != null) {
+            throw new IllegalArgumentException(validationError);
+        }
+        camera.setId(id);
+        repository.update(camera);
+        return camera;
     }
 
     public boolean deleteCamera(String id) {
-        lock.writeLock().lock();
-        try {
-            CamerasWrapper wrapper = readConfig();
-            if (wrapper == null) return false;
+        boolean exists = repository.existsById(id);
+        if (exists) {
+            repository.deleteById(id);
+        }
+        return exists;
+    }
 
-            boolean removed = wrapper.getCameras().removeIf(c -> c.getId().equals(id));
-            if (removed) {
-                writeConfig(wrapper);
+    private void migrateFromJson() {
+        if (!migrated.compareAndSet(false, true)) return;
+        if (!Files.exists(camerasJsonPath)) return;
+        if (!repository.findAll().isEmpty()) return;
+        try {
+            CamerasWrapper wrapper = objectMapper.readValue(camerasJsonPath.toFile(), CamerasWrapper.class);
+            for (Camera c : wrapper.getCameras()) {
+                try {
+                    addCamera(c);
+                } catch (Exception e) {
+                    log.warn("迁移摄像头失败: {}", c.getId(), e);
+                }
             }
-            return removed;
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    private CamerasWrapper readConfig() {
-        Path path = getCamerasJsonPath();
-        if (!Files.exists(path)) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(path.toFile(), CamerasWrapper.class);
+            log.info("从 cameras.json 迁移了 {} 个摄像头", wrapper.getCameras().size());
         } catch (IOException e) {
-            log.error("Failed to read cameras.json", e);
-            return null;
-        }
-    }
-
-    private void writeConfig(CamerasWrapper wrapper) throws RuntimeException {
-        Path path = getCamerasJsonPath();
-        Path tmpPath = path.getParent().resolve("cameras.json.tmp");
-        try {
-            Files.createDirectories(path.getParent());
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(tmpPath.toFile(), wrapper);
-            Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            log.error("Failed to write cameras.json", e);
-            throw new RuntimeException("写入摄像头配置失败: " + e.getMessage());
+            log.error("迁移 cameras.json 失败", e);
         }
     }
 
@@ -193,21 +125,6 @@ public class CameraConfigService {
         return null;
     }
 
-    private String generateId(List<Camera> cameras) {
-        int maxNum = -1;
-        for (Camera c : cameras) {
-            String id = c.getId();
-            if (id != null && id.startsWith("cam")) {
-                try {
-                    int num = Integer.parseInt(id.substring(3));
-                    if (num > maxNum) maxNum = num;
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
-        return "cam" + (maxNum + 1);
-    }
-
     // --- Inner classes ---
 
     public static class CamerasWrapper {
@@ -225,6 +142,10 @@ public class CameraConfigService {
         private String name;
         private String user;
         private String password;
+        private String brand;
+        private String model;
+        private String ip;
+        private int port = 554;
 
         public Camera() {}
 
@@ -240,5 +161,15 @@ public class CameraConfigService {
         public void setUser(String user) { this.user = user; }
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
+        public String getBrand() { return brand; }
+        public void setBrand(String brand) { this.brand = brand; }
+        public String getModel() { return model; }
+        public void setModel(String model) { this.model = model; }
+        public String getIp() { return ip; }
+        public void setIp(String ip) { this.ip = ip; }
+        public int getPort() { return port; }
+        public void setPort(int port) { this.port = port; }
+        public String getUsername() { return user; }
+        public void setUsername(String username) { this.user = username; }
     }
 }
