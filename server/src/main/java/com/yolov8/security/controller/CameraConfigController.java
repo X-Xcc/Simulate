@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -79,6 +80,25 @@ public class CameraConfigController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("删除摄像头失败: " + e.getMessage()));
         }
+    }
+
+    @PostMapping("/camera_config/batch")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> batchAddCameras(
+            @RequestBody List<CameraConfigService.Camera> cameras) {
+        int added = 0;
+        List<String> errors = new ArrayList<>();
+        for (CameraConfigService.Camera camera : cameras) {
+            try {
+                cameraConfigService.addCamera(camera);
+                added++;
+            } catch (Exception e) {
+                errors.add(camera.getName() + ": " + e.getMessage());
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.success(Map.of(
+            "added", added,
+            "errors", errors
+        )));
     }
 
     @PostMapping("/camera_config/test")
