@@ -12,7 +12,7 @@ import {
   TrendingUp,
   ChevronRight,
 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import {
@@ -29,7 +29,8 @@ import {
 } from "recharts";
 import { cn } from "../lib/utils";
 import { exportCsv } from "../services/dataService";
-import { AlertType } from "../types";
+import { AlertType, Alert as RealAlert } from "../types";
+import { subscribeSse } from "../lib/api";
 import {
   useMockAlerts, useMockSystemStatus, useMockStatsSummary,
   useMockTrendData,
@@ -62,6 +63,7 @@ const TYPE_STYLE: Record<string, typeof C.fight> = {
   [AlertType.FALL]: C.fall,
   [AlertType.ABSENCE]: C.absent,
   [AlertType.CROWD]: C.crowd,
+  "自杀": { line: "#7c3aed", fill: "rgba(124,58,237,0.08)", bg: "bg-purple-50", text: "text-purple-600", badge: "bg-purple-100 text-purple-700" },
 };
 
 const RANGE_OPTIONS = [
@@ -100,7 +102,22 @@ function ChartTooltip({ active, payload, label }: any) {
 export default function Dashboard() {
   const toast = useToast();
   const navigate = useNavigate();
+
+  const [manualAlerts, setManualAlerts] = useState<RealAlert[]>([]);
+
+  useEffect(() => {
+    return subscribeSse("alerts", (data: any) => {
+      if (!Array.isArray(data)) return;
+      const manual = data.filter((a: any) => a.snapshotUrl && a.message?.startsWith("手动报警"));
+      setManualAlerts(manual);
+    });
+  }, []);
   const [alerts] = useMockAlerts();
+
+  const mergedAlerts = useMemo(() => {
+    return [...manualAlerts, ...alerts].slice(0, 10);
+  }, [manualAlerts, alerts]);
+
   const status = useMockSystemStatus();
   const stats = useMockStatsSummary();
   const [trendRange, setTrendRange] = useState<"day" | "week" | "month">("week");
@@ -123,12 +140,24 @@ export default function Dashboard() {
   const behaviorCounts = stats?.behaviorCounts ?? {};
   const compareData = stats?.compare ?? null;
 
+  const enrichedBehaviorCounts = useMemo(() => {
+    const base = { ...behaviorCounts };
+    const typeToKey: Record<string, string> = {
+      "打架": "打架", "跌倒": "跌倒", "自杀": "自杀", "人员聚集": "人员聚集",
+    };
+    for (const a of manualAlerts) {
+      const key = typeToKey[a.type] ?? a.type;
+      base[key] = (base[key] ?? 0) + 1;
+    }
+    return base;
+  }, [behaviorCounts, manualAlerts]);
+
   const cards = useMemo(() => [
-    { key: "fight",  icon: <ShieldAlert size={22}/>,  label: "打架事件", count: behaviorCounts["打架"] ?? 0, change: getChange(compareData, "打架"),   style: C.fight },
-    { key: "fall",   icon: <Accessibility size={22}/>, label: "人员跌倒", count: behaviorCounts["跌倒"] ?? 0, change: getChange(compareData, "跌倒"),   style: C.fall },
-    { key: "absent", icon: <UserMinus size={22}/>,    label: "违规离岗", count: behaviorCounts["离岗"] ?? 0, change: getChange(compareData, "离岗"),   style: C.absent },
-    { key: "crowd",  icon: <Users size={22}/>,        label: "人员聚集", count: behaviorCounts["人员聚集"] ?? 0, change: getChange(compareData, "人员聚集"), style: C.crowd },
-  ], [behaviorCounts, compareData]);
+    { key: "fight",  icon: <ShieldAlert size={22}/>,  label: "打架事件", count: enrichedBehaviorCounts["打架"] ?? 0, change: getChange(compareData, "打架"),   style: C.fight },
+    { key: "fall",   icon: <Accessibility size={22}/>, label: "人员跌倒", count: enrichedBehaviorCounts["跌倒"] ?? 0, change: getChange(compareData, "跌倒"),   style: C.fall },
+    { key: "absent", icon: <UserMinus size={22}/>,    label: "违规离岗", count: enrichedBehaviorCounts["离岗"] ?? 0, change: getChange(compareData, "离岗"),   style: C.absent },
+    { key: "crowd",  icon: <Users size={22}/>,        label: "人员聚集", count: enrichedBehaviorCounts["人员聚集"] ?? 0, change: getChange(compareData, "人员聚集"), style: C.crowd },
+  ], [enrichedBehaviorCounts, compareData]);
 
   const distributionData = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -354,7 +383,7 @@ export default function Dashboard() {
               <tbody className="divide-y divide-gray-50 text-sm">
                 {alerts.length === 0 ? (
                   <tr><td colSpan={5} className="px-5 py-10 text-center text-gray-300">暂无告警</td></tr>
-                ) : alerts.slice(0, 10).map(a => {
+                ) : mergedAlerts.map(a => {
                   const s = TYPE_STYLE[a.type] ?? C.crowd;
                   return (
                     <tr key={a.id} className="hover:bg-gray-50/50 transition-colors group">
