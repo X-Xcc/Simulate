@@ -5,7 +5,7 @@
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "./pages/DASHBOARD";
 import Monitor from "./pages/Monitor";
 import Alerts from "./pages/Alerts";
 import Devices from "./pages/Devices";
