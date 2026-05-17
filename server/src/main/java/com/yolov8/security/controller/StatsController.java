@@ -9,6 +9,7 @@ import com.yolov8.security.config.DataCleanupTask;
 import com.yolov8.security.service.AlertService;
 import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.DetectionService;
+import com.yolov8.security.service.KanbanEventBus;
 import com.yolov8.security.service.ModelInfoService;
 import com.yolov8.security.service.PythonScriptService;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,6 +42,14 @@ import java.util.stream.Collectors;
 public class StatsController {
 
     private static final Logger log = LoggerFactory.getLogger(StatsController.class);
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    private static final java.util.Map<String, String> ALARM_TYPE_MAP = java.util.Map.of(
+        "fight", "打架",
+        "fall", "跌倒",
+        "suicide", "自杀",
+        "gathering", "异常聚集"
+    );
     private final DetectionService detectionService;
     private final ModelInfoService modelInfoService;
     private final VideoStreamController videoStreamController;
@@ -618,6 +628,102 @@ public class StatsController {
         } catch (Exception e) {
             log.error("Error getting detection status", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/screenshot")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> takeScreenshot(
+            @RequestBody Map<String, Object> body) {
+        try {
+            String type = (String) body.get("type");
+            if (type == null || type.isBlank()) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("type 参数必填"));
+            }
+            String zhType = ALARM_TYPE_MAP.get(type);
+            if (zhType == null) {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("不支持的报警类型: " + type + "，可选: fight/fall/suicide/gathering"));
+            }
+
+            // 获取摄像头列表
+            @SuppressWarnings("unchecked")
+            List<String> cameraIds = body.get("cameraIds") instanceof List
+                ? (List<String>) body.get("cameraIds") : null;
+            List<CameraConfigService.Camera> allCams = cameraConfigService.getAllCameras();
+            List<CameraConfigService.Camera> targets;
+            if (cameraIds != null && !cameraIds.isEmpty()) {
+                targets = allCams.stream()
+                    .filter(c -> cameraIds.contains(c.getId()))
+                    .collect(Collectors.toList());
+            } else {
+                targets = allCams;
+            }
+            if (targets.isEmpty()) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("没有可用的摄像头"));
+            }
+
+            String go2rtcHost = appConfig.getGo2rtc().getApiHost();
+            List<String> alertIds = new ArrayList<>();
+            int saved = 0;
+            List<String> failures = new ArrayList<>();
+
+            for (CameraConfigService.Camera cam : targets) {
+                String go2rtcId = cam.getGo2rtcId();
+                if (go2rtcId == null || go2rtcId.isBlank()) {
+                    go2rtcId = "cam_" + cam.getId();
+                }
+                try {
+                    String snapshotUrl = go2rtcHost + "/api/frame.jpeg?src=" + go2rtcId;
+                    byte[] jpeg = restTemplate.getForObject(snapshotUrl, byte[].class);
+                    if (jpeg == null || jpeg.length == 0) {
+                        failures.add(cam.getId() + ": 空响应");
+                        continue;
+                    }
+
+                    // 存储 detection + frame
+                    List<String> actions = List.of(zhType);
+                    DetectionData det = detectionService.saveManualDetection(
+                        jpeg, cam.getId(), cam.getName(), actions);
+
+                    // 创建 Alert
+                    Alert alert = new Alert();
+                    alert.setType(zhType);
+                    alert.setLevel("high".equals(type) ? "high" : "medium");
+                    alert.setTime(det.getTimestamp());
+                    alert.setCameraId(cam.getId());
+                    alert.setCameraName(cam.getName());
+                    alert.setImageFilename(det.getImageFilename());
+                    alert.setSnapshotUrl("/api/images/" + det.getImageFilename());
+                    alert.setMessage("手动报警: " + zhType);
+                    alert.setConfidence(100.0);
+                    alertService.addAlert(alert);
+                    alertIds.add(alert.getId());
+                    saved++;
+                } catch (Exception e) {
+                    log.warn("摄像头 {} 截图失败: {}", cam.getId(), e.getMessage());
+                    failures.add(cam.getId() + ": " + e.getMessage());
+                }
+            }
+
+            if (saved == 0) {
+                return ResponseEntity.status(503)
+                    .body(ApiResponse.error("截图服务不可用: " + String.join("; ", failures)));
+            }
+
+            // SSE 广播更新的报警列表
+            KanbanEventBus.publish("alerts", alertService.getAllAlerts());
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("saved", saved);
+            result.put("alertIds", alertIds);
+            if (!failures.isEmpty()) {
+                result.put("failures", failures);
+            }
+            return ResponseEntity.ok(ApiResponse.success(result));
+        } catch (Exception e) {
+            log.error("截图接口异常", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("截图失败: " + e.getMessage()));
         }
     }
 
