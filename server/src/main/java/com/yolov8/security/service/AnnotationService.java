@@ -371,30 +371,9 @@ public class AnnotationService {
         lock.readLock().lock();
         try {
             List<Map<String, Object>> result = new ArrayList<>();
-            Set<String> seen = new HashSet<>();
+            Path annotationsDir = getAnnotationsDir();
 
-            // Scan detection frames
-            Path dataDir = getDataDir();
-            if (Files.exists(dataDir)) {
-                try (var stream = Files.list(dataDir)) {
-                    stream.filter(p -> {
-                        String name = p.getFileName().toString().toLowerCase();
-                        return name.startsWith("frame_") && (name.endsWith(".jpg") || name.endsWith(".png"));
-                    }).sorted(Comparator.comparing(Path::getFileName).reversed())
-                    .forEach(p -> {
-                        String name = p.getFileName().toString();
-                        if (seen.add(name)) {
-                            Map<String, Object> item = new LinkedHashMap<>();
-                            item.put("filename", name);
-                            item.put("source", "detection");
-                            item.put("path", "/yolov8-security/api/images/" + name);
-                            result.add(item);
-                        }
-                    });
-                }
-            }
-
-            // Scan uploaded images
+            // Only scan uploaded images (detection frames excluded from annotation)
             Path uploadsDir = getUploadsDir();
             if (Files.exists(uploadsDir)) {
                 try (var stream = Files.list(uploadsDir)) {
@@ -404,13 +383,23 @@ public class AnnotationService {
                     }).sorted(Comparator.comparing(Path::getFileName).reversed())
                     .forEach(p -> {
                         String name = p.getFileName().toString();
-                        if (seen.add(name)) {
-                            Map<String, Object> item = new LinkedHashMap<>();
-                            item.put("filename", name);
-                            item.put("source", "upload");
-                            item.put("path", "/yolov8-security/api/images/uploads/" + name);
-                            result.add(item);
+                        Map<String, Object> item = new LinkedHashMap<>();
+                        item.put("filename", name);
+                        item.put("source", "upload");
+                        item.put("path", "/api/images/uploads/" + name);
+
+                        // Check annotation status
+                        Path annPath = annotationsDir.resolve(sanitizeFilename(name) + ".json");
+                        if (Files.exists(annPath)) {
+                            AnnotationData ann = readAnnotation(annPath);
+                            item.put("hasAnnotation", ann != null && ann.getBboxes() != null && !ann.getBboxes().isEmpty());
+                            item.put("annotationStatus", ann != null ? ann.getStatus() : "unlabeled");
+                        } else {
+                            item.put("hasAnnotation", false);
+                            item.put("annotationStatus", "unlabeled");
                         }
+
+                        result.add(item);
                     });
                 }
             }

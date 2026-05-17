@@ -14,9 +14,7 @@ import Analysis from "./pages/Analysis";
 import Maintenance from "./pages/Maintenance";
 import Audit from "./pages/Audit";
 import Login from "./pages/Login";
-import Training from "./pages/Training";
 import ModelTraining from "./pages/ModelTraining";
-import Annotation from "./pages/Annotation";
 import Layout from "./components/Layout";
 import AppErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./components/ThemeProvider";
@@ -46,9 +44,7 @@ function AppRoutes() {
         <Route path="/analysis" element={<AppErrorBoundary><Analysis /></AppErrorBoundary>} />
         <Route path="/maintenance" element={<AppErrorBoundary><Maintenance /></AppErrorBoundary>} />
         <Route path="/audit" element={<AppErrorBoundary><Audit /></AppErrorBoundary>} />
-        <Route path="/training" element={<AppErrorBoundary><Training /></AppErrorBoundary>} />
         <Route path="/model-training" element={<AppErrorBoundary><ModelTraining /></AppErrorBoundary>} />
-        <Route path="/annotation" element={<AppErrorBoundary><Annotation /></AppErrorBoundary>} />
         <Route path="/" element={<Navigate to="/monitor" />} />
       </Route>
       <Route path="*" element={<Navigate to="/monitor" />} />

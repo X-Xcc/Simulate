@@ -33,7 +33,7 @@ const BACK = BLDGS.filter(b => b.zone === "back");
 
 // ── 3D Constants ───────────────────────────────────────────────────────────
 
-const SCALE = 0.03;
+const SCALE = 0.1;
 const GROUND_Y = 0;
 const FLOOR_H = 1.0;
 const WALL_H = 3.0;
@@ -91,12 +91,12 @@ function HeatDot({ pos, color }: { pos: { x: number; y: number; z: number; speed
   useFrame(({ clock }) => {
     if (!ref.current) return;
     const t = clock.getElapsedTime() * pos.speed + pos.offset;
-    ref.current.position.y = pos.y + Math.sin(t) * 0.15;
+    ref.current.position.y = pos.y + Math.sin(t) * 0.5;
     (ref.current.material as THREE.MeshBasicMaterial).opacity = 0.3 + Math.sin(t * 2) * 0.3;
   });
   return (
     <mesh ref={ref} position={[pos.x, pos.y, pos.z]}>
-      <sphereGeometry args={[0.1, 8, 8]} />
+      <sphereGeometry args={[0.3, 8, 8]} />
       <meshBasicMaterial color={color} transparent opacity={0.5} />
     </mesh>
   );
@@ -104,7 +104,7 @@ function HeatDot({ pos, color }: { pos: { x: number; y: number; z: number; speed
 
 // ── Zone Divider (low fence wall) ──────────────────────────────────────────
 
-function ZoneDivider({ start, end, y = 0.3 }: {
+function ZoneDivider({ start, end, y = 0.75 }: {
   start: [number, number, number]; end: [number, number, number]; y?: number;
 }) {
   const dx = end[0] - start[0];
@@ -113,8 +113,8 @@ function ZoneDivider({ start, end, y = 0.3 }: {
   const angle = Math.atan2(dx, dz);
   return (
     <mesh position={[(start[0] + end[0]) / 2, y, (start[2] + end[2]) / 2]} rotation={[0, angle, 0]}>
-      <boxGeometry args={[0.04, 0.6, len]} />
-      <meshBasicMaterial color="#06b6d4" transparent opacity={0.2} />
+      <boxGeometry args={[0.1, 1.5, len]} />
+      <meshBasicMaterial color="#06b6d4" transparent opacity={0.35} />
     </mesh>
   );
 }
@@ -127,8 +127,8 @@ function PatrolPath() {
     const [c, , d] = svgTo3D(744, 76);
     const [e, , f] = svgTo3D(744, 504);
     const [g, , h] = svgTo3D(56, 504);
-    return [new THREE.Vector3(a, 0.03, b), new THREE.Vector3(c, 0.03, d),
-      new THREE.Vector3(e, 0.03, f), new THREE.Vector3(g, 0.03, h)];
+    return [new THREE.Vector3(a, 0.1, b), new THREE.Vector3(c, 0.1, d),
+      new THREE.Vector3(e, 0.1, f), new THREE.Vector3(g, 0.1, h)];
   }, []);
   return (
     <lineLoop>
@@ -145,16 +145,16 @@ function PatrolPath() {
 
 function ScanCurtain() {
   const ref = useRef<THREE.Mesh>(null);
-  const startX = -11;
-  const endX = 11;
+  const startX = -35;
+  const endX = 35;
   useFrame(({ clock }) => {
     if (!ref.current) return;
     const t = (Math.sin(clock.getElapsedTime() * Math.PI / 3) + 1) / 2;
     ref.current.position.x = startX + (endX - startX) * t;
   });
   return (
-    <mesh ref={ref} position={[0, 2, 0]} rotation={[0, Math.PI / 2, 0]}>
-      <planeGeometry args={[15, 5]} />
+    <mesh ref={ref} position={[0, 8, 0]} rotation={[0, Math.PI / 2, 0]}>
+      <planeGeometry args={[50, 16]} />
       <meshBasicMaterial color="#22d3ee" transparent opacity={0.04} side={THREE.DoubleSide} />
     </mesh>
   );
@@ -235,8 +235,8 @@ function Building3D({ b }: { b: Bldg }) {
   const d = b.h * SCALE;
   const [cx, , cz] = svgTo3D(b.x + b.w / 2, b.y + b.h / 2);
 
-  const wallColor = isBack ? "#0c4a6e" : "#334155";
-  const roofColor = isBack ? "#0e7490" : "#475569";
+  const wallColor = isBack ? "#155e75" : "#475569";
+  const roofColor = isBack ? "#0891b2" : "#64748b";
   const heat = isBack ? heatColor(b.intensity / 100) : null;
 
   const edgeRef = useRef<THREE.Mesh>(null);
@@ -250,26 +250,25 @@ function Building3D({ b }: { b: Bldg }) {
   return (
     <group position={[cx, GROUND_Y + h / 2, cz]}>
       {/* body */}
-      <mesh castShadow receiveShadow>
+      <mesh>
         <boxGeometry args={[w, h, d]} />
-        <meshStandardMaterial
+        <meshBasicMaterial
           color={wallColor}
-          transparent opacity={0.85}
-          roughness={0.7} metalness={0.1}
+          transparent opacity={0.9}
         />
       </mesh>
 
       {/* roof slab */}
-      <mesh position={[0, h / 2 + 0.04, 0]} castShadow>
+      <mesh position={[0, h / 2 + 0.04, 0]}>
         <boxGeometry args={[w + 0.06, 0.08, d + 0.06]} />
-        <meshStandardMaterial color={roofColor} roughness={0.5} metalness={0.2} />
+        <meshBasicMaterial color={roofColor} />
       </mesh>
 
       {/* floor separators */}
       {b.floors > 1 && Array.from({ length: b.floors - 1 }, (_, i) => (
         <mesh key={i} position={[0, -h / 2 + (i + 1) * FLOOR_H, 0]}>
           <boxGeometry args={[w + 0.02, 0.03, d + 0.02]} />
-          <meshStandardMaterial color={roofColor} transparent opacity={0.5} />
+          <meshBasicMaterial color={roofColor} transparent opacity={0.6} />
         </mesh>
       ))}
 
@@ -283,7 +282,7 @@ function Building3D({ b }: { b: Bldg }) {
 
       {/* heat light (high intensity) */}
       {isBack && b.intensity > 50 && (
-        <pointLight color={heat!.getStyle()} intensity={b.intensity * 0.02} distance={3} position={[0, h / 2, 0]} />
+        <pointLight color={heat!.getStyle()} intensity={b.intensity * 0.03} distance={6} position={[0, h / 2, 0]} />
       )}
 
       {/* floating dots */}
@@ -307,22 +306,22 @@ function Watchtower3D({ pos }: { pos: [number, number, number] }) {
   return (
     <group position={pos}>
       {/* tower body */}
-      <mesh position={[0, 1.25, 0]} castShadow>
-        <boxGeometry args={[0.5, 2.5, 0.5]} />
-        <meshStandardMaterial color="#1e3a5f" transparent opacity={0.9} />
+      <mesh position={[0, 2, 0]}>
+        <boxGeometry args={[1.5, 4, 1.5]} />
+        <meshBasicMaterial color="#1e3a5f" transparent opacity={0.9} />
       </mesh>
       {/* beacon dome */}
-      <mesh position={[0, 2.6, 0]}>
-        <sphereGeometry args={[0.12, 16, 16]} />
+      <mesh position={[0, 4.2, 0]}>
+        <sphereGeometry args={[0.3, 16, 16]} />
         <meshBasicMaterial color="#f87171" />
       </mesh>
       {/* glow ring */}
-      <mesh ref={ref} position={[0, 2.6, 0]}>
-        <sphereGeometry args={[0.25, 16, 16]} />
+      <mesh ref={ref} position={[0, 4.2, 0]}>
+        <sphereGeometry args={[0.6, 16, 16]} />
         <meshBasicMaterial color="#f87171" transparent opacity={0.3} />
       </mesh>
       {/* point light */}
-      <pointLight color="#f87171" intensity={0.5} distance={3} position={[0, 2.6, 0]} />
+      <pointLight color="#f87171" intensity={1} distance={8} position={[0, 4.2, 0]} />
     </group>
   );
 }
@@ -345,42 +344,42 @@ function Scene() {
       <directionalLight position={[-10, 8, -5]} intensity={0.25} color="#60a5fa" />
 
       {/* ground */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y - 0.01, 0]} receiveShadow>
-        <planeGeometry args={[40, 40]} />
-        <meshStandardMaterial color="#080e1a" />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_Y - 0.01, 0]}>
+        <planeGeometry args={[120, 120]} />
+        <meshBasicMaterial color="#080e1a" />
       </mesh>
 
       {/* ground grid */}
-      <gridHelper args={[40, 80, "#0e2a47", "#0a1e36"]} position={[0, GROUND_Y, 0]} />
+      <gridHelper args={[120, 240, "#0e2a47", "#0a1e36"]} position={[0, GROUND_Y, 0]} />
 
       {/* perimeter walls */}
       <group>
         {/* north */}
-        <mesh position={[wx, WALL_H / 2, wz - wd / 2]} castShadow>
-          <boxGeometry args={[ww, WALL_H, 0.1]} />
-          <meshStandardMaterial color="#1e40af" transparent opacity={0.35} />
+        <mesh position={[wx, WALL_H / 2, wz - wd / 2]}>
+          <boxGeometry args={[ww, WALL_H, 0.3]} />
+          <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
         {/* south */}
-        <mesh position={[wx, WALL_H / 2, wz + wd / 2]} castShadow>
-          <boxGeometry args={[ww, WALL_H, 0.1]} />
-          <meshStandardMaterial color="#1e40af" transparent opacity={0.35} />
+        <mesh position={[wx, WALL_H / 2, wz + wd / 2]}>
+          <boxGeometry args={[ww, WALL_H, 0.3]} />
+          <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
         {/* west */}
-        <mesh position={[wx - ww / 2, WALL_H / 2, wz]} castShadow>
-          <boxGeometry args={[0.1, WALL_H, wd]} />
-          <meshStandardMaterial color="#1e40af" transparent opacity={0.35} />
+        <mesh position={[wx - ww / 2, WALL_H / 2, wz]}>
+          <boxGeometry args={[0.3, WALL_H, wd]} />
+          <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
         {/* east */}
-        <mesh position={[wx + ww / 2, WALL_H / 2, wz]} castShadow>
-          <boxGeometry args={[0.1, WALL_H, wd]} />
-          <meshStandardMaterial color="#1e40af" transparent opacity={0.35} />
+        <mesh position={[wx + ww / 2, WALL_H / 2, wz]}>
+          <boxGeometry args={[0.3, WALL_H, wd]} />
+          <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
       </group>
 
       {/* AB gate */}
-      <mesh position={svgTo3D(400, 520, WALL_H / 2)} castShadow>
-        <boxGeometry args={[1.5, WALL_H, 0.15]} />
-        <meshStandardMaterial color="#fbbf24" transparent opacity={0.25} />
+      <mesh position={svgTo3D(400, 520, WALL_H / 2)}>
+        <boxGeometry args={[4, WALL_H, 0.4]} />
+        <meshBasicMaterial color="#fbbf24" transparent opacity={0.3} />
       </mesh>
 
       {/* patrol path */}
@@ -416,10 +415,10 @@ function Scene() {
       {/* orbit controls */}
       <OrbitControls
         enablePan={false}
-        minDistance={5} maxDistance={25}
+        minDistance={15} maxDistance={80}
         minPolarAngle={0.3} maxPolarAngle={Math.PI / 2.2}
         autoRotate autoRotateSpeed={0.4}
-        target={[0, 1, 0]}
+        target={[0, 2, 0]}
       />
     </>
   );
@@ -465,12 +464,11 @@ export default function Prison3D() {
   return (
     <div className="relative w-full h-full rounded-xl overflow-hidden bg-slate-950">
       <Canvas
-        shadows
-        camera={{ position: [12, 14, 12], fov: 35, near: 0.1, far: 100 }}
+        camera={{ position: [40, 50, 40], fov: 35, near: 0.1, far: 300 }}
         style={{ position: "absolute", inset: 0 }}
-        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.2 }}
+        gl={{ antialias: true }}
       >
-        <fog attach="fog" args={["#070b14", 20, 40]} />
+        {/* fog removed for clarity */}
         <Scene />
       </Canvas>
       <HudOverlay />

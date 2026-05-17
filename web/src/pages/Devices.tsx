@@ -122,13 +122,6 @@ export default function Devices() {
 
       {/* 页头 */}
       <header className="flex justify-between items-center">
-        <div>
-          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">系统管理 / 设备</p>
-          <h2 className="text-title font-bold tracking-tight">设备与识别中心</h2>
-          <p className="text-body-sm text-on-surface-variant mt-0.5">
-            管理 {cameras.length} 台设备 · {onlineCount} 台在线
-          </p>
-        </div>
         <button
           onClick={() => { setEditId(null); setForm({ name: "", type: "rtsp", address: "", user: "", password: "" }); setShowModal(true); }}
           className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm hover:shadow-md transition-all"

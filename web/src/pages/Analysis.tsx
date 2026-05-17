@@ -11,7 +11,7 @@ import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
 import {
-  useMockAlerts, useMockSystemStatus, useMockStatsSummary,
+  useMockAlerts, useMockSystemStatus,
   useMockTrendData, useMockModelInfo, useMockRegionalStats, useMockFpsStats,
 } from "../lib/useMock";
 import { useToast } from "../components/Toast";
@@ -22,25 +22,32 @@ export default function Analysis() {
   const [timeRange, setTimeRange] = useState<"week" | "month" | "quarter">("week");
   const alerts = useMockAlerts()[0];
   const status = useMockSystemStatus();
-  const stats = useMockStatsSummary();
   const modelInfo = useMockModelInfo();
   const regionalData = useMockRegionalStats();
   const fpsStats = useMockFpsStats();
   const trendDataRaw = useMockTrendData(timeRange);
 
-  const trendData = useMemo(() => {
-    if (!trendDataRaw?.labels) return [];
-    return trendDataRaw.labels.map((label: string, i: number) => ({
-      name: label,
-      alerts: Object.values(trendDataRaw.data).reduce((sum: number, arr: any) => sum + (arr[i] ?? 0), 0),
-    }));
+  // 从 trendData 派生卡片 + 图表，保证数据同步
+  const { trendData, trendTotals } = useMemo(() => {
+    if (!trendDataRaw?.labels) return { trendData: [], trendTotals: {} as Record<string, number> };
+    const totals: Record<string, number> = {};
+    const chart = trendDataRaw.labels.map((label: string, i: number) => {
+      let sum = 0;
+      for (const [key, arr] of Object.entries(trendDataRaw.data)) {
+        const val = (arr as number[])[i] ?? 0;
+        sum += val;
+        totals[key] = (totals[key] ?? 0) + val;
+      }
+      return { name: label, alerts: sum };
+    });
+    return { trendData: chart, trendTotals: totals };
   }, [trendDataRaw]);
 
-  const totalAlerts = alerts.length;
+  const totalAlerts = Object.values(trendTotals).reduce((s, v) => s + v, 0);
+  const behaviorCounts = trendTotals;
   const confirmedAlerts = alerts.filter(a => a.status === "confirmed").length;
-  const accuracy = totalAlerts > 0 ? (confirmedAlerts / totalAlerts * 100).toFixed(1) : "0";
+  const accuracy = alerts.length > 0 ? (confirmedAlerts / alerts.length * 100).toFixed(1) : "0";
   const avgLatency = fpsStats?.avg ? `${(1000 / fpsStats.avg).toFixed(0)}ms` : "—";
-  const behaviorCounts = stats?.behaviorCounts ?? {};
   const maxVal = Math.max(...Object.values(behaviorCounts as Record<string, number>), 1);
   const maxRegionalValue = regionalData.length > 0 ? Math.max(...regionalData.map(d => d.value)) : 1;
 
@@ -54,11 +61,6 @@ export default function Analysis() {
   return (
     <div className="space-y-5 max-w-[1600px] mx-auto pb-8 animate-fade-in-up">
       <header className="flex justify-between items-end">
-        <div>
-          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">数据中心 / 分析</p>
-          <h2 className="text-title font-bold tracking-tight">分析看板与报表</h2>
-          <p className="text-body-sm text-on-surface-variant mt-0.5">监区安全数据综合分析视图</p>
-        </div>
         <div className="flex gap-2">
           <div className="flex bg-white border border-outline-variant rounded-lg p-0.5">
             {(["week", "month", "quarter"] as const).map(r => (
@@ -156,7 +158,7 @@ export default function Analysis() {
             <div className="col-span-2 space-y-4 border-l border-outline-variant/30 pl-4">
               <div>
                 <p className="text-caption text-outline font-semibold uppercase mb-0.5">总检测数</p>
-                <p className="text-heading font-mono font-bold text-primary tabular-nums">{stats?.total ?? 0}</p>
+                <p className="text-heading font-mono font-bold text-primary tabular-nums">{totalAlerts}</p>
               </div>
               <div>
                 <p className="text-caption text-outline font-semibold uppercase mb-0.5">总告警数</p>

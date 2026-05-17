@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Upload, Zap, Eye, Crosshair,
   TerminalSquare, FileVideo, Image as ImageIcon,
-  CheckCircle2, Loader2, BrainCircuit, Layers, AlertTriangle, Volume2,
+  CheckCircle2, Loader2, Layers, AlertTriangle, Volume2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { apiUpload } from "../lib/api";
@@ -335,13 +335,6 @@ export default function Training() {
     <div className="space-y-5 max-w-[1600px] mx-auto pb-8 animate-fade-in-up">
       {/* 页头 */}
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">AI 中心 / 模型</p>
-          <h1 className="text-title font-bold tracking-tight flex items-center gap-2">
-            <BrainCircuit size={24} className="text-primary" /> 模型识别中心
-          </h1>
-          <p className="text-body-sm text-on-surface-variant mt-0.5">多版本算法比对识别，支持实时行为检测与异常报警</p>
-        </div>
         <div className="flex items-center gap-2 text-caption font-mono text-on-surface-variant bg-surface-container-high px-3 py-1.5 rounded-lg">
           <span>RTX 5060 · CUDA 12.8</span>
         </div>

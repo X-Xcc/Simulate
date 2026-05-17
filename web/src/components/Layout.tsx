@@ -2,24 +2,24 @@ import { useNavigate, useLocation, Outlet, NavLink } from "react-router-dom";
 import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Video, AlertTriangle, FolderLock, Settings2,
-  BarChart3, History, Wrench, BrainCircuit, Search, Bell,
-  Sun, Moon, UserCircle, Shield, LogOut, Cpu, PencilRuler,
+  BarChart3, History, Wrench, Search, Bell,
+  Sun, Moon, UserCircle, Shield, LogOut, Cpu, ChevronDown,
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { useAuth } from "../lib/auth";
 import { cn } from "../lib/utils";
+import { fetchCameras } from "../services/dataService";
+import type { Camera } from "../types";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "控制面板", path: "/dashboard" },
-  { icon: Video, label: "实时监控", path: "/monitor" },
-  { icon: AlertTriangle, label: "AI告警中心", path: "/alerts" },
+  { icon: Video, label: "实时监控", path: "/monitor", hasSubmenu: true },
+  { icon: AlertTriangle, label: "告警中心", path: "/alerts" },
   { icon: FolderLock, label: "视频证据", path: "/evidence" },
   { icon: Settings2, label: "设备管理", path: "/devices" },
   { icon: BarChart3, label: "数据分析", path: "/analysis" },
   { icon: History, label: "审计日志", path: "/audit" },
-  { icon: BrainCircuit, label: "模型训练", path: "/training" },
   { icon: Cpu, label: "模型微调", path: "/model-training" },
-  { icon: PencilRuler, label: "数据标注", path: "/annotation" },
   { icon: Wrench, label: "运维中心", path: "/maintenance" },
 ];
 
@@ -30,11 +30,25 @@ export default function Layout() {
   const { logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [monitorOpen, setMonitorOpen] = useState(location.pathname === "/monitor");
 
   useEffect(() => {
     const iv = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(iv);
   }, []);
+
+  // 加载摄像头列表
+  useEffect(() => {
+    fetchCameras().then(setCameras).catch(() => {});
+    const iv = setInterval(() => fetchCameras().then(setCameras).catch(() => {}), 10000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // 进入 monitor 页面自动展开
+  useEffect(() => {
+    if (location.pathname === "/monitor") setMonitorOpen(true);
+  }, [location.pathname]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-on-surface select-none">
@@ -90,16 +104,54 @@ export default function Layout() {
         <aside className="w-[220px] flex flex-col bg-dark-sidebar border-r border-white/[0.06] shrink-0 py-4">
           <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto custom-scrollbar">
             {menuItems.map((item) => (
-              <NavLink key={item.path} to={item.path}
-                className={({ isActive }) => cn(
-                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 font-semibold text-body-sm group",
-                  isActive
-                    ? "bg-primary/15 text-primary border border-primary/20"
-                    : "text-white/40 hover:bg-white/[0.04] hover:text-white/70 border border-transparent"
-                )}>
-                <item.icon size={18} className={cn("transition-colors", location.pathname === item.path ? "text-primary" : "text-white/30 group-hover:text-white/50")} />
-                <span>{item.label}</span>
-              </NavLink>
+              <div key={item.path}>
+                {item.hasSubmenu ? (
+                  <>
+                    <button onClick={() => { setMonitorOpen(!monitorOpen); navigate(item.path); }}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 font-semibold text-body-sm group",
+                        location.pathname === item.path
+                          ? "bg-primary/15 text-primary border border-primary/20"
+                          : "text-white/40 hover:bg-white/[0.04] hover:text-white/70 border border-transparent"
+                      )}>
+                      <item.icon size={18} className={cn("transition-colors", location.pathname === item.path ? "text-primary" : "text-white/30 group-hover:text-white/50")} />
+                      <span className="flex-1 text-left">{item.label}</span>
+                      <ChevronDown size={14} className={cn("transition-transform", monitorOpen && "rotate-180")} />
+                    </button>
+                    {monitorOpen && (
+                      <div className="ml-5 mt-0.5 space-y-0.5 border-l border-white/[0.08] pl-2">
+                        {cameras.map((cam, i) => (
+                          <button key={cam.id}
+                            onClick={() => navigate(`/monitor?cam=${cam.id}`)}
+                            className={cn(
+                              "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-body-sm transition-all",
+                              location.search.includes(`cam=${cam.id}`)
+                                ? "bg-primary/10 text-primary font-semibold"
+                                : "text-white/35 hover:text-white/60 hover:bg-white/[0.03]"
+                            )}>
+                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", cam.status === "online" ? "bg-success-green" : "bg-outline")} />
+                            <span>视频{i + 1}</span>
+                          </button>
+                        ))}
+                        {cameras.length === 0 && (
+                          <span className="block px-2 py-1.5 text-caption text-white/20">暂无设备</span>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <NavLink to={item.path}
+                    className={({ isActive }) => cn(
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 font-semibold text-body-sm group",
+                      isActive
+                        ? "bg-primary/15 text-primary border border-primary/20"
+                        : "text-white/40 hover:bg-white/[0.04] hover:text-white/70 border border-transparent"
+                    )}>
+                    <item.icon size={18} className={cn("transition-colors", location.pathname === item.path ? "text-primary" : "text-white/30 group-hover:text-white/50")} />
+                    <span>{item.label}</span>
+                  </NavLink>
+                )}
+              </div>
             ))}
           </nav>
 

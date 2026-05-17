@@ -1430,9 +1430,11 @@ class SecurityMonitor:
             test_image = np.zeros((frame_height, frame_width, 3), dtype=np.uint8)
         else:
             # USB / RTSP 模式
+            print(f"[{cam_name}] 正在初始化视频源 {source}...", flush=True)
             use_static, cap, frame_width, frame_height = self._init_video_source(source)
+            print(f"[{cam_name}] 初始化完成: use_static={use_static}, cap={cap is not None}, {frame_width}x{frame_height}", flush=True)
             if use_static:
-                print(f"[{cam_name}] 摄像头连接失败，跳过该摄像头")
+                print(f"[{cam_name}] 摄像头连接失败，跳过该摄像头", flush=True)
                 return
 
         if use_static:
@@ -1468,6 +1470,7 @@ class SecurityMonitor:
         window_name = f"Camera {cam_str}"
 
         try:
+            print(f"[{cam_name}] 进入主循环, cap={cap is not None}, use_static={use_static}", flush=True)
             while not self._stop_event.is_set():
                 # 1. 读取帧
                 if cam_type == "http_snapshot" and not use_static:

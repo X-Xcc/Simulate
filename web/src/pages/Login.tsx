@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, Lock, User, ShieldCheck, Shield, Key, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
+import { login as apiLogin } from "../services/dataService";
 
 interface LoginProps {
   onLogin: () => void;
@@ -18,20 +19,25 @@ export default function Login({ onLogin }: LoginProps) {
     if (!username || !password) return;
     setLoading(true);
     setError(null);
-    // Mock login — always succeed
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await apiLogin(username, password);
       onLogin();
-    }, 600);
+    } catch (err: any) {
+      setError(err.message || "登录失败");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const quickLogin = (user: string, pass: string) => {
     setUsername(user);
     setPassword(pass);
-    setTimeout(() => {
-      setLoading(true);
-      setTimeout(() => { setLoading(false); onLogin(); }, 400);
-    }, 100);
+    setLoading(true);
+    setError(null);
+    apiLogin(user, pass)
+      .then(() => onLogin())
+      .catch(err => setError(err.message || "登录失败"))
+      .finally(() => setLoading(false));
   };
 
   return (

@@ -12,7 +12,7 @@ import {
   TrendingUp,
   ChevronRight,
 } from "lucide-react";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import {
@@ -28,9 +28,12 @@ import {
   Cell,
 } from "recharts";
 import { cn } from "../lib/utils";
-import { subscribeToAlerts, subscribeToSystemStatus, fetchStatsSummary, fetchTrendData, exportCsv } from "../services/dataService";
-import { Alert, SystemStatus, AlertType, StatsSummary } from "../types";
-import { ErrorBanner } from "../components/LoadingError";
+import { exportCsv } from "../services/dataService";
+import { AlertType } from "../types";
+import {
+  useMockAlerts, useMockSystemStatus, useMockStatsSummary,
+  useMockTrendData,
+} from "../lib/useMock";
 
 /* ── palette ── */
 const C = {
@@ -97,44 +100,25 @@ function ChartTooltip({ active, payload, label }: any) {
 export default function Dashboard() {
   const toast = useToast();
   const navigate = useNavigate();
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [stats, setStats] = useState<StatsSummary | null>(null);
-  const [trendData, setTrendData] = useState<Record<string, any>[]>([]);
-  const [trendKeys, setTrendKeys] = useState<string[]>([]);
+  const [alerts] = useMockAlerts();
+  const status = useMockSystemStatus();
+  const stats = useMockStatsSummary();
   const [trendRange, setTrendRange] = useState<"day" | "week" | "month">("week");
-  const [error, setError] = useState<string | null>(null);
-  const trendAbortRef = useRef<AbortController | null>(null);
+  const trendDataRaw = useMockTrendData(trendRange);
 
-  const loadTrend = (range: "day" | "week" | "month") => {
-    trendAbortRef.current?.abort();
-    setTrendRange(range);
-    const ac = new AbortController();
-    trendAbortRef.current = ac;
-    fetchTrendData(range, ac.signal).then(data => {
-      if (data?.labels && data?.data) {
-        const keys = Object.keys(data.data);
-        setTrendKeys(keys);
-        setTrendData(data.labels.map((label: string, i: number) => {
-          const point: Record<string, any> = { name: label };
-          for (const key of keys) point[key] = data.data[key][i] ?? 0;
-          return point;
-        }));
-      }
-      setError(null);
-    }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
-    return () => ac.abort();
-  };
-
-  useEffect(() => {
-    const ac = new AbortController();
-    const s = ac.signal;
-    const unsubAlerts = subscribeToAlerts(setAlerts);
-    const unsubStatus = subscribeToSystemStatus(setStatus);
-    fetchStatsSummary(s).then(s => { setStats(s); setError(null); }).catch(err => { if (err.name !== 'AbortError') { setError(err.message); console.error(err); } });
-    const trendCleanup = loadTrend("week");
-    return () => { ac.abort(); unsubAlerts(); unsubStatus(); trendCleanup(); };
-  }, []);
+  // 趋势数据转换 + 派生分布
+  const { trendData, trendKeys } = useMemo(() => {
+    if (!trendDataRaw?.labels) return { trendData: [], trendKeys: [] as string[] };
+    const keys = Object.keys(trendDataRaw.data);
+    return {
+      trendKeys: keys,
+      trendData: trendDataRaw.labels.map((label: string, i: number) => {
+        const point: Record<string, any> = { name: label };
+        for (const key of keys) point[key] = trendDataRaw.data[key][i] ?? 0;
+        return point;
+      }),
+    };
+  }, [trendDataRaw]);
 
   const behaviorCounts = stats?.behaviorCounts ?? {};
   const compareData = stats?.compare ?? null;
@@ -175,10 +159,6 @@ export default function Dashboard() {
     <div className="space-y-6 max-w-[1600px] mx-auto pb-8 px-1">
       {/* header */}
       <header className="flex justify-between items-end pt-2">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">控制台概览</h1>
-          <p className="text-gray-400 text-sm mt-0.5">实时监控数据与系统运行分析</p>
-        </div>
         <div className="flex gap-2">
           <button onClick={() => { exportCsv(); toast.show("报告已导出成功"); }}
             className="h-9 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-blue-700 transition-colors shadow-sm active:scale-95 cursor-pointer">
@@ -186,8 +166,6 @@ export default function Dashboard() {
           </button>
         </div>
       </header>
-
-      {error && <ErrorBanner message={error} onRetry={() => { setError(null); loadTrend(trendRange); }} />}
 
       {/* metric cards */}
       <div className="grid grid-cols-4 gap-4">
@@ -239,7 +217,7 @@ export default function Dashboard() {
               {/* range toggle */}
               <div className="flex bg-gray-100 rounded-lg p-0.5">
                 {RANGE_OPTIONS.map(opt => (
-                  <button key={opt.key} onClick={() => loadTrend(opt.key)}
+                  <button key={opt.key} onClick={() => setTrendRange(opt.key)}
                     className={cn(
                       "px-3 py-1 text-xs font-medium rounded-md transition-all cursor-pointer",
                       trendRange === opt.key

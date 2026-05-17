@@ -6,7 +6,6 @@ import {
   Terminal,
   CloudDownload,
   Clock,
-  Wrench,
   Server,
   Cpu,
   HardDrive,
@@ -52,13 +51,6 @@ export default function Maintenance() {
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 h-full flex flex-col min-h-0 animate-fade-in-up">
       <header className="flex justify-between items-center shrink-0">
-        <div>
-          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">系统管理 / 运维</p>
-          <h2 className="text-title font-bold tracking-tight flex items-center gap-2">
-            <Wrench size={22} className="text-primary" /> 运维中心与监控
-          </h2>
-          <p className="text-body-sm text-on-surface-variant mt-0.5">实时系统物理资源监控与服务节点健康度</p>
-        </div>
         <button onClick={() => toast.show("数据已刷新")} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
           <RefreshCcw size={15} /> 全局刷新
         </button>

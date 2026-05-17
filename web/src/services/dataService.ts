@@ -1,4 +1,4 @@
-import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse } from "../types";
+import { Camera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse, AnnotationData, ImageItem } from "../types";
 import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
 
 // --- Camera Config ---
@@ -319,4 +319,48 @@ function transformSystemMetrics(raw: any): SystemStatus {
       health: s.health ?? (s.status === "Running" ? "healthy" : "warning"),
     })),
   };
+}
+
+// --- Annotation ---
+
+export async function fetchAnnotationImages(signal?: AbortSignal): Promise<ImageItem[]> {
+  return apiGet("/api/annotations/images", signal);
+}
+
+export async function fetchAnnotation(imageFilename: string, signal?: AbortSignal): Promise<AnnotationData | null> {
+  try {
+    return await apiGet(`/api/annotations/${encodeURIComponent(imageFilename)}`, signal);
+  } catch (e: any) {
+    if (e.message?.includes("标注不存在")) return null;
+    throw e;
+  }
+}
+
+export async function saveAnnotation(imageFilename: string, data: Partial<AnnotationData>): Promise<AnnotationData> {
+  return apiPut(`/api/annotations/${encodeURIComponent(imageFilename)}`, data);
+}
+
+export async function deleteAnnotation(imageFilename: string): Promise<void> {
+  await apiDelete(`/api/annotations/${encodeURIComponent(imageFilename)}`);
+}
+
+export function exportAnnotation(format: "yolo" | "coco" = "yolo"): void {
+  apiDownload(`/api/annotations/export?format=${format}`);
+}
+
+export async function uploadAnnotationImage(file: File): Promise<{ filename: string }> {
+  const token = localStorage.getItem("auth_token");
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/annotations/upload", {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "上传失败" }));
+    throw new Error(err.error || "上传失败");
+  }
+  const data = await res.json();
+  return data.data;
 }

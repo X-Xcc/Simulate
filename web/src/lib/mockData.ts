@@ -39,18 +39,9 @@ export function seededRandom(seed: number) {
 // ── 摄像头数据 ───────────────────────────────────────────────────────────────
 
 const CAMERA_NAMES = [
-  { name: "A区大门", type: "rtsp" as const, address: "rtsp://192.168.1.101:554/stream1" },
-  { name: "A区走廊", type: "rtsp" as const, address: "rtsp://192.168.1.102:554/stream1" },
-  { name: "B区监舍", type: "rtsp" as const, address: "rtsp://192.168.1.103:554/stream1" },
-  { name: "B区操场", type: "rtsp" as const, address: "rtsp://192.168.1.104:554/stream1" },
-  { name: "C区食堂", type: "rtsp" as const, address: "rtsp://192.168.1.105:554/stream1" },
-  { name: "C区车间", type: "rtsp" as const, address: "rtsp://192.168.1.106:554/stream1" },
-  { name: "D区围墙", type: "http_snapshot" as const, address: "http://192.168.1.107/snapshot.jpg" },
-  { name: "D区岗哨", type: "http_snapshot" as const, address: "http://192.168.1.108/snapshot.jpg" },
-  { name: "E区通道", type: "rtsp" as const, address: "rtsp://192.168.1.109:554/stream1" },
-  { name: "E区会见室", type: "rtsp" as const, address: "rtsp://192.168.1.110:554/stream1" },
-  { name: "F区医疗室", type: "rtsp" as const, address: "rtsp://192.168.1.111:554/stream1" },
-  { name: "F区图书室", type: "rtsp" as const, address: "rtsp://192.168.1.112:554/stream1" },
+  { name: "视频1", type: "rtsp" as const, address: "rtsp://192.168.1.101:554/stream1" },
+  { name: "视频2", type: "rtsp" as const, address: "rtsp://192.168.1.102:554/stream1" },
+  { name: "视频3", type: "rtsp" as const, address: "rtsp://192.168.1.103:554/stream1" },
 ];
 
 export function generateCameras(): Camera[] {
@@ -59,9 +50,9 @@ export function generateCameras(): Camera[] {
     name: cam.name,
     type: cam.type,
     address: cam.address,
-    status: i < 10 ? CameraStatus.ONLINE : CameraStatus.OFFLINE,
+    status: CameraStatus.ONLINE,
     streamUrl: `/video_feed?cam=${i}`,
-    personCount: i < 10 ? randomInt(1, 15) : 0,
+    personCount: randomInt(1, 15),
   }));
 }
 
@@ -74,7 +65,7 @@ const ALERT_TYPES: { type: AlertType; level: AlertLevel }[] = [
   { type: AlertType.ABSENCE, level: AlertLevel.INFO },
 ];
 
-const CAMERAS_FOR_ALERTS = CAMERA_NAMES.slice(0, 10);
+const CAMERAS_FOR_ALERTS = CAMERA_NAMES;
 
 export function generateAlerts(count = 50): Alert[] {
   return Array.from({ length: count }, (_, i) => {
@@ -141,8 +132,8 @@ export function generateSystemStatus(): SystemStatus {
     version: "v3.2.1",
     lastUpdate: new Date().toLocaleString("zh-CN"),
     engine: "YOLOv8n-pose",
-    onlineDevices: 10,
-    totalDevices: 12,
+    onlineDevices: 3,
+    totalDevices: 3,
     activeModels: 2,
     totalModels: 4,
     dataDirSizeMb: randomInt(800, 3200),

@@ -207,14 +207,6 @@ export default function ModelTraining() {
 
   return (
     <div className="space-y-5 max-w-[1600px] mx-auto pb-8 animate-fade-in-up">
-      {/* 页头 */}
-      <div>
-        <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">AI 中心 / 模型微调</p>
-        <h1 className="text-title font-bold tracking-tight flex items-center gap-2">
-          <BrainCircuit size={24} className="text-primary" /> 模型微调训练
-        </h1>
-        <p className="text-body-sm text-on-surface-variant mt-0.5">上传场景素材，配置微调参数，启动 YOLOv8 姿态估计模型训练</p>
-      </div>
 
       <div className="flex flex-col lg:flex-row gap-5">
         {/* 左侧面板 */}

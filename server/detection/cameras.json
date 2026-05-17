@@ -1,0 +1,8 @@
+{
+  "cameras" : [ {
+    "id" : "0",
+    "type" : "usb",
+    "address" : 0,
+    "name" : "camera0"
+  } ]
+}

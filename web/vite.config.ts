@@ -4,19 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
 
 export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-    {
-      name: 'multi-page-redirect',
-      configureServer(server) {
-        server.middlewares.use((req, _res, next) => {
-          if (req.url === '/annotation') req.url = '/annotation.html';
-          next();
-        });
-      },
-    },
-  ],
+  plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
     proxy: {
@@ -30,6 +18,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         annotation: resolve(__dirname, 'annotation.html'),
+        training: resolve(__dirname, 'training.html'),
       },
     },
   },

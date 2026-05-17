@@ -53,13 +53,6 @@ export default function Alerts() {
     <div className="h-full flex flex-col gap-4 overflow-hidden animate-fade-in-up">
       {/* 页头 */}
       <section className="flex items-center justify-between shrink-0">
-        <div>
-          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">监控中心 / 告警</p>
-          <h2 className="text-title font-bold tracking-tight">AI 告警中心</h2>
-          <p className="text-body-sm text-on-surface-variant mt-0.5">
-            {pendingCount} 条待处理 · {criticalCount} 条高危告警
-          </p>
-        </div>
         <div className="flex gap-2">
           <select
             value={filterType}

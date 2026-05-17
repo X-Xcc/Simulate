@@ -69,11 +69,6 @@ export default function Evidence() {
     <div className="space-y-4 flex flex-col h-full overflow-hidden animate-fade-in-up">
       {/* 页头 */}
       <section className="flex justify-between items-end shrink-0">
-        <div>
-          <p className="text-caption font-semibold text-outline uppercase tracking-widest mb-1">系统管理 / 证据</p>
-          <h2 className="text-title font-bold tracking-tight">视频证据与调阅中心</h2>
-          <p className="text-body-sm text-on-surface-variant mt-0.5">异常截图自动关联、按条件筛选、一键定位</p>
-        </div>
         <button onClick={() => toast.show("证据报告已导出")} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
           <Download size={15} /> 导出报告
         </button>

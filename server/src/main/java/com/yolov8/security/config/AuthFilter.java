@@ -25,14 +25,16 @@ public class AuthFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
     private static final String HEADER = "X-API-Key";
     private static final String[] PUBLIC_PATHS = {
-        "/", "/index",
+        "/", "/index", "/annotation", "/annotation.html",
         "/static/**", "/error", "/api/login", "/api/cleanup",
         "/video_feed", "/api/images/**",
         "/dashboard", "/monitor", "/alerts", "/devices",
         "/evidence", "/analysis", "/maintenance", "/audit",
         "/monitor/**", "/assets/**",
         "/api/detection/start", "/api/detection/stop", "/api/detection/status",
-        "/api/upload_training_resource"
+        "/api/upload_training_resource",
+        "/api/annotations/**",
+        "/api/update_frame", "/api/model_info", "/api/gpu_status"
     };
 
     // GET-only public API paths (monitor dashboard data)

@@ -16,4 +16,9 @@ public class PageController {
     public String spaIndex() {
         return "forward:/index.html";
     }
+
+    @GetMapping("/annotation")
+    public String annotationPage() {
+        return "forward:/annotation.html";
+    }
 }
