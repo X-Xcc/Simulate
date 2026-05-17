@@ -338,6 +338,7 @@ def _load_cameras_config_fallback():
                 "type": cam.get("type", "usb"),
                 "address": cam.get("address", 0),
                 "name": cam.get("name", ""),
+                "go2rtc_id": cam.get("go2rtcId"),
             })
         return cameras
     except Exception as e:
@@ -1222,7 +1223,7 @@ class SecurityMonitor:
 
         # 从 Java API 加载摄像头配置，回退到本地 cameras.json
         self.config.SOURCES = load_cameras_config()
-        self._check_go2rtc()
+        self._go2rtc_available = self._check_go2rtc()
         if not self.config.SOURCES:
             print("未找到 cameras.json 或配置为空，回退到 USB 摄像头自动检测...")
             usb_cams = detect_cameras(max_index=5)
