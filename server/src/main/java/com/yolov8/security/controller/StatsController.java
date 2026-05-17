@@ -646,16 +646,18 @@ public class StatsController {
             }
 
             // 获取摄像头列表
-            List<String> cameraIds = null;
+            final List<String> filterIds;
             Object rawCameraIds = body.get("cameraIds");
             if (rawCameraIds instanceof List<?> rawList) {
-                cameraIds = rawList.stream().filter(String.class::isInstance).map(String.class::cast).collect(Collectors.toList());
+                filterIds = rawList.stream().filter(String.class::isInstance).map(String.class::cast).collect(Collectors.toList());
+            } else {
+                filterIds = java.util.List.of();
             }
             List<CameraConfigService.Camera> allCams = cameraConfigService.getAllCameras();
             List<CameraConfigService.Camera> targets;
-            if (cameraIds != null && !cameraIds.isEmpty()) {
+            if (!filterIds.isEmpty()) {
                 targets = allCams.stream()
-                    .filter(c -> cameraIds.contains(c.getId()))
+                    .filter(c -> filterIds.contains(c.getId()))
                     .collect(Collectors.toList());
             } else {
                 targets = allCams;
