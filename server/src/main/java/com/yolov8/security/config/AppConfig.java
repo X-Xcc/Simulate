@@ -23,6 +23,9 @@ public class AppConfig {
     // Qwen VL configuration
     private QwenVLConfig qwenVl = new QwenVLConfig();
 
+    // go2rtc configuration
+    private Go2rtcConfig go2rtc = new Go2rtcConfig();
+
     // Demo mode
     private boolean demoMode = false;
     
@@ -95,7 +98,15 @@ public class AppConfig {
     public void setDemoMode(boolean demoMode) {
         this.demoMode = demoMode;
     }
-    
+
+    public Go2rtcConfig getGo2rtc() {
+        return go2rtc;
+    }
+
+    public void setGo2rtc(Go2rtcConfig go2rtc) {
+        this.go2rtc = go2rtc;
+    }
+
     public static class FileConfig {
         private String uploadDir;
         private String videoDir;
@@ -220,5 +231,27 @@ public class AppConfig {
 
         public int getRetentionDays() { return retentionDays; }
         public void setRetentionDays(int retentionDays) { this.retentionDays = retentionDays; }
+    }
+
+    public static class Go2rtcConfig {
+        private String binaryPath = "bin/go2rtc.exe";
+        private String apiHost = "http://127.0.0.1:1984";
+        private String rtspHost = "rtsp://127.0.0.1:8554";
+        private int apiPort = 1984;
+        private int rtspPort = 8554;
+        private int webrtcPort = 8555;
+
+        public String getBinaryPath() { return binaryPath; }
+        public void setBinaryPath(String binaryPath) { this.binaryPath = binaryPath; }
+        public String getApiHost() { return apiHost; }
+        public void setApiHost(String apiHost) { this.apiHost = apiHost; }
+        public String getRtspHost() { return rtspHost; }
+        public void setRtspHost(String rtspHost) { this.rtspHost = rtspHost; }
+        public int getApiPort() { return apiPort; }
+        public void setApiPort(int apiPort) { this.apiPort = apiPort; }
+        public int getRtspPort() { return rtspPort; }
+        public void setRtspPort(int rtspPort) { this.rtspPort = rtspPort; }
+        public int getWebrtcPort() { return webrtcPort; }
+        public void setWebrtcPort(int webrtcPort) { this.webrtcPort = webrtcPort; }
     }
 }

@@ -43,7 +43,7 @@ public class AuthFilter extends OncePerRequestFilter {
         "/api/camera_config", "/api/cameras",
         "/api/model_info", "/api/ai/status", "/api/system_metrics",
         "/api/system_info", "/api/devices", "/api/me",
-        "/api/alerts", "/api/audit_logs", "/api/sse/stream"
+        "/api/alerts", "/api/audit_logs", "/api/sse/stream", "/api/streams/status"
     };
 
     @Value("${app.api-key:}")

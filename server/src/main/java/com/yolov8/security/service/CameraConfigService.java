@@ -24,12 +24,15 @@ public class CameraConfigService {
     private static final Logger log = LoggerFactory.getLogger(CameraConfigService.class);
     private final CameraRepository repository;
     private final ObjectMapper objectMapper;
+    private final Go2rtcService go2rtcService;
     private final Path camerasJsonPath;
     private final AtomicBoolean migrated = new AtomicBoolean(false);
 
-    public CameraConfigService(CameraRepository repository, ObjectMapper objectMapper, AppConfig appConfig) {
+    public CameraConfigService(CameraRepository repository, ObjectMapper objectMapper,
+                               Go2rtcService go2rtcService, AppConfig appConfig) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.go2rtcService = go2rtcService;
         this.camerasJsonPath = Paths.get(appConfig.getPython().getScriptPath()).getParent().resolve("cameras.json");
     }
 
@@ -63,6 +66,14 @@ public class CameraConfigService {
         }
         String go2rtcId = "cam_" + camera.getId();
         repository.insert(camera, go2rtcId);
+        // 联动 go2rtc: rtsp 类型摄像头自动添加流
+        if ("rtsp".equals(camera.getType()) && go2rtcService.isApiAvailable()) {
+            try {
+                go2rtcService.addStream(go2rtcId, String.valueOf(camera.getAddress()));
+            } catch (Exception e) {
+                log.warn("go2rtc 添加流失败 (摄像头已保存): {}", e.getMessage());
+            }
+        }
         return camera;
     }
 
@@ -82,7 +93,17 @@ public class CameraConfigService {
     public boolean deleteCamera(String id) {
         boolean exists = repository.existsById(id);
         if (exists) {
+            // 删除前先获取 go2rtcId 用于清理流
+            String go2rtcId = repository.findGo2rtcIdById(id);
             repository.deleteById(id);
+            // 联动 go2rtc 删除流
+            if (go2rtcId != null && go2rtcService.isApiAvailable()) {
+                try {
+                    go2rtcService.removeStream(go2rtcId);
+                } catch (Exception e) {
+                    log.warn("go2rtc 删除流失败 (摄像头已删除): {}", e.getMessage());
+                }
+            }
         }
         return exists;
     }
