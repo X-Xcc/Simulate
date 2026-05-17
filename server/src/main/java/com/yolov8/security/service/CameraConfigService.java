@@ -87,6 +87,18 @@ public class CameraConfigService {
         }
         camera.setId(id);
         repository.update(camera);
+        // 同步 go2rtc 流
+        if ("rtsp".equals(camera.getType()) && go2rtcService.isApiAvailable()) {
+            String go2rtcId = repository.findGo2rtcIdById(id);
+            if (go2rtcId != null) {
+                try {
+                    go2rtcService.removeStream(go2rtcId);
+                    go2rtcService.addStream(go2rtcId, String.valueOf(camera.getAddress()));
+                } catch (Exception e) {
+                    log.warn("更新 go2rtc 流失败: {}", id, e);
+                }
+            }
+        }
         return camera;
     }
 

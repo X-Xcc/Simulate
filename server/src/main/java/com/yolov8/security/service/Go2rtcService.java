@@ -50,11 +50,13 @@ public class Go2rtcService {
         }
         try {
             Path configPath = binPath.getParent().resolve("go2rtc.yaml");
-            String yaml = String.format(
-                "api:\n  listen: \":%d\"\nrtsp:\n  listen: \":%d\"\nwebrtc:\n  listen: \":%d\"\n",
-                config.getApiPort(), config.getRtspPort(), config.getWebrtcPort()
-            );
-            Files.writeString(configPath, yaml);
+            if (!Files.exists(configPath)) {
+                String yaml = String.format(
+                    "api:\n  listen: \":%d\"\nrtsp:\n  listen: \":%d\"\nwebrtc:\n  listen: \":%d\"\n",
+                    config.getApiPort(), config.getRtspPort(), config.getWebrtcPort()
+                );
+                Files.writeString(configPath, yaml);
+            }
 
             ProcessBuilder pb = new ProcessBuilder(binPath.toString(), "-config", configPath.toString());
             pb.directory(binPath.getParent().toFile());
@@ -84,6 +86,14 @@ public class Go2rtcService {
     public void stopGo2rtc() {
         if (go2rtcProcess != null && go2rtcProcess.isAlive()) {
             go2rtcProcess.destroy();
+            try {
+                if (!go2rtcProcess.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    go2rtcProcess.destroyForcibly();
+                }
+            } catch (InterruptedException e) {
+                go2rtcProcess.destroyForcibly();
+                Thread.currentThread().interrupt();
+            }
             log.info("go2rtc 已停止");
         }
     }
@@ -93,13 +103,16 @@ public class Go2rtcService {
     }
 
     public boolean isApiAvailable() {
+        HttpURLConnection conn = null;
         try {
-            HttpURLConnection conn = (HttpURLConnection) new URL(config.getApiHost() + "/api").openConnection();
+            conn = (HttpURLConnection) new URL(config.getApiHost() + "/api").openConnection();
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(2000);
             return conn.getResponseCode() == 200;
         } catch (Exception e) {
             return false;
+        } finally {
+            if (conn != null) conn.disconnect();
         }
     }
 
@@ -136,29 +149,33 @@ public class Go2rtcService {
     private String apiRequest(String method, String path, String body) throws IOException {
         URL url = new URL(config.getApiHost() + path);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod(method);
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(5000);
-        conn.setRequestProperty("Content-Type", "application/json");
+        try {
+            conn.setRequestMethod(method);
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            conn.setRequestProperty("Content-Type", "application/json");
 
-        if (body != null) {
-            conn.setDoOutput(true);
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(StandardCharsets.UTF_8));
+            if (body != null) {
+                conn.setDoOutput(true);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body.getBytes(StandardCharsets.UTF_8));
+                }
             }
-        }
 
-        int code = conn.getResponseCode();
-        if (code >= 400) {
-            String error = "";
-            try (InputStream is = conn.getErrorStream()) {
-                if (is != null) error = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            int code = conn.getResponseCode();
+            if (code >= 400) {
+                String error = "";
+                try (InputStream is = conn.getErrorStream()) {
+                    if (is != null) error = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+                throw new IOException("go2rtc API " + method + " " + path + " failed: " + code + " " + error);
             }
-            throw new IOException("go2rtc API " + method + " " + path + " failed: " + code + " " + error);
-        }
 
-        try (InputStream is = conn.getInputStream()) {
-            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            try (InputStream is = conn.getInputStream()) {
+                return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        } finally {
+            conn.disconnect();
         }
     }
 }
