@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -386,6 +387,57 @@ public class DetectionService {
             result.put("message", e.getMessage());
             return result;
         }
+    }
+
+    /**
+     * 手动截图：保存 JPEG 帧 + detection JSON。
+     *
+     * @param jpegBytes  go2rtc 快照 JPEG 数据
+     * @param camId      摄像头 ID
+     * @param cameraName 摄像头名称
+     * @param actions    报警类型列表（中文：打架/跌倒/自杀/异常聚集）
+     * @return 生成的 DetectionData
+     */
+    public DetectionData saveManualDetection(byte[] jpegBytes, String camId,
+                                              String cameraName, List<String> actions) throws IOException {
+        String ts = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        long millis = System.currentTimeMillis();
+
+        String frameFilename = "frame_" + millis + "_" + camId + ".jpg";
+        String detectionFilename = "detection_" + millis + "_" + camId + ".json";
+
+        Path uploadDir = Paths.get(appConfig.getFile().getUploadDir());
+        Files.createDirectories(uploadDir);
+
+        // 写入 JPEG（原子写入：temp → rename）
+        Path framePath = uploadDir.resolve(frameFilename);
+        Path tempFrame = uploadDir.resolve(frameFilename + ".tmp");
+        Files.write(tempFrame, jpegBytes);
+        Files.move(tempFrame, framePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+        // 构造 DetectionData
+        DetectionData det = new DetectionData();
+        det.setId("DET_" + millis + "_" + camId);
+        det.setTimestamp(ts);
+        det.setActions(actions);
+        det.setPersonCount(0);
+        det.setCameraId(camId);
+        det.setCameraName(cameraName);
+        det.setImageFilename(frameFilename);
+        det.setFps(0);
+
+        // 写入 JSON（原子写入）
+        Path detPath = uploadDir.resolve(detectionFilename);
+        Path tempDet = uploadDir.resolve(detectionFilename + ".tmp");
+        objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempDet.toFile(), det);
+        Files.move(tempDet, detPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+        // 清缓存，让 DirScan 下次扫描能发现新文件
+        invalidateScanCache();
+
+        log.info("手动截图已保存: {} + {}", frameFilename, detectionFilename);
+        return det;
     }
 
     private DetectionData loadDetectionFile(Path path) {
