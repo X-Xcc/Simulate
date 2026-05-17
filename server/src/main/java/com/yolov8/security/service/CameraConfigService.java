@@ -146,6 +146,9 @@ public class CameraConfigService {
         private String model;
         private String ip;
         private int port = 554;
+        private int channel = 1;
+        private String status = "offline";
+        private boolean enabled = true;
 
         public Camera() {}
 
@@ -169,6 +172,12 @@ public class CameraConfigService {
         public void setIp(String ip) { this.ip = ip; }
         public int getPort() { return port; }
         public void setPort(int port) { this.port = port; }
+        public int getChannel() { return channel; }
+        public void setChannel(int channel) { this.channel = channel; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
         public String getUsername() { return user; }
         public void setUsername(String username) { this.user = username; }
     }

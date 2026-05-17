@@ -30,6 +30,9 @@ public class CameraRepository {
         c.setAddress(rs.getString("type").equals("usb")
                 ? rs.getInt("port")
                 : rs.getString("rtsp_url") != null ? rs.getString("rtsp_url") : rs.getString("http_url"));
+        c.setChannel(rs.getInt("channel"));
+        c.setStatus(rs.getString("status"));
+        c.setEnabled(rs.getBoolean("enabled"));
         c.setUsername(rs.getString("username"));
         c.setPassword(rs.getString("password"));
         return c;
@@ -46,23 +49,25 @@ public class CameraRepository {
 
     public void insert(Camera c, String go2rtcId) {
         jdbc.update(
-            "INSERT INTO cameras (id, name, type, brand, model, ip, port, rtsp_url, http_url, username, password, go2rtc_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO cameras (id, name, type, brand, model, ip, port, rtsp_url, http_url, username, password, channel, status, enabled, go2rtc_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             c.getId(), c.getName(), c.getType(), c.getBrand(), c.getModel(),
             c.getIp(), c.getPort() > 0 ? c.getPort() : 554,
             c.getType().equals("rtsp") ? String.valueOf(c.getAddress()) : null,
             c.getType().equals("http_snapshot") ? String.valueOf(c.getAddress()) : null,
-            c.getUsername(), c.getPassword(), go2rtcId
+            c.getUsername(), c.getPassword(),
+            c.getChannel(), c.getStatus(), c.isEnabled(), go2rtcId
         );
     }
 
     public void update(Camera c) {
         jdbc.update(
-            "UPDATE cameras SET name=?, type=?, brand=?, model=?, ip=?, port=?, rtsp_url=?, http_url=?, username=?, password=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            "UPDATE cameras SET name=?, type=?, brand=?, model=?, ip=?, port=?, rtsp_url=?, http_url=?, username=?, password=?, channel=?, status=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             c.getName(), c.getType(), c.getBrand(), c.getModel(), c.getIp(),
             c.getPort() > 0 ? c.getPort() : 554,
             c.getType().equals("rtsp") ? String.valueOf(c.getAddress()) : null,
             c.getType().equals("http_snapshot") ? String.valueOf(c.getAddress()) : null,
-            c.getUsername(), c.getPassword(), c.getId()
+            c.getUsername(), c.getPassword(),
+            c.getChannel(), c.getStatus(), c.isEnabled(), c.getId()
         );
     }
 
