@@ -646,9 +646,11 @@ public class StatsController {
             }
 
             // 获取摄像头列表
-            @SuppressWarnings("unchecked")
-            List<String> cameraIds = body.get("cameraIds") instanceof List
-                ? (List<String>) body.get("cameraIds") : null;
+            List<String> cameraIds = null;
+            Object rawCameraIds = body.get("cameraIds");
+            if (rawCameraIds instanceof List<?> rawList) {
+                cameraIds = rawList.stream().filter(String.class::isInstance).map(String.class::cast).collect(Collectors.toList());
+            }
             List<CameraConfigService.Camera> allCams = cameraConfigService.getAllCameras();
             List<CameraConfigService.Camera> targets;
             if (cameraIds != null && !cameraIds.isEmpty()) {
