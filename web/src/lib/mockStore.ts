@@ -32,6 +32,9 @@ interface MockStore {
   automationRate: { rate: number };
   auditTrend: Record<string, { labels: string[]; data: number[] }>;
 
+  // 跨页面同步：每次手动触发报警递增，供 Evidence 等页面订阅
+  evidenceBump: number;
+
   // 定时器控制
   _timers: ReturnType<typeof setInterval>[];
   start: () => void;
@@ -39,6 +42,7 @@ interface MockStore {
 
   // 告警操作
   updateAlertStatus: (id: string, status: Alert["status"]) => void;
+  addAlert: (alert: Alert) => void;
 }
 
 // ── 辅助函数 ──────────────────────────────────────────────────────────────────
@@ -93,6 +97,8 @@ export const useMockStore = create<MockStore>((set, get) => {
       day: mock.generateAuditTrend("day"),
       week: mock.generateAuditTrend("week"),
     },
+
+    evidenceBump: 0,
 
     _timers: [],
 
@@ -162,6 +168,36 @@ export const useMockStore = create<MockStore>((set, get) => {
           a.id === id ? { ...a, status } : a
         ),
       }));
+    },
+
+    addAlert(alert: Alert) {
+      set((state) => {
+        const newBehaviorCounts = { ...state.statsSummary.behaviorCounts };
+        newBehaviorCounts[alert.type] = (newBehaviorCounts[alert.type] || 0) + 1;
+
+        // 同步添加一条证据记录
+        const evItem = {
+          id: `EV-${alert.id}`,
+          timestamp: alert.time,
+          actions: [alert.type],
+          personCount: 1,
+          cameraName: alert.cameraName,
+          cameraId: alert.cameraId,
+          imageFilename: `screenshot_${alert.type}_${Date.now()}.jpg`,
+          snapshotUrl: alert.snapshotUrl || null,
+          confidence: alert.confidence,
+        };
+
+        return {
+          alerts: [alert, ...state.alerts].slice(0, 100),
+          evidenceItems: [evItem as any, ...state.evidenceItems].slice(0, 50),
+          statsSummary: {
+            behaviorCounts: newBehaviorCounts,
+            total: state.statsSummary.total + 1,
+            compare: state.statsSummary.compare,
+          },
+        };
+      });
     },
   };
 });

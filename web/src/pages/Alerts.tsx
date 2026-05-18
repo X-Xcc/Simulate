@@ -189,10 +189,24 @@ export default function Alerts() {
             </header>
 
             <div className="p-4 flex-1 overflow-y-auto space-y-4">
-              {/* 快照占位 */}
+              {/* 快照 */}
               <div className="rounded-lg overflow-hidden border border-outline-variant bg-dark-bg relative aspect-video flex items-center justify-center">
-                <div className="text-center">
-                  <Eye size={24} className="text-white/20 mx-auto mb-2" />
+                {selectedAlert.snapshotUrl ? (
+                    <img
+                      key={selectedAlert.id}
+                      src={selectedAlert.snapshotUrl}
+                      alt={`${selectedAlert.type} 快照`}
+                      className="w-full h-full object-cover"
+                      onError={e => {
+                        const el = e.target as HTMLImageElement;
+                        const left = (el as any)._retryLeft ?? 3;
+                        if (left > 0) { (el as any)._retryLeft = left - 1; setTimeout(() => { el.src = el.src; }, 500); }
+                        else { el.style.display = "none"; }
+                      }}
+                    />
+                ) : null}
+                <div className="text-center absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <Eye size={24} className="text-white/20 mb-2" />
                   <span className="text-white/30 text-body-sm font-mono">{selectedAlert.cameraName} - 告警快照</span>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 p-2 video-hud flex justify-between items-end">

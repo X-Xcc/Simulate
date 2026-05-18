@@ -358,3 +358,17 @@ export function generateHeatmapData(): HeatmapZone[] {
     topBehavior: BEHAVIORS[Math.floor(rand() * BEHAVIORS.length)],
   }));
 }
+
+// ── 报警类型 → 模拟监控截图（Unsplash，无水印） ─────────────────────────────
+
+export const ALARM_SNAPSHOT_URLS: Record<string, string> = {
+  fight:     "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=800&q=80",
+  fall:      "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80",
+  suicide:   "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
+  gathering: "https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80",
+  // AlertType 文字键也映射一份（供 Evidence / Alerts 详情使用）
+  "打架":     "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=800&q=80",
+  "跌倒":     "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80",
+  "人员聚集": "https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80",
+  "离岗":     "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
+};

@@ -6,7 +6,8 @@ import {
 import { cn } from "../lib/utils";
 import { fetchCameras, takeScreenshot } from "../services/dataService";
 import { useAlarmSound } from "../hooks/useAlarmSound";
-import { Camera } from "../types";
+import { useMockStore } from "../lib/mockStore";
+import { Camera, Alert, AlertLevel, AlertType } from "../types";
 
 type GridMode = 2 | 4 | 6;
 type AlarmType = "fight" | "fall" | "suicide" | "gathering";
@@ -44,6 +45,54 @@ const ALARM_DOTS: { type: AlarmType; tip: string }[] = [
   { type: "suicide", tip: "自杀" },
   { type: "gathering", tip: "异常聚集" },
 ];
+
+// AlarmType → (AlertType, AlertLevel) 映射
+const ALARM_TO_ALERT: Record<AlarmType, { type: AlertType; level: AlertLevel }> = {
+  fight:     { type: AlertType.FIGHT,  level: AlertLevel.CRITICAL },
+  fall:      { type: AlertType.FALL,   level: AlertLevel.WARNING },
+  suicide:   { type: AlertType.FIGHT,  level: AlertLevel.CRITICAL },
+  gathering: { type: AlertType.CROWD,  level: AlertLevel.MINOR },
+};
+
+// ── 实时截帧 ──────────────────────────────────────────────────────────────
+
+/** 从摄像头槽位捕获当前帧，返回 base64 jpeg data URL；失败返回 null */
+function captureFrame(slotId: string): string | null {
+  try {
+    const slot = document.getElementById(slotId);
+    if (!slot) return null;
+
+    // 优先找 <video>（LiveCameraSlot）
+    const video = slot.querySelector("video") as HTMLVideoElement | null;
+    if (video && video.readyState >= 2 && video.videoWidth > 0) {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d")!.drawImage(video, 0, 0);
+      return canvas.toDataURL("image/jpeg", 0.85);
+    }
+
+    // 回退到 <img>（MJPEG 流 / video_feed）
+    const img = slot.querySelector("img") as HTMLImageElement | null;
+    if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      try {
+        ctx.drawImage(img, 0, 0);
+        return canvas.toDataURL("image/jpeg", 0.85);
+      } catch {
+        // 跨域 <img> 会被 canvas 污染，忽略走 fallback
+        return null;
+      }
+    }
+  } catch {
+    // 任何异常都静默回退
+  }
+  return null;
+}
 
 // ── 报警覆盖层（单个弹窗） ──
 
@@ -132,17 +181,42 @@ export default function Monitor() {
     return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
-  const handleAlarmTrigger = useCallback((type: AlarmType) => {
+  const handleAlarmTrigger = useCallback(async (type: AlarmType) => {
     setActiveAlarms(prev => {
       const next = new Set(prev);
       next.add(type);
       return next;
     });
-    // 异步截图，不阻塞报警卡片弹出
-    takeScreenshot(type).catch(err => {
+
+    // 本地截帧（用于 Monitor 页面弹窗即时展示）
+    const captured = captureFrame("cam-slot-0") || captureFrame("cam-slot-empty") || "";
+
+    const { type: alertType, level } = ALARM_TO_ALERT[type];
+    const cfg = ALARM_CONFIGS[type];
+    const cam = cameras[0];
+    const alert: Alert = {
+      id: `ALT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      cameraId: cam?.id ?? "cam-001",
+      cameraName: cam?.name ?? "视频1",
+      type: alertType,
+      level,
+      time: new Date().toISOString(),
+      snapshotUrl: captured,
+      status: "pending",
+      confidence: +(85 + Math.random() * 14).toFixed(1),
+      duration: "00:00:00",
+      message: cfg.msg,
+    };
+    useMockStore.getState().addAlert(alert);
+
+    // 等后端截图写盘完成后再触发 Evidence 刷新，避免 404 竞态
+    try {
+      await takeScreenshot(type);
+    } catch (err) {
       console.warn("截图失败:", err);
-    });
-  }, []);
+    }
+    useMockStore.setState(s => ({ evidenceBump: s.evidenceBump + 1 }));
+  }, [cameras]);
 
   const handleAlarmAcknowledge = useCallback((type: AlarmType) => {
     setActiveAlarms(prev => {
@@ -228,7 +302,7 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
 }) {
   if (isFirstEmpty) {
     return (
-      <div className="relative bg-zinc-900/80 rounded-lg border border-white/[0.04] overflow-hidden group hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
+      <div id="cam-slot-empty" className="relative bg-zinc-900/80 rounded-lg border border-white/[0.04] overflow-hidden group hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
         <img
           src="/video_feed?cam=0"
           alt="检测流"
@@ -306,7 +380,7 @@ function LiveCameraSlot({ name, activeAlarms, onAck }: {
   }, []);
 
   return (
-    <div className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
+    <div id="cam-slot-0" className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
         style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
       {error ? (
@@ -383,7 +457,7 @@ function CameraSlot({
   };
 
   return (
-    <div className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
+    <div id={`cam-slot-${cameraId}`} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
         style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
       {hasGo2rtc && !loadFailed ? (

@@ -4,6 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
 import { fetchEvidenceList, EvidenceItem } from "../services/dataService";
+import { useMockStore } from "../lib/mockStore";
 import { getToken } from "../lib/api";
 import Lightbox from "../components/Lightbox";
 
@@ -18,7 +19,11 @@ export default function Evidence() {
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [evTotal, setEvTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [lightboxItem, setLightboxItem] = useState<EvidenceItem | null>(null);
+  // lightboxSrc 保证传给 Lightbox 的永远是有效 URL
+  const [lightbox, setLightbox] = useState<{ src: string; item: EvidenceItem } | null>(null);
+
+  // 订阅全局 store 的 evidenceBump，手动触发报警时自动刷新
+  const evidenceBump = useMockStore((s) => s.evidenceBump);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,25 +46,30 @@ export default function Evidence() {
     }
     load();
     return () => controller.abort();
-  }, [selectedDate, activeTab, evPage]);
+  }, [selectedDate, activeTab, evPage, evidenceBump]);
 
   // Tab 或日期变化时重置页码
   useEffect(() => { setEvPage(0); }, [selectedDate, activeTab]);
 
+  function openLightbox(item: EvidenceItem) {
+    setLightbox({ src: item.snapshotUrl || "", item });
+  }
+
   async function downloadImage(item: EvidenceItem) {
-    if (!item.snapshotUrl) return;
+    const url = item.snapshotUrl;
+    if (!url) { toast.show("无可用图片"); return; }
     try {
       const headers: Record<string, string> = {};
       const token = getToken();
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const res = await fetch(item.snapshotUrl, { headers });
+      const res = await fetch(url, { headers });
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const objUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = url;
+      link.href = objUrl;
       link.download = item.imageFilename || `evidence_${item.id}.jpg`;
       link.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(objUrl);
     } catch {
       toast.show("下载失败");
     }
@@ -106,16 +116,22 @@ export default function Evidence() {
             <p className="text-body font-semibold">暂无匹配的证据数据</p>
             <p className="text-body-sm mt-1">尝试修改筛选条件或选择其他日期</p>
           </div>
-        ) : evidenceItems.map(item => (
+        ) : evidenceItems.map(item => {
+          const imgUrl = item.snapshotUrl || "";
+          return (
           <div key={item.id} className="group relative bg-dark-bg aspect-video rounded-lg overflow-hidden border border-outline-variant shadow-sm h-fit cursor-pointer"
-               onClick={() => setLightboxItem(item)}>
+               onClick={() => openLightbox(item)}>
             {/* 截图 */}
-            {item.snapshotUrl ? (
-              <img src={item.snapshotUrl} alt={item.actions?.[0] || "证据"} className="w-full h-full object-cover"
-                   onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            {imgUrl ? (
+              <img src={imgUrl} alt={item.actions?.[0] || "证据"} className="w-full h-full object-cover"
+                   onError={e => {
+                     const el = e.target as HTMLImageElement;
+                     const left = (el as any)._retryLeft ?? 3;
+                     if (left > 0) { (el as any)._retryLeft = left - 1; setTimeout(() => { el.src = el.src; }, 500); }
+                   }} />
             ) : null}
             {/* 图片加载失败 fallback */}
-            <div className={cn("w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900", item.snapshotUrl && "absolute inset-0 -z-10")}>
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 absolute inset-0 -z-10">
               <ImageIcon size={28} className="text-white/10" />
             </div>
             {/* HUD 叠加层 */}
@@ -144,7 +160,8 @@ export default function Evidence() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 分页 */}
@@ -166,13 +183,14 @@ export default function Evidence() {
 
       {/* Lightbox */}
       <AnimatePresence>
-        {lightboxItem && (
+        {lightbox && (
           <Lightbox
-            src={lightboxItem.snapshotUrl || ""}
-            alt={lightboxItem.actions?.[0] || "证据截图"}
-            cameraId={lightboxItem.cameraId}
-            onClose={() => setLightboxItem(null)}
-            onDownload={() => downloadImage(lightboxItem)}
+            key={lightbox.item.id}
+            src={lightbox.src}
+            alt={lightbox.item.actions?.[0] || "证据截图"}
+            cameraId={lightbox.item.cameraId}
+            onClose={() => setLightbox(null)}
+            onDownload={() => downloadImage(lightbox.item)}
           />
         )}
       </AnimatePresence>
