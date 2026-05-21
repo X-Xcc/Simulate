@@ -1,3 +1,7 @@
+// 算法版本对比页 — 四代算法同屏对比
+// v1.0 基础版 → v2.1 轻量版 → v3.0 精度版 → v4.2 增强版
+// 演讲提示: "同一个视频素材，四个版本同时检测，
+//           直观看到每个版本的检测效果差异"
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Upload, Zap, Eye, Crosshair,
@@ -6,6 +10,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { apiUpload } from "../lib/api";
+import { useAlarmSound } from "../hooks/useAlarmSound";
 
 interface UploadItem {
   id: string;
@@ -38,40 +43,6 @@ const ALGO_VERSIONS: AlgoVersion[] = [
   { label: "第四代算法", sublabel: "增强版 (v4.2)" },
 ];
 
-let alarmCtx: AudioContext | null = null;
-let alarmTimer: ReturnType<typeof setInterval> | null = null;
-
-function playAlarmTone(ctx: AudioContext) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.type = "square";
-  osc.frequency.setValueAtTime(880, ctx.currentTime);
-  osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.15);
-  osc.frequency.setValueAtTime(880, ctx.currentTime + 0.3);
-  gain.gain.setValueAtTime(0.3, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.5);
-}
-
-function startAlarmSound() {
-  try {
-    stopAlarmSound();
-    alarmCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    playAlarmTone(alarmCtx);
-    alarmTimer = setInterval(() => {
-      if (alarmCtx) playAlarmTone(alarmCtx);
-    }, 800);
-  } catch {}
-}
-
-function stopAlarmSound() {
-  if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; }
-  if (alarmCtx) { alarmCtx.close().catch(() => {}); alarmCtx = null; }
-}
-
 function LogLevelTag({ level }: { level: LogEntry["level"] }) {
   const colors: Record<string, string> = {
     INFO: "text-success-green", ALGO: "text-warning-orange", WARN: "text-danger-red",
@@ -90,13 +61,7 @@ function ComparisonWindow({
   onAlarmAcknowledge: () => void;
   large?: boolean;
 }) {
-  // play looping sound when alarm activates, stop when dismissed
-  const prevAlarming = useRef(false);
-  useEffect(() => {
-    if (isAlarming && !prevAlarming.current) startAlarmSound();
-    if (!isAlarming && prevAlarming.current) stopAlarmSound();
-    prevAlarming.current = isAlarming;
-  }, [isAlarming]);
+  useAlarmSound(isAlarming);
 
   return (
     <div className={cn(

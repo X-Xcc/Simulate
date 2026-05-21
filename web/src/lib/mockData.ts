@@ -154,55 +154,66 @@ export function generateSystemStatus(): SystemStatus {
 // ── 趋势数据（确定性，使用 seed 保证刷新不跳变） ────────────────────────────────
 
 export function generateTrendData(range: "day" | "week" | "month" | "quarter") {
-  const pointCount = range === "day" ? 24 : range === "week" ? 7 : range === "month" ? 30 : 90;
-  const rand = seededRandom(range === "day" ? 100 : range === "week" ? 200 : range === "month" ? 300 : 400);
-  const labels: string[] = [];
-  const data: Record<string, number[]> = { "打架": [], "跌倒": [], "离岗": [], "人员聚集": [] };
+  const keys = ["打架", "跌倒", "离岗", "人员聚集"] as const;
 
-  for (let i = 0; i < pointCount; i++) {
-    if (range === "day") {
-      labels.push(`${i.toString().padStart(2, "0")}:00`);
-      // 凌晨低、白天高、夜间中等
-      const hourFactor = (i >= 2 && i <= 5) ? 0.2 : (i >= 8 && i <= 20) ? 1.0 : 0.5;
-      data["打架"].push(Math.round((rand() * 5 + 1) * hourFactor));
-      data["跌倒"].push(Math.round((rand() * 3 + 0.5) * hourFactor));
-      data["离岗"].push(Math.round((rand() * 8 + 2) * hourFactor));
-      data["人员聚集"].push(Math.round((rand() * 4 + 1) * hourFactor));
-    } else if (range === "week") {
-      const dayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-      labels.push(dayLabels[i]);
-      // 工作日高、周末低
-      const dayFactor = i < 5 ? 1.0 : 0.4;
-      data["打架"].push(Math.round((rand() * 6 + 2) * dayFactor));
-      data["跌倒"].push(Math.round((rand() * 4 + 1) * dayFactor));
-      data["离岗"].push(Math.round((rand() * 9 + 3) * dayFactor));
-      data["人员聚集"].push(Math.round((rand() * 5 + 1) * dayFactor));
-    } else if (range === "month") {
-      labels.push(`${i + 1}日`);
-      // 月内波动，每 7 天一个峰值
-      const waveFactor = 0.6 + 0.4 * Math.sin((i / 7) * Math.PI);
-      data["打架"].push(Math.round((rand() * 5 + 1) * waveFactor));
-      data["跌倒"].push(Math.round((rand() * 3 + 0.5) * waveFactor));
-      data["离岗"].push(Math.round((rand() * 8 + 2) * waveFactor));
-      data["人员聚集"].push(Math.round((rand() * 4 + 1) * waveFactor));
-    } else {
-      // quarter: 90天，按周聚合，每7天一个点
-      const d = new Date();
-      d.setDate(d.getDate() - 90 + i);
-      labels.push(`${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`);
-      // 周期性波动 + 随机噪声
-      const weekFactor = 0.5 + 0.5 * Math.sin((i / 14) * Math.PI);
-      const dayOfWeek = i % 7;
-      const weekdayFactor = dayOfWeek < 5 ? 1.0 : 0.5;
-      const factor = weekFactor * weekdayFactor;
-      data["打架"].push(Math.round((rand() * 5 + 1) * factor));
-      data["跌倒"].push(Math.round((rand() * 3 + 0.5) * factor));
-      data["离岗"].push(Math.round((rand() * 8 + 2) * factor));
-      data["人员聚集"].push(Math.round((rand() * 4 + 1) * factor));
-    }
+  // ── 月数据：主数据源（seeded 保证刷新不跳变） ──
+  const rand = seededRandom(300);
+  const monthLabels: string[] = [];
+  const monthData: Record<string, number[]> = { "打架": [], "跌倒": [], "离岗": [], "人员聚集": [] };
+  for (let i = 0; i < 30; i++) {
+    monthLabels.push(`${i + 1}日`);
+    const waveFactor = 0.6 + 0.4 * Math.sin((i / 7) * Math.PI);
+    monthData["打架"].push(Math.round((rand() * 5 + 1) * waveFactor));
+    monthData["跌倒"].push(Math.round((rand() * 3 + 0.5) * waveFactor));
+    monthData["离岗"].push(Math.round((rand() * 8 + 2) * waveFactor));
+    monthData["人员聚集"].push(Math.round((rand() * 4 + 1) * waveFactor));
   }
 
-  return { labels, data };
+  if (range === "month") {
+    return { labels: monthLabels, data: monthData };
+  }
+
+  if (range === "week") {
+    // 月最后 7 天 → 保证 7d 总和 < 30d 总和
+    const labels = monthLabels.slice(-7);
+    const data: Record<string, number[]> = {};
+    for (const key of keys) data[key] = monthData[key].slice(-7);
+    return { labels, data };
+  }
+
+  if (range === "day") {
+    // 当天值拆成 24 小时 → 保证 24h 总和 ≈ 当天日值 < 7d 总和
+    const today = monthData["打架"].length - 1;
+    const labels = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, "0")}:00`);
+    const data: Record<string, number[]> = {};
+    for (const key of keys) {
+      const dayValue = monthData[key][today];
+      data[key] = labels.map((_, hour) => {
+        const f = (hour >= 2 && hour <= 5) ? 0.05 : (hour >= 8 && hour <= 20) ? 0.07 : 0.03;
+        return Math.max(0, Math.round(dayValue * f));
+      });
+    }
+    return { labels, data };
+  }
+
+  // quarter: 90 天
+  const qRand = seededRandom(400);
+  const qLabels: string[] = [];
+  const qData: Record<string, number[]> = { "打架": [], "跌倒": [], "离岗": [], "人员聚集": [] };
+  for (let i = 0; i < 90; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - 90 + i);
+    qLabels.push(`${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`);
+    const weekFactor = 0.5 + 0.5 * Math.sin((i / 14) * Math.PI);
+    const dayOfWeek = i % 7;
+    const weekdayFactor = dayOfWeek < 5 ? 1.0 : 0.5;
+    const factor = weekFactor * weekdayFactor;
+    qData["打架"].push(Math.round((qRand() * 5 + 1) * factor));
+    qData["跌倒"].push(Math.round((qRand() * 3 + 0.5) * factor));
+    qData["离岗"].push(Math.round((qRand() * 8 + 2) * factor));
+    qData["人员聚集"].push(Math.round((qRand() * 4 + 1) * factor));
+  }
+  return { labels: qLabels, data: qData };
 }
 
 // ── 统计对比 ─────────────────────────────────────────────────────────────────

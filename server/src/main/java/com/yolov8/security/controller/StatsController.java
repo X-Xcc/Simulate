@@ -295,6 +295,9 @@ public class StatsController {
         }
     }
 
+    // 帧接收端点 — Python检测完一帧后POST JPEG到这里
+    // 演讲提示: "这是Python→Java的桥梁，Python检测完画好框，
+    //           把JPEG图片+摄像头ID+人数发过来"
     @PostMapping("/update_frame")
     public ResponseEntity<Map<String, Object>> updateFrame(
             @RequestParam("frame") MultipartFile frame,

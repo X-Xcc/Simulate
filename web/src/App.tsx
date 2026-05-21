@@ -5,7 +5,7 @@
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
-import Dashboard from "./pages/DASHBOARD";
+import Dashboard from "./pages/Dashboard";
 import Monitor from "./pages/Monitor";
 import Alerts from "./pages/Alerts";
 import Devices from "./pages/Devices";
@@ -13,6 +13,7 @@ import Evidence from "./pages/Evidence";
 import Analysis from "./pages/Analysis";
 import Maintenance from "./pages/Maintenance";
 import Audit from "./pages/Audit";
+import Home from "./pages/Home";
 import Login from "./pages/Login";
 import ModelTraining from "./pages/ModelTraining";
 import Layout from "./components/Layout";
@@ -32,6 +33,7 @@ function AppRoutes() {
 
   return (
     <Routes>
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={
         authenticated ? <Navigate to="/monitor" replace /> : <Login onLogin={login} />
       } />
@@ -45,9 +47,8 @@ function AppRoutes() {
         <Route path="/maintenance" element={<AppErrorBoundary><Maintenance /></AppErrorBoundary>} />
         <Route path="/audit" element={<AppErrorBoundary><Audit /></AppErrorBoundary>} />
         <Route path="/model-training" element={<AppErrorBoundary><ModelTraining /></AppErrorBoundary>} />
-        <Route path="/" element={<Navigate to="/monitor" />} />
       </Route>
-      <Route path="*" element={<Navigate to="/monitor" />} />
+      <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
 }

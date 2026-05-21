@@ -11,16 +11,17 @@ import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
 import {
-  useMockAlerts, useMockSystemStatus,
+  useMockSystemStatus,
   useMockTrendData, useMockModelInfo, useMockRegionalStats, useMockFpsStats,
 } from "../lib/useMock";
+import { useRealAlerts } from "../lib/useRealAlerts";
 import { useToast } from "../components/Toast";
 import Prison3D from "../components/Prison3D";
 
 export default function Analysis() {
   const toast = useToast();
   const [timeRange, setTimeRange] = useState<"week" | "month" | "quarter">("week");
-  const alerts = useMockAlerts()[0];
+  const { alerts } = useRealAlerts();
   const status = useMockSystemStatus();
   const modelInfo = useMockModelInfo();
   const regionalData = useMockRegionalStats();
@@ -78,6 +79,13 @@ export default function Analysis() {
         </div>
       </header>
 
+      {/* ┌──────────────────────────────────────────────────────┐
+      // │  4 张摘要卡片 — 告警总数/AI准确率/平均时延/设备负载     │
+      // │  演讲提示: "告警总数来自 trendTotals 汇总，              │
+      // │            AI 准确率 = confirmed 告警 / 总告警，         │
+      // │            平均时延从 FPS 反算 (1000/fps)，             │
+      // │            设备负载取 CPU 使用率"                        │
+      // └──────────────────────────────────────────────────────┘ */}
       {/* 摘要卡片 */}
       <div className="grid grid-cols-4 gap-4">
         {[
@@ -102,6 +110,12 @@ export default function Analysis() {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
+        {/* ┌──────────────────────────────────────────────────────┐
+        // │  Prison3D — Three.js 3D 监区模型                      │
+        // │  演讲提示: "12 栋建筑独立热力着色，                     │
+        // │            绿色=正常区域，黄色=注意，红色=高危，          │
+        // │            颜色实时跟随 SSE 推送的告警数据变化"           │
+        // └──────────────────────────────────────────────────────┘ */}
         {/* 3D 监区模型 */}
         <section className="col-span-2 bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col h-[420px]">
           <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center">
@@ -109,9 +123,7 @@ export default function Analysis() {
             <span className="text-caption font-semibold text-success-green uppercase bg-success-green/10 px-2 py-0.5 rounded">Real-time</span>
           </header>
           <div className="flex-1 relative">
-            <div className="absolute inset-0 p-3">
-              <Prison3D />
-            </div>
+            <Prison3D />
           </div>
         </section>
 
@@ -140,6 +152,12 @@ export default function Analysis() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
+        {/* ┌──────────────────────────────────────────────────────┐
+        // │  RadarChart 雷达图 — AI 识别效能分析                   │
+        // │  演讲提示: "四维评估：打架/跌倒/离岗/聚集各为一个轴，    │
+        // │            面积越大说明该类检测量越高，                  │
+        // │            右侧展示总检测数和模型信息"                   │
+        // └──────────────────────────────────────────────────────┘ */}
         {/* 雷达图 */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50">
@@ -172,6 +190,12 @@ export default function Analysis() {
           </div>
         </section>
 
+        {/* ┌──────────────────────────────────────────────────────┐
+        // │  区域分布条形图 — 各监区告警数量对比                    │
+        // │  演讲提示: "每行是一个监区，条形长度 = 告警占比，        │
+        // │            motion 入场动画从 0 宽度展开到目标宽度，      │
+        // │            右侧数字是原始告警数"                        │
+        // └──────────────────────────────────────────────────────┘ */}
         {/* 区域分布 */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50">

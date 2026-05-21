@@ -101,7 +101,7 @@ export default function Layout() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* 侧边栏 */}
-        <aside className="w-[220px] flex flex-col bg-dark-sidebar border-r border-white/[0.06] shrink-0 py-4">
+        <aside className="w-[220px] flex flex-col bg-white border-r border-outline-variant shrink-0 py-4">
           <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto custom-scrollbar">
             {menuItems.map((item) => (
               <div key={item.path}>
@@ -111,15 +111,15 @@ export default function Layout() {
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 font-semibold text-body-sm group",
                         location.pathname === item.path
-                          ? "bg-primary/15 text-primary border border-primary/20"
-                          : "text-white/40 hover:bg-white/[0.04] hover:text-white/70 border border-transparent"
+                          ? "bg-primary/10 text-primary border border-primary/20"
+                          : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border border-transparent"
                       )}>
-                      <item.icon size={18} className={cn("transition-colors", location.pathname === item.path ? "text-primary" : "text-white/30 group-hover:text-white/50")} />
+                      <item.icon size={18} className={cn("transition-colors", location.pathname === item.path ? "text-primary" : "text-outline group-hover:text-on-surface-variant")} />
                       <span className="flex-1 text-left">{item.label}</span>
-                      <ChevronDown size={14} className={cn("transition-transform", monitorOpen && "rotate-180")} />
+                      <ChevronDown size={14} className={cn("transition-transform text-outline", monitorOpen && "rotate-180")} />
                     </button>
                     {monitorOpen && (
-                      <div className="ml-5 mt-0.5 space-y-0.5 border-l border-white/[0.08] pl-2">
+                      <div className="ml-5 mt-0.5 space-y-0.5 border-l border-outline-variant pl-2">
                         {cameras.map((cam, i) => (
                           <button key={cam.id}
                             onClick={() => navigate(`/monitor?cam=${cam.id}`)}
@@ -127,14 +127,14 @@ export default function Layout() {
                               "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-body-sm transition-all",
                               location.search.includes(`cam=${cam.id}`)
                                 ? "bg-primary/10 text-primary font-semibold"
-                                : "text-white/35 hover:text-white/60 hover:bg-white/[0.03]"
+                                : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high"
                             )}>
                             <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", cam.status === "online" ? "bg-success-green" : "bg-outline")} />
                             <span>视频{i + 1}</span>
                           </button>
                         ))}
                         {cameras.length === 0 && (
-                          <span className="block px-2 py-1.5 text-caption text-white/20">暂无设备</span>
+                          <span className="block px-2 py-1.5 text-caption text-outline">暂无设备</span>
                         )}
                       </div>
                     )}
@@ -144,10 +144,10 @@ export default function Layout() {
                     className={({ isActive }) => cn(
                       "w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-150 font-semibold text-body-sm group",
                       isActive
-                        ? "bg-primary/15 text-primary border border-primary/20"
-                        : "text-white/40 hover:bg-white/[0.04] hover:text-white/70 border border-transparent"
+                        ? "bg-primary/10 text-primary border border-primary/20"
+                        : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface border border-transparent"
                     )}>
-                    <item.icon size={18} className={cn("transition-colors", location.pathname === item.path ? "text-primary" : "text-white/30 group-hover:text-white/50")} />
+                    <item.icon size={18} className={cn("transition-colors", location.pathname === item.path ? "text-primary" : "text-outline group-hover:text-on-surface-variant")} />
                     <span>{item.label}</span>
                   </NavLink>
                 )}
@@ -155,9 +155,9 @@ export default function Layout() {
             ))}
           </nav>
 
-          <div className="px-2 mt-auto pt-3 border-t border-white/[0.06]">
+          <div className="px-2 mt-auto pt-3 border-t border-outline-variant">
             <button onClick={() => { logout(); navigate("/login"); }}
-              className="w-full h-10 flex items-center gap-3 px-3 rounded-lg text-danger-red/50 hover:text-danger-red hover:bg-danger-red/[0.06] transition-all font-semibold group">
+              className="w-full h-10 flex items-center gap-3 px-3 rounded-lg text-on-surface-variant hover:text-danger-red hover:bg-error-container/50 transition-all font-semibold group">
               <LogOut size={18} className="group-hover:translate-x-0.5 transition-transform" />
               <span className="text-body-sm">退出系统</span>
             </button>

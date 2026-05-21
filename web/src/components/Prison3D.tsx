@@ -56,7 +56,32 @@ function heatColor(t: number) {
   );
 }
 
-function lerp(a: number, b: number, t: number) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+// ── Label visibility (hide overlapping low-priority labels) ─────────────────
+
+// FIX: 之前用 zOff/yExtra 推移标签，配合 distanceFactor 导致 center 偏移
+// 改为：去掉 distanceFactor（center 精确居中），重叠时隐藏低优先级标签
+const LABEL_HIDDEN = (() => {
+  const hidden = new Set<string>();
+  // Group by row
+  const rows = new Map<number, Bldg[]>();
+  for (const b of BLDGS) {
+    const list = rows.get(b.y) ?? [];
+    list.push(b);
+    rows.set(b.y, list);
+  }
+  for (const [, buildings] of rows) {
+    const sorted = [...buildings].sort((a, b) => a.x - b.x);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const gap = (sorted[i+1].x - (sorted[i].x + sorted[i].w)) * SCALE;
+      if (gap < 1.5) {
+        // Hide lower-priority label (fewer alerts = lower priority)
+        const loser = sorted[i].alerts >= sorted[i+1].alerts ? i + 1 : i;
+        hidden.add(sorted[loser].id);
+      }
+    }
+  }
+  return hidden;
+})();
 
 // ── Heat Dots (floating particles inside building) ─────────────────────────
 
@@ -153,20 +178,21 @@ function ScanCurtain() {
     ref.current.position.x = startX + (endX - startX) * t;
   });
   return (
-    <mesh ref={ref} position={[0, 8, 0]} rotation={[0, Math.PI / 2, 0]}>
-      <planeGeometry args={[50, 16]} />
-      <meshBasicMaterial color="#22d3ee" transparent opacity={0.04} side={THREE.DoubleSide} />
+    <mesh ref={ref} position={[0, 2, 0]} rotation={[0, Math.PI / 2, 0]}>
+      <planeGeometry args={[50, 4]} />
+      <meshBasicMaterial color="#22d3ee" transparent opacity={0.06} side={THREE.DoubleSide} />
     </mesh>
   );
 }
 
-// ── Zone Label (3D position) ───────────────────────────────────────────────
+// ── Zone Label (raised above buildings) ────────────────────────────────────
 
 function ZoneLabel3D({ pos, text }: { pos: [number, number, number]; text: string }) {
   return (
-    <Html position={pos} center distanceFactor={15} style={{ pointerEvents: "none" }}>
+    // FIX: 去掉 distanceFactor，center 精确定位，固定像素大小不漂移
+    <Html position={pos} center style={{ pointerEvents: "none" }}>
       <div style={{
-        color: "rgba(14,165,233,0.3)", fontSize: 11, fontFamily: "monospace",
+        color: "rgba(14,165,233,0.4)", fontSize: 11, fontFamily: "monospace",
         letterSpacing: 4, whiteSpace: "nowrap", textTransform: "uppercase",
       }}>{text}</div>
     </Html>
@@ -177,7 +203,8 @@ function ZoneLabel3D({ pos, text }: { pos: [number, number, number]; text: strin
 
 function Compass3D() {
   return (
-    <Html position={svgTo3D(720, 500, 0)} center distanceFactor={15} style={{ pointerEvents: "none" }}>
+    // FIX: 去掉 distanceFactor，固定像素大小
+    <Html position={svgTo3D(720, 500, 0)} center style={{ pointerEvents: "none" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{
           width: 28, height: 28, borderRadius: "50%",
@@ -191,19 +218,24 @@ function Compass3D() {
   );
 }
 
-// ── Building Label (HTML overlay) ──────────────────────────────────────────
+// ── Building Label (anti-overlap) ──────────────────────────────────────────
 
 function BuildingLabel({ b }: { b: Bldg }) {
+  // FIX: 隐藏重叠标签（gap<1.5 的同排建筑中低优先级者）
+  if (LABEL_HIDDEN.has(b.id)) return null;
+
   const isBack = b.zone === "back";
   const h = b.floors * FLOOR_H + 0.3;
   const [x, , z] = svgTo3D(b.x + b.w / 2, b.y + b.h / 2);
 
+  // FIX: 去掉 distanceFactor，center 精确居中到建筑顶部中心
+  // distanceFactor 会缩放 CSS transform 偏移量，导致标签漂移
   return (
-    <Html position={[x, h + 0.3, z]} center distanceFactor={12} style={{ pointerEvents: "none" }}>
+    <Html position={[x, h + 0.3, z]} center style={{ pointerEvents: "none" }}>
       <div style={{
         background: "rgba(2,6,23,0.92)",
         border: `1px solid ${isBack ? "rgba(14,165,233,0.4)" : "rgba(100,116,139,0.25)"}`,
-        borderRadius: 6, padding: "5px 10px", textAlign: "center",
+        borderRadius: 6, padding: "4px 8px", textAlign: "center",
         backdropFilter: "blur(8px)", whiteSpace: "nowrap",
         boxShadow: isBack && b.intensity > 60
           ? `0 0 12px ${heatColor(b.intensity / 100).getStyle()}40`
@@ -211,12 +243,12 @@ function BuildingLabel({ b }: { b: Bldg }) {
       }}>
         <div style={{
           color: isBack ? "#e2e8f0" : "#94a3b8",
-          fontSize: 12, fontWeight: 700, fontFamily: "monospace",
+          fontSize: 11, fontWeight: 700, fontFamily: "monospace",
         }}>{b.name}</div>
         {isBack && (
           <div style={{
             color: heatColor(b.intensity / 100).getStyle(),
-            fontSize: 10, fontFamily: "monospace", marginTop: 2,
+            fontSize: 9, fontFamily: "monospace", marginTop: 1,
           }}>
             {b.intensity}% · {b.alerts}告警 · {b.top}
           </div>
@@ -305,24 +337,79 @@ function Watchtower3D({ pos }: { pos: [number, number, number] }) {
 
   return (
     <group position={pos}>
-      {/* tower body */}
       <mesh position={[0, 2, 0]}>
         <boxGeometry args={[1.5, 4, 1.5]} />
         <meshBasicMaterial color="#1e3a5f" transparent opacity={0.9} />
       </mesh>
-      {/* beacon dome */}
       <mesh position={[0, 4.2, 0]}>
         <sphereGeometry args={[0.3, 16, 16]} />
         <meshBasicMaterial color="#f87171" />
       </mesh>
-      {/* glow ring */}
       <mesh ref={ref} position={[0, 4.2, 0]}>
         <sphereGeometry args={[0.6, 16, 16]} />
         <meshBasicMaterial color="#f87171" transparent opacity={0.3} />
       </mesh>
-      {/* point light */}
       <pointLight color="#f87171" intensity={1} distance={8} position={[0, 4.2, 0]} />
     </group>
+  );
+}
+
+// ── HUD (3D) ───────────────────────────────────────────────────────────────
+
+function Hud3D() {
+  const [time, setTime] = useState(new Date().toLocaleTimeString("zh-CN"));
+  useEffect(() => {
+    const id = setInterval(() => setTime(new Date().toLocaleTimeString("zh-CN")), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const totalAlerts = BACK.reduce((s, b) => s + b.alerts, 0);
+  const highRisk = BACK.filter(b => b.intensity > 60).length;
+
+  // Position at top-right of the scene in 3D
+  const pos = svgTo3D(780, 30, 6);
+
+  return (
+    <Html position={pos} center={false} distanceFactor={25} style={{ pointerEvents: "none" }}>
+      <div style={{ textAlign: "right", minWidth: 120 }}>
+        <div style={{ color: "rgba(34,211,238,0.5)", fontFamily: "monospace", fontSize: 9, letterSpacing: 2 }}>SYS_TIME</div>
+        <div style={{ color: "#22d3ee", fontFamily: "monospace", fontSize: 13, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{time}</div>
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 3 }}>
+            <span style={{ color: "rgba(34,211,238,0.4)", fontFamily: "monospace", fontSize: 9 }}>ALERTS</span>
+            <span style={{ color: "#fbbf24", fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>{totalAlerts}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 3 }}>
+            <span style={{ color: "rgba(34,211,238,0.4)", fontFamily: "monospace", fontSize: 9 }}>HIGH_RISK</span>
+            <span style={{ color: "#f87171", fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>{highRisk}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+            <span style={{ color: "rgba(34,211,238,0.4)", fontFamily: "monospace", fontSize: 9 }}>BUILDINGS</span>
+            <span style={{ color: "#22d3ee", fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>{BLDGS.length}</span>
+          </div>
+        </div>
+      </div>
+    </Html>
+  );
+}
+
+// ── Legend (3D) ────────────────────────────────────────────────────────────
+
+function Legend3D() {
+  const pos = svgTo3D(780, 540, 0);
+  return (
+    <Html position={pos} center={false} distanceFactor={25} style={{ pointerEvents: "none" }}>
+      <div style={{
+        background: "rgba(15,23,42,0.85)", backdropFilter: "blur(4px)",
+        border: "1px solid rgba(21,94,117,0.3)", borderRadius: 8, padding: "8px 10px",
+      }}>
+        <p style={{ color: "rgba(34,211,238,0.5)", fontFamily: "monospace", fontSize: 9, textTransform: "uppercase", letterSpacing: 2, margin: "0 0 6px 0" }}>异常密度</p>
+        <div style={{ width: 90, height: 5, borderRadius: 3, background: "linear-gradient(to right, #0fd9b5, #f59e0b, #ef4444)" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "monospace", fontSize: 9, color: "rgba(34,211,238,0.4)", marginTop: 4 }}>
+          <span>LOW</span><span>HIGH</span>
+        </div>
+      </div>
+    </Html>
   );
 }
 
@@ -349,35 +436,35 @@ function Scene() {
         <meshBasicMaterial color="#080e1a" />
       </mesh>
 
-      {/* ground grid */}
-      <gridHelper args={[120, 240, "#0e2a47", "#0a1e36"]} position={[0, GROUND_Y, 0]} />
+      {/* ground grid — reduced density */}
+      <gridHelper args={[120, 60, "#0e2a47", "#0a1e36"]} position={[0, GROUND_Y, 0]} />
 
-      {/* perimeter walls */}
+      {/* perimeter walls — expanded to properly enclose all buildings */}
       <group>
-        {/* north */}
-        <mesh position={[wx, WALL_H / 2, wz - wd / 2]}>
-          <boxGeometry args={[ww, WALL_H, 0.3]} />
+        {/* north — above back row (buildings end at z=-11) */}
+        <mesh position={[wx, WALL_H / 2, wz - wd / 2 - 3]}>
+          <boxGeometry args={[ww + 6, WALL_H, 0.3]} />
           <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
-        {/* south */}
-        <mesh position={[wx, WALL_H / 2, wz + wd / 2]}>
-          <boxGeometry args={[ww, WALL_H, 0.3]} />
+        {/* south — below front zone (buildings end at z=22.5) */}
+        <mesh position={[wx, WALL_H / 2, wz + wd / 2 + 4]}>
+          <boxGeometry args={[ww + 6, WALL_H, 0.3]} />
           <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
         {/* west */}
-        <mesh position={[wx - ww / 2, WALL_H / 2, wz]}>
-          <boxGeometry args={[0.3, WALL_H, wd]} />
+        <mesh position={[wx - ww / 2 - 3, WALL_H / 2, wz + 0.5]}>
+          <boxGeometry args={[0.3, WALL_H, wd + 7]} />
           <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
         {/* east */}
-        <mesh position={[wx + ww / 2, WALL_H / 2, wz]}>
-          <boxGeometry args={[0.3, WALL_H, wd]} />
+        <mesh position={[wx + ww / 2 + 3, WALL_H / 2, wz + 0.5]}>
+          <boxGeometry args={[0.3, WALL_H, wd + 7]} />
           <meshBasicMaterial color="#2563eb" transparent opacity={0.5} />
         </mesh>
       </group>
 
       {/* AB gate */}
-      <mesh position={svgTo3D(400, 520, WALL_H / 2)}>
+      <mesh position={svgTo3D(400, 540, WALL_H / 2)}>
         <boxGeometry args={[4, WALL_H, 0.4]} />
         <meshBasicMaterial color="#fbbf24" transparent opacity={0.3} />
       </mesh>
@@ -391,19 +478,19 @@ function Scene() {
       <ZoneDivider start={svgTo3D(260, 195)} end={svgTo3D(260, 315)} />
       <ZoneDivider start={svgTo3D(330, 325)} end={svgTo3D(330, 430)} />
 
-      {/* scan curtain */}
+      {/* scan curtain — lowered to ground level */}
       <ScanCurtain />
 
-      {/* zone labels */}
-      <ZoneLabel3D pos={svgTo3D(400, 85, 0)} text="监管区（后区）" />
-      <ZoneLabel3D pos={svgTo3D(400, 255, 0)} text="劳动生活区" />
-      <ZoneLabel3D pos={svgTo3D(400, 385, 0)} text="教育服务区" />
-      <ZoneLabel3D pos={svgTo3D(400, 455, 0)} text="行政区（前区）" />
+      {/* zone labels — raised above all buildings (max building top ≈ y=4.3) */}
+      <ZoneLabel3D pos={svgTo3D(400, 85, 6)} text="监管区（后区）" />
+      <ZoneLabel3D pos={svgTo3D(400, 255, 3)} text="劳动生活区" />
+      <ZoneLabel3D pos={svgTo3D(400, 385, 3.5)} text="教育服务区" />
+      <ZoneLabel3D pos={svgTo3D(400, 455, 4.5)} text="行政区（前区）" />
 
       {/* compass */}
       <Compass3D />
 
-      {/* buildings (back zone first, then front — painter's order) */}
+      {/* buildings */}
       {BLDGS.map(b => <Building3D key={b.id} b={b} />)}
 
       {/* watchtowers */}
@@ -411,6 +498,10 @@ function Scene() {
       <Watchtower3D pos={svgTo3D(750, 50, 0)} />
       <Watchtower3D pos={svgTo3D(50, 510, 0)} />
       <Watchtower3D pos={svgTo3D(750, 510, 0)} />
+
+      {/* HUD + Legend (3D positioned) */}
+      <Hud3D />
+      <Legend3D />
 
       {/* orbit controls */}
       <OrbitControls
@@ -424,40 +515,6 @@ function Scene() {
   );
 }
 
-// ── HUD ────────────────────────────────────────────────────────────────────
-
-function HudOverlay() {
-  const [time, setTime] = useState(new Date().toLocaleTimeString("zh-CN"));
-  useEffect(() => {
-    const id = setInterval(() => setTime(new Date().toLocaleTimeString("zh-CN")), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const totalAlerts = BACK.reduce((s, b) => s + b.alerts, 0);
-  const highRisk = BACK.filter(b => b.intensity > 60).length;
-
-  return (
-    <div className="absolute top-3 right-3 text-right pointer-events-none select-none">
-      <div className="text-cyan-400/50 font-mono text-[10px] tracking-wider">SYS_TIME</div>
-      <div className="text-cyan-300 font-mono text-body font-bold tabular-nums">{time}</div>
-      <div className="mt-2 space-y-1">
-        <div className="flex items-center justify-end gap-2">
-          <span className="text-cyan-400/40 font-mono text-[10px]">ALERTS</span>
-          <span className="text-amber-400 font-mono text-sm font-bold">{totalAlerts}</span>
-        </div>
-        <div className="flex items-center justify-end gap-2">
-          <span className="text-cyan-400/40 font-mono text-[10px]">HIGH_RISK</span>
-          <span className="text-red-400 font-mono text-sm font-bold">{highRisk}</span>
-        </div>
-        <div className="flex items-center justify-end gap-2">
-          <span className="text-cyan-400/40 font-mono text-[10px]">BUILDINGS</span>
-          <span className="text-cyan-300 font-mono text-sm font-bold">{BLDGS.length}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Export ──────────────────────────────────────────────────────────────────
 
 export default function Prison3D() {
@@ -468,18 +525,8 @@ export default function Prison3D() {
         style={{ position: "absolute", inset: 0 }}
         gl={{ antialias: true }}
       >
-        {/* fog removed for clarity */}
         <Scene />
       </Canvas>
-      <HudOverlay />
-      {/* Legend */}
-      <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm border border-cyan-900/30 rounded-lg p-2.5 shadow-lg shadow-cyan-500/5">
-        <p className="text-[10px] font-mono text-cyan-500/50 uppercase tracking-wider mb-1.5">异常密度</p>
-        <div className="w-[100px] h-1.5 rounded-full" style={{ background: "linear-gradient(to right, #0fd9b5, #f59e0b, #ef4444)" }} />
-        <div className="flex justify-between text-[10px] font-mono text-cyan-500/40 mt-1">
-          <span>LOW</span><span>HIGH</span>
-        </div>
-      </div>
     </div>
   );
 }

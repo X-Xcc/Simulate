@@ -13,7 +13,12 @@ export function clearToken(): void {
   localStorage.removeItem("jwt_token");
 }
 
-// --- In-memory cache for GET requests ---
+// ┌──────────────────────────────────────────────────────────────┐
+// │  API 缓存层 — 30s 内存缓存 + 并发请求去重                     │
+// │  演讲提示: "10 个组件同时请求同一个 URL，                      │
+// │            实际只发 1 次 HTTP 请求，其余走缓存。               │
+// │            GET 自动走缓存，POST/PUT/DELETE 自动失效对应前缀缓存"│
+// └──────────────────────────────────────────────────────────────┘
 
 const cache = new Map<string, { data: any; ts: number }>();
 const CACHE_TTL = 30_000; // 30s
@@ -33,14 +38,14 @@ function invalidateCache(prefix: string): void {
 async function cachedFetch<T>(path: string, fetchFn: () => Promise<T>): Promise<T> {
   const key = cacheKey(path);
 
-  // 1. Cache hit (within TTL)
+  // 1. 缓存命中 (30 秒内)
   const entry = cache.get(key);
   if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data as T;
 
-  // 2. Deduplicate concurrent requests to same URL
+  // 2. 并发去重: 同一 URL 的重复请求复用同一个 Promise
   if (pending.has(key)) return pending.get(key) as Promise<T>;
 
-  // 3. New request
+  // 3. 首次请求: 发起 HTTP，成功后写入缓存
   const promise = fetchFn().then(data => {
     cache.set(key, { data, ts: Date.now() });
     pending.delete(key);
@@ -186,6 +191,12 @@ let sseEventSource: EventSource | null = null;
 let sseSubscriberCount = 0;
 let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+// ┌──────────────────────────────────────────────────────────────┐
+// │  ensureSseConnection — 创建单例 EventSource 连接              │
+// │  演讲提示: "创建 EventSource 连接到 /api/sse/stream，          │
+// │            5 种事件类型各绑定一个 addEventListener 监听器，    │
+// │            断线后 3 秒自动重连(仅当仍有活跃订阅者时)"           │
+// └──────────────────────────────────────────────────────────────┘
 function ensureSseConnection(): void {
   if (sseEventSource && sseEventSource.readyState !== EventSource.CLOSED) return;
   if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
@@ -210,6 +221,12 @@ function ensureSseConnection(): void {
   sseEventSource = es;
 }
 
+// ┌──────────────────────────────────────────────────────────────┐
+// │  handleSseEvent — 解析 SSE 数据并分发到订阅者                │
+// │  演讲提示: "后端 SSE 数据是双重 JSON 编码，                   │
+// │            先 JSON.parse 得到字符串，再 parse 一次得到对象，   │
+// │            解析后遍历该事件类型的所有订阅者回调逐个通知"       │
+// └──────────────────────────────────────────────────────────────┘
 function handleSseEvent(eventType: string, e: MessageEvent) {
   const subs = sseSubscribers.get(eventType);
   if (!subs || subs.size === 0) return;
@@ -227,6 +244,14 @@ function handleSseEvent(eventType: string, e: MessageEvent) {
   subs.forEach(cb => { try { cb(data); } catch (err) { console.error("SSE callback error", eventType, err); } });
 }
 
+// ┌──────────────────────────────────────────────────────────────┐
+// │  subscribeSse — 单例 EventSource + 引用计数管理               │
+// │  演讲提示: "第一个订阅者调用时创建 SSE 连接，                 │
+// │            返回的 unsubscribe 函数在组件 unmount 时调用，     │
+// │            引用计数归零则关闭 EventSource 释放资源，           │
+// │            5 种事件类型(cameras/alerts/system_metrics/        │
+// │            audit_logs/camera_stats)共享一条连接"              │
+// └──────────────────────────────────────────────────────────────┘
 export function subscribeSse(eventType: string, callback: SseCallback): () => void {
   if (!sseSubscribers.has(eventType)) {
     sseSubscribers.set(eventType, new Set());

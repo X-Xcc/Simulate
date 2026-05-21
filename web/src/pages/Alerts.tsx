@@ -14,21 +14,25 @@ import {
   Filter,
   X,
   Eye,
-  AlertTriangle,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { useMockAlerts } from "../lib/useMock";
+import { useRealAlerts } from "../lib/useRealAlerts";
 
 export default function Alerts() {
   const toast = useToast();
   const navigate = useNavigate();
-  const [alerts, updateAlertStatus] = useMockAlerts();
+  const { alerts, updateAlertStatus } = useRealAlerts();
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [filterType, setFilterType] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 15;
 
+  // ┌──────────────────────────────────────────────────────┐
+  // │  筛选逻辑 — 按类型(打架/跌倒) + 状态(待处理/已确认/已忽略) │
+  // │  演讲提示: "两个 select 下拉框联动过滤，                  │
+  // │            改变筛选条件时自动重置到第 1 页"               │
+  // └──────────────────────────────────────────────────────┘
   const filteredAlerts = useMemo(() => {
     return alerts.filter(a => {
       if (filterType && a.type !== filterType) return false;
@@ -80,6 +84,12 @@ export default function Alerts() {
 
       {/* 主内容区 */}
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
+        {/* ┌──────────────────────────────────────────────────────┐
+        // │  告警表格 — pending 状态带红色脉冲动画                  │
+        // │  演讲提示: "待处理告警左侧有红色小圆点 animate-pulse，  │
+        // │            已确认/已忽略则变灰点静止，                 │
+        // │            点击行可展开右侧详情面板"                   │
+        // └──────────────────────────────────────────────────────┘ */}
         {/* 表格 */}
         <div className="flex-1 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm">
           <div className="overflow-auto flex-1">
@@ -121,7 +131,6 @@ export default function Alerts() {
                               ? "bg-yellow-100 text-yellow-700"
                               : "bg-blue-100 text-blue-700"
                       )}>
-                        {alert.level === AlertLevel.CRITICAL && <AlertTriangle size={10} />}
                         {alert.type}
                       </span>
                     </td>
@@ -172,6 +181,13 @@ export default function Alerts() {
           </footer>
         </div>
 
+        {/* ┌──────────────────────────────────────────────────────┐
+        // │  详情面板 — 报警快照 + HUD 叠加                       │
+        // │  演讲提示: "左上角是告警截帧照片，                      │
+        // │            底部 HUD 叠加了时间戳和置信度标签，           │
+        // │            这张图可直接作为电子证据使用，               │
+        // │            图片加载失败会自动重试 3 次(500ms 间隔)"     │
+        // └──────────────────────────────────────────────────────┘ */}
         {/* 详情面板 */}
         {selectedAlert && (
           <div className="w-[360px] bg-white border border-outline-variant rounded-xl flex flex-col shadow-sm overflow-hidden shrink-0 animate-fade-in-up">
@@ -247,6 +263,13 @@ export default function Alerts() {
               </div>
             </div>
 
+            {/* ┌──────────────────────────────────────────────────────┐
+            // │  状态操作按钮 — 忽略误报 / 确认告警 / 查看录像回放     │
+            // │  演讲提示: "只有 pending 状态的告警才能操作，          │
+            // │            忽略和确认都会调 updateAlertStatus 更新      │
+            // │            JSON 状态，回放按钮跳转到 /monitor 页面      │
+            // │            并携带 camId 和 time 参数"                  │
+            // └──────────────────────────────────────────────────────┘ */}
             {/* 操作按钮 */}
             <div className="p-4 border-t border-outline-variant space-y-2">
               <div className="flex gap-2">

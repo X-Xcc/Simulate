@@ -28,9 +28,12 @@ public class CameraRepository {
         c.setIp(rs.getString("ip"));
         c.setPort(rs.getInt("port"));
         String camType = rs.getString("type");
-        c.setAddress("usb".equals(camType)
-                ? rs.getInt("port")
-                : rs.getString("rtsp_url") != null ? rs.getString("rtsp_url") : rs.getString("http_url"));
+        if ("usb".equals(camType)) {
+            String ipVal = rs.getString("ip");
+            c.setAddress(ipVal != null && !ipVal.isEmpty() ? Integer.parseInt(ipVal) : 0);
+        } else {
+            c.setAddress(rs.getString("rtsp_url") != null ? rs.getString("rtsp_url") : rs.getString("http_url"));
+        }
         c.setChannel(rs.getInt("channel"));
         c.setStatus(rs.getString("status"));
         c.setEnabled(rs.getBoolean("enabled"));
@@ -53,9 +56,10 @@ public class CameraRepository {
         jdbc.update(
             "INSERT INTO cameras (id, name, type, brand, model, ip, port, rtsp_url, http_url, username, password, channel, status, enabled, go2rtc_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             c.getId(), c.getName(), c.getType(), c.getBrand(), c.getModel(),
-            c.getIp(), c.getPort() > 0 ? c.getPort() : 554,
-            c.getType().equals("rtsp") ? String.valueOf(c.getAddress()) : null,
-            c.getType().equals("http_snapshot") ? String.valueOf(c.getAddress()) : null,
+            "usb".equals(c.getType()) ? (c.getAddress() != null ? String.valueOf(c.getAddress()) : "0") : c.getIp(),
+            c.getPort() > 0 ? c.getPort() : 554,
+            "rtsp".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
+            "http_snapshot".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
             c.getUsername(), c.getPassword(),
             c.getChannel(), c.getStatus(), c.isEnabled(), go2rtcId
         );
@@ -64,10 +68,11 @@ public class CameraRepository {
     public void update(Camera c) {
         jdbc.update(
             "UPDATE cameras SET name=?, type=?, brand=?, model=?, ip=?, port=?, rtsp_url=?, http_url=?, username=?, password=?, channel=?, status=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            c.getName(), c.getType(), c.getBrand(), c.getModel(), c.getIp(),
+            c.getName(), c.getType(), c.getBrand(), c.getModel(),
+            "usb".equals(c.getType()) ? (c.getAddress() != null ? String.valueOf(c.getAddress()) : "0") : c.getIp(),
             c.getPort() > 0 ? c.getPort() : 554,
-            c.getType().equals("rtsp") ? String.valueOf(c.getAddress()) : null,
-            c.getType().equals("http_snapshot") ? String.valueOf(c.getAddress()) : null,
+            "rtsp".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
+            "http_snapshot".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
             c.getUsername(), c.getPassword(),
             c.getChannel(), c.getStatus(), c.isEnabled(), c.getId()
         );

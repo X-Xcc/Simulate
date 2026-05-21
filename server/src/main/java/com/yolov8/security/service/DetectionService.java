@@ -23,6 +23,11 @@ import java.util.DoubleSummaryStatistics;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+// ┌──────────────────────────────────────────────┐
+// │  DirScan 缓存 — 15秒 TTL，避免频繁扫描磁盘    │
+// │  演讲提示: "检测数据是JSON文件存在磁盘上，      │
+// │            不用数据库，15秒扫一次目录就够快"    │
+// └──────────────────────────────────────────────┘
 @Service
 public class DetectionService {
 

@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// 摄像头配置服务 — CRUD + go2rtc 联动，添加/删除摄像头时自动同步go2rtc的流配置
 @Service
 public class CameraConfigService {
 

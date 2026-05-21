@@ -37,6 +37,7 @@ public class VideoStreamController {
     @Value("${app.video.frame-ttl-ms:30000}")
     private long frameTtlMs;
 
+    // ConcurrentHashMap<camId, jpegBytes>，每个摄像头独立存储最新帧
     /** Multi-camera frame storage: camId -> latest frame bytes (JPEG) */
     private final Map<String, byte[]> latestFrameBytes = new ConcurrentHashMap<>();
     private final Map<String, Long> lastFrameIds = new ConcurrentHashMap<>();
@@ -57,6 +58,7 @@ public class VideoStreamController {
         this.demoService = demoService;
     }
 
+    // Python POST进来，MJPEG读出去
     /**
      * Update frame for a specific camera. Converts to JPEG bytes immediately.
      */
@@ -86,6 +88,11 @@ public class VideoStreamController {
         updateFrame(frame, DEFAULT_CAM);
     }
 
+    // ┌──────────────────────────────────────────────┐
+    // │  MJPEG流输出 — multipart/x-mixed-replace      │
+    // │  演讲提示: "不是WebSocket不是HLS，就是最朴素的   │
+    // │            MJPEG一帧帧拼接，兼容性最好"         │
+    // └──────────────────────────────────────────────┘
     /**
      * MJPEG video feed endpoint. Supports ?cam=0, ?cam=1, etc.
      */
@@ -189,6 +196,7 @@ public class VideoStreamController {
         return latestFrameBytes.get(cam);
     }
 
+    // 无真实帧时生成模拟帧（灰色+文字），用于前端占位显示
     private byte[] getTestFrameBytes(String cam) {
         BufferedImage testFrame = getOrCreateCachedTestFrame(cam);
         try {
@@ -306,6 +314,7 @@ public class VideoStreamController {
         }
     }
 
+    // 写--frame\r\n + Content-Type + JPEG二进制，组成MJPEG multipart协议
     private void writeFrame(OutputStream out, byte[] frameBytes) throws IOException {
         out.write(("--frame\r\n").getBytes());
         out.write(("Content-Type: image/jpeg\r\n").getBytes());

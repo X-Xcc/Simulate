@@ -53,8 +53,8 @@ export default function Devices() {
     try {
       const data = await fetchCameras();
       setCameras(data);
-    } catch (e: any) {
-      toast.show("加载设备列表失败: " + e.message, "error");
+    } catch {
+      // 静默失败，不弹窗
     } finally {
       setLoading(false);
     }

@@ -76,9 +76,9 @@ except Exception:
     _GPU_AVAILABLE = False
 
 # Web 服务器配置
-WEB_SERVER_URL = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000")
-SEND_FRAME_INTERVAL = 1  # 每1帧发送一次（实时）
-JPEG_QUALITY = 50  # 降低JPEG质量以减少传输时间（极致性能）
+WEB_SERVER_URL = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000")  # Java后端地址，帧POST到这里
+SEND_FRAME_INTERVAL = 1      # 每N帧发送一次，1=每帧都发（实时）
+JPEG_QUALITY = 50            # JPEG压缩质量，50兼顾画质和带宽（演讲提示: 原始画质80+约300KB，50约80KB）
 
 
 # ===================== 配置区 =====================
@@ -87,25 +87,23 @@ class Config:
     # 路径配置 - 简化，直接使用固定路径结构
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-    MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "yolov8n-pose.pt")
+    MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "yolov8n-pose.pt")  # YOLOv8n-pose，5MB轻量模型
     # 多摄像头支持 - 启动时自动检测可用摄像头
     SOURCES = []  # 启动时由 detect_cameras() 填充
     RESULT_VIDEO_PATH = os.path.join(PROJECT_ROOT, "results", "security_result.mp4")
     DATASET_DIR = os.path.join(PROJECT_ROOT, "server", "data")
 
     # 模型参数
-    IMG_SIZE = 512
-    CONF_THRESH = 0.5
+    IMG_SIZE = 512        # 输入尺寸，比标准640更小→省算力
+    CONF_THRESH = 0.5     # 置信度阈值，低于50%的结果丢弃
     # 设备选择: 通过环境变量 YOLOV8_DEVICE=cuda 启用 GPU，默认 CPU
-    DEVICE = "cuda" if os.environ.get("YOLOV8_DEVICE", "cpu").lower() == "cuda" else "cpu"
-    HALF = DEVICE == "cuda"  # CPU 不支持 FP16
-    # TensorRT 加速（首次运行会导出 engine 文件，后续直接加载，2-5x 加速）
-    USE_TENSORRT = False  # 设为 True 启用 TensorRT（需要安装 tensorrt）
+    DEVICE = "cuda" if os.environ.get("YOLOV8_DEVICE", "cpu").lower() == "cuda" else "cpu"  # 强制GPU加速
+    HALF = DEVICE == "cuda"  # FP16半精度，显存减半；CPU不支持
+    USE_TENSORRT = False  # TensorRT加速（需首次导出.engine，2-5x加速）
 
     # 检测参数
     FIGHTING_THRESHOLD = 0.3
-    # 推理跳帧 — 每N帧推理一次，中间帧复用结果（2=每2帧推理1次，推理开销减半）
-    INFERENCE_EVERY = 2
+    INFERENCE_EVERY = 2   # 跳帧推理：每2帧推理1次，中间复用缓存
     # 跌倒检测时序平滑
     FALL_CONFIRM_FRAMES = 2  # 连续N帧确认跌倒才触发
     # 跌倒检测细粒度阈值（从 thresholds.json 加载，默认值见 _load_thresholds）
@@ -165,6 +163,9 @@ class Config:
     def __init__(self):
         self._load_thresholds()
 
+    # 阈值动态加载 — 不改代码、不重启，改JSON文件立即生效
+    # 演讲提示: "运维人员觉得打架检测太灵敏，直接改thresholds.json，
+    #           下一帧推理就用新阈值"
     def _load_thresholds(self):
         """从 thresholds.json 加载阈值，缺失字段保留默认值"""
         config_path = os.path.join(self.SCRIPT_DIR, "thresholds.json")
@@ -267,6 +268,11 @@ def detect_cameras(max_index=5):
 
 
 def load_cameras_config(api_base=None):
+    # ┌──────────────────────────────────────────────┐
+    # │  摄像头配置读取 — 优先从Java API获取           │
+    # │  回退: 读本地 cameras.json                    │
+    # │  演讲提示: "Python和Java共享同一个摄像头配置"   │
+    # └──────────────────────────────────────────────┘
     """从 Java 后端 API 获取摄像头列表"""
     if api_base is None:
         api_base = os.environ.get("WEB_SERVER_URL", "http://127.0.0.1:5000")
@@ -322,6 +328,7 @@ def load_cameras_config(api_base=None):
 
 
 def _load_cameras_config_fallback():
+    # 回退读本地 JSON — Java不可用时的保底方案
     """回退方案：读本地 cameras.json"""
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cameras.json")
     if not os.path.exists(config_path):
@@ -457,14 +464,14 @@ class Utils:
 
     @staticmethod
     def calculate_distance(p1: np.ndarray, p2: np.ndarray) -> float:
-        """计算两个关键点之间的欧氏距离"""
+        """欧氏距离，用于判断两人是否靠近"""
         dx = float(p1[0]) - float(p2[0])
         dy = float(p1[1]) - float(p2[1])
         return np.sqrt(dx * dx + dy * dy)
 
     @staticmethod
     def calculate_angle(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> float:
-        """计算三个点形成的夹角（p2为顶点）"""
+        """三点夹角，用于计算躯干/腿部倾斜"""
         # 转换为向量
         v1 = np.array([float(p1[0]) - float(p2[0]), float(p1[1]) - float(p2[1])])
         v2 = np.array([float(p3[0]) - float(p2[0]), float(p3[1]) - float(p2[1])])
@@ -480,7 +487,7 @@ class Utils:
 
     @staticmethod
     def get_body_center(keypoints: np.ndarray) -> Optional[np.ndarray]:
-        """获取人体躯干中心（胸部位置）"""
+        """躯干中心=(左肩+右肩+左髋+右髋)/4"""
         if len(keypoints) >= 13:
             # 基于胸部/肩部关键点计算中心
             return np.mean(keypoints[[5, 6, 11, 12], :2], axis=0)
@@ -514,7 +521,7 @@ class Utils:
 
     @staticmethod
     def calculate_iou(bbox1, bbox2) -> float:
-        """计算两个归一化 [x1,y1,x2,y2] 框的 IoU（无需 img_shape）"""
+        """两人框的交并比，>0.5说明严重重叠"""
         x1 = max(float(bbox1[0]), float(bbox2[0]))
         y1 = max(float(bbox1[1]), float(bbox2[1]))
         x2 = min(float(bbox1[2]), float(bbox2[2]))
@@ -572,6 +579,19 @@ class DetectionModule:
     def __init__(self, config: Config):
         self.config = config
 
+    # ┌────────────────────────────────────────────────────────────┐
+    # │  跌倒检测 — 8维加权评分                                      │
+    # │  演讲提示: 现场只写前3维，后5维讲解带过                        │
+    # │                                                            │
+    # │  维度1: 包围框长宽比    权重0.25                              │
+    # │  维度2: 躯干倾斜角      权重0.15                              │
+    # │  维度3: 头臀相对位置    权重0.20                              │
+    # │  维度4: 腿部角度        权重0.15                              │
+    # │  维度5: 躯干垂直度      权重0.15                              │
+    # │  维度6: 脚踝位置        权重0.10                              │
+    # │  维度7: 头部接近地面    权重0.10                              │
+    # │  维度8: 关键点置信度    乘数(0~1)                             │
+    # └────────────────────────────────────────────────────────────┘
     def detect_fall(self, keypoints: np.ndarray) -> Tuple[bool, float]:
         """基于多维度特征检测跌倒行为 - 优化版本，返回检测结果和置信度"""
         if len(keypoints) < 17:
@@ -582,6 +602,9 @@ class DetectionModule:
         if len(valid_kp) < self.config.FALL_MIN_VALID_KP:
             return False, 0.0
 
+        # ── 维度1: 包围框长宽比 ──
+        # 站着细长(高>宽)，倒下扁宽(宽>高)
+        # 归一化坐标下: 比值>0.7说明身体很宽(跌倒)，<0.55正常站立
         min_x, max_x = valid_kp[:, 0].min(), valid_kp[:, 0].max()
         min_y, max_y = valid_kp[:, 1].min(), valid_kp[:, 1].max()
 
@@ -591,7 +614,9 @@ class DetectionModule:
 
         aspect_ratio = (max_x - min_x) / height
 
-        # 2. 头部与臀部的相对位置（跌倒时头部可能低于臀部）
+        # ── 维度3: 头臀相对位置 ──
+        # 头部关键点y坐标 vs 臀部y坐标
+        # 正常头在上方(head_y < hip_y)，跌倒时接近水平(head_y ≈ hip_y)
         head_y = keypoints[0][1]  # 鼻子Y坐标
         hip_y = (keypoints[11][1] + keypoints[12][1]) / 2  # 髋部Y坐标
         head_hip_ratio = (head_y - hip_y) / height
@@ -607,7 +632,9 @@ class DetectionModule:
         # 5. 脚踝与髋部的相对位置
         hip_ankle_diff = hip_y - (keypoints[15][1] + keypoints[16][1]) / 2
 
-        # 6. 计算躯干倾斜角度（更准确的姿态判断）
+        # ── 维度2: 躯干倾斜角 ──
+        # 肩膀中点→髋部中点连线与垂直轴夹角
+        # 站立≈0°，跌倒≈90°，阈值40°
         shoulder_center = (keypoints[5][:2] + keypoints[6][:2]) / 2
         hip_center = (keypoints[11][:2] + keypoints[12][:2]) / 2
         trunk_vector = shoulder_center - hip_center
@@ -669,7 +696,7 @@ class DetectionModule:
         return is_fall, fall_score
 
     def _is_arm_raised(self, keypoints: np.ndarray) -> bool:
-        """检测手臂是否抬起"""
+        """辅助函数：检测手臂是否高于肩膀（打架典型特征）"""
         if len(keypoints) < 10:
             return False
         shoulder_y = (keypoints[5][1] + keypoints[6][1]) / 2
@@ -677,6 +704,11 @@ class DetectionModule:
         wrist_y = (keypoints[9][1] + keypoints[10][1]) / 2
         return (elbow_y < shoulder_y - self.config.FIGHT_ARM_ELBOW_OFFSET) or (wrist_y < shoulder_y - self.config.FIGHT_ARM_WRIST_OFFSET)
 
+    # ┌────────────────────────────────────────────────────────────┐
+    # │  打架检测 — 三人组合评分                                      │
+    # │  权重: 躯干距离0.4 + 框重叠0.3 + 手臂抬起0.3                  │
+    # │  总分>0.3(FIGHTING_THRESHOLD)判定打架                         │
+    # └────────────────────────────────────────────────────────────┘
     def detect_fighting(self, keypoints_list: List[np.ndarray], bboxes: List[List[float]],
                         img_shape: Tuple[int, int]) -> Tuple[bool, List[int]]:
         """基于躯干数据检测打架行为"""
@@ -718,6 +750,11 @@ class DetectionModule:
 
         return len(fighting_persons) > 0, list(fighting_persons)
 
+    # ┌────────────────────────────────────────────────────────────┐
+    # │  人员聚集检测 — 距离聚类 + 时间确认                           │
+    # │  每对人员归一化距离 < GATHER_RADIUS 归为一簇                  │
+    # │  最大簇人数 > 阈值 且 持续 >= 3秒 触发                        │
+    # └────────────────────────────────────────────────────────────┘
     def detect_gathering(self, keypoints_list: List[np.ndarray],
                          img_shape: Tuple[int, int],
                          gather_start_times: Optional[dict]) -> Tuple[bool, int, float]:
@@ -782,6 +819,11 @@ class DetectionModule:
         is_gathering = duration >= self.config.GATHER_DURATION
         return is_gathering, gather_count, confidence
 
+    # ┌────────────────────────────────────────────────────────────┐
+    # │  detect_security_actions — 统一检测入口                     │
+    # │  流程: IoU人体跟踪 → 跌倒时序平滑 → 打架/离岗/聚集          │
+    # │  关键: 贪心匹配前后帧、连续N帧确认跌倒、无人=离岗            │
+    # └────────────────────────────────────────────────────────────┘
     def detect_security_actions(self, pose_results: List, prev_centers: Optional[List[np.ndarray]],
                                 last_move_times: Optional[List[float]],
                                 gather_start_times: Optional[dict] = None,
@@ -842,7 +884,7 @@ class DetectionModule:
                             continue
                         iou_matrix[ni, pi] = Utils.calculate_iou(current_bboxes[ni], prev_bboxes[pi])
 
-                # 贪心匹配
+                # 贪心匹配：每次找IoU最大的一对，直到低于阈值停止
                 matched_new = set()
                 matched_prev = set()
                 while len(matched_new) < n_new and len(matched_prev) < n_prev:
@@ -871,11 +913,11 @@ class DetectionModule:
             for i, kp_np in enumerate(keypoints_list):
                 new_prev_bboxes_list[i] = current_bboxes[i] if i < len(current_bboxes) else None
 
-                # 跌倒检测（带时序平滑）
+                # 跌倒时序平滑确认：连续N帧确认才触发，防止单帧误报
                 is_fall, fall_confidence = self.detect_fall(kp_np)
                 if is_fall:
                     new_fall_confirm_counts[i] += 1
-                    if new_fall_confirm_counts[i] >= self.config.FALL_CONFIRM_FRAMES:
+                    if new_fall_confirm_counts[i] >= self.config.FALL_CONFIRM_FRAMES:  # 连续2帧才触发
                         detected_actions.add("跌倒")
                         action_confidences["跌倒"] = fall_confidence
                 else:
@@ -889,7 +931,7 @@ class DetectionModule:
                     fighting_persons = fight_persons
                     action_confidences["打架"] = 1.0
 
-            # 离岗检测
+            # 离岗检测：画面中无人 = person_count == 0
             if person_count == 0:
                 detected_actions.add("离岗")
                 action_confidences["离岗"] = 1.0
@@ -1234,6 +1276,11 @@ class SecurityMonitor:
         self.alert_manager = AlertManager(self.config)
         self.ui_manager = UIManager(self.config)
 
+        # ┌──────────────────────────────────────────────────────┐
+        # │  模型加载 — 支持两种模式                             │
+        # │  演讲提示: "标准模式直接加载.pt文件，                 │
+        # │            TensorRT模式先转成.engine再加载，更快"     │
+        # └──────────────────────────────────────────────────────┘
         # 加载模型 — 强制 GPU
         if self.config.USE_TENSORRT:
             # TensorRT 导出（首次慢，后续 2-5x 加速）
@@ -1242,15 +1289,17 @@ class SecurityMonitor:
                 print(f"加载 TensorRT engine: {engine_path}")
                 self.model = YOLO(engine_path)
             else:
+                # 首次导出，后续直接加载，推理速度约提升2倍
                 print("首次运行：导出 TensorRT engine（约需 1-2 分钟）...")
                 base_model = YOLO(self.config.MODEL_PATH)
                 base_model.export(format='engine', imgsz=self.config.IMG_SIZE, half=True, device=self.config.DEVICE)
                 self.model = YOLO(engine_path)
                 print("TensorRT 导出完成 ✅")
         else:
+            # 默认，开箱即用
             self.model = YOLO(self.config.MODEL_PATH)
 
-        # GPU 预热 — 第一次推理最慢，提前跑掉
+        # GPU 预热 — 跑一次空推理让CUDA上下文就绪，不预热第一次推理多50ms
         print("GPU 预热中...")
         dummy = np.zeros((self.config.IMG_SIZE, self.config.IMG_SIZE, 3), dtype=np.uint8)
         self.model(dummy, imgsz=self.config.IMG_SIZE, device=self.config.DEVICE,
@@ -1292,6 +1341,11 @@ class SecurityMonitor:
         return False
 
     def _init_video_source(self, source=0):
+        # ┌──────────────────────────────────────────────┐
+        # │  视频源初始化 — 支持RTSP/USB/HTTP三种类型       │
+        # │  演讲提示: "RTSP走网络摄像头，USB走本地设备，    │
+        # │            HTTP走单帧快照（适合网络差的场景）"   │
+        # └──────────────────────────────────────────────┘
         """初始化视频源"""
         cap = None
         try:
@@ -1343,6 +1397,10 @@ class SecurityMonitor:
         return out, (new_frame_width, new_frame_height)
 
     def send_frame_to_web(self, frame: np.ndarray, cam: str = "0") -> bool:
+        # ┌──────────────────────────────────────────────┐
+        # │  帧传输 — resize + JPEG编码 + HTTP POST        │
+        # │  演讲提示: "960x540 + quality=50，兼顾画质和带宽"│
+        # └──────────────────────────────────────────────┘
         """发送原始视频帧到 web 服务器 - 支持多摄像头"""
         if not self.enable_web_stream or self.session is None:
             return False
@@ -1460,6 +1518,11 @@ class SecurityMonitor:
         return None, False
 
     def _run_camera_thread(self, cam_config):
+        # ┌──────────────────────────────────────────────┐
+        # │  单摄像头检测循环 — 每个摄像头独立线程           │
+        # │  演讲提示: "最核心的循环：读帧→推理→画框         │
+        # │            →保存数据→发送帧到Java→循环"         │
+        # └──────────────────────────────────────────────┘
         """单个摄像头的检测循环（在线程中运行）"""
         cam_str = cam_config["id"]
         source = cam_config["address"]
@@ -1543,7 +1606,7 @@ class SecurityMonitor:
                         cap = None
                 frame_count += 1
 
-                # 2. 模型推理（跳帧：每 inference_every 帧推理一次）
+                # 2. 跳帧推理缓存逻辑：每 inference_every 帧才跑模型，中间帧复用上次结果
                 if frame_count % inference_every == 1 or cached_results is None:
                     results = self.model(
                         frame,
@@ -1671,6 +1734,7 @@ class SecurityMonitor:
             self._pending_frames = max(0, self._pending_frames - 1)
 
     def _send_frame_session(self, frame, cam, session, person_count=0):
+        # POST /api/update_frame，files={'frame': ...}, data={'cam': ..., 'person_count': ...}
         """使用指定会话发送帧到web服务器（支持 GPU resize）"""
         try:
             if HAS_CV2_CUDA:

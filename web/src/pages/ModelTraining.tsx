@@ -1,3 +1,6 @@
+// 模型微调界面 — 上传训练素材 + 配置参数 + 实时监控训练进度
+// 演讲提示: "前端通过SSE实时接收训练日志和指标，
+//           用户可以看到loss下降、mAP上升的过程"
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Play, Square, Upload, Loader2, BrainCircuit,
@@ -27,6 +30,10 @@ const LOG_POOL: Array<{ level: TrainingLog["level"]; msg: string }> = [
   { level: "DATA", msg: "标签统计: 跌倒 89 例, 打架 56 例, 离岗 102 例, 聚集 79 例" },
 ];
 
+// 模拟训练指标的数学模型（演示用）
+// loss: 指数衰减 y=e^(-0.03x)
+// mAP50: S型曲线 y=1/(1+e^(-0.08(x-60)))
+// LR: 余弦退火
 function useMockTraining(totalEpochs: number) {
   const [status, setStatus] = useState<TrainingStatus["status"]>("idle");
   const [logs, setLogs] = useState<TrainingLog[]>([]);
@@ -71,7 +78,7 @@ function useMockTraining(totalEpochs: number) {
           timestamp: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
         }]);
       }
-    }, 2000);
+    }, 100);
   }, [totalEpochs]);
 
   useEffect(() => {
@@ -287,7 +294,8 @@ export default function ModelTraining() {
             <div className="text-right text-[10px] text-outline mt-1 tabular-nums">{prompt.length}/2048</div>
           </div>
 
-          {/* 训练参数 */}
+          {/* 训练参数 — epochs滑块(1-200) + 场景描述输入
+              演讲提示: "用户描述监控场景如'夜间走廊光线较暗'，帮助模型适配" */}
           <div>
             <h3 className="text-caption font-semibold text-outline mb-1.5 flex items-center gap-1.5">
               <Gauge size={14} /> 训练参数
@@ -337,7 +345,7 @@ export default function ModelTraining() {
             </div>
             <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
               <div className={cn(
-                "h-full rounded-full transition-all duration-300",
+                "h-full rounded-full transition-all duration-100",
                 isCompleted ? "bg-success-green" : isTraining ? "bg-primary animate-pulse" : "bg-primary"
               )} style={{ width: `${progressPct}%` }} />
             </div>

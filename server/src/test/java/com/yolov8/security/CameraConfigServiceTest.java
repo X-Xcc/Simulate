@@ -2,16 +2,22 @@ package com.yolov8.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.repository.CameraRepository;
 import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.CameraConfigService.Camera;
+import com.yolov8.security.service.Go2rtcService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+
+
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,26 +27,39 @@ class CameraConfigServiceTest {
     Path tempDir;
 
     private CameraConfigService service;
-    private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() throws IOException {
-        objectMapper = new ObjectMapper();
+        // In-memory H2 for testing
+        DriverManagerDataSource ds = new DriverManagerDataSource();
+        ds.setDriverClassName("org.h2.Driver");
+        ds.setUrl("jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=MySQL");
+        ds.setUsername("sa");
+        ds.setPassword("");
 
-        // Create a dummy script file so getParent() resolves to tempDir
+        JdbcTemplate jdbc = new JdbcTemplate(ds);
+        jdbc.execute("""
+            CREATE TABLE IF NOT EXISTS cameras (
+                id VARCHAR(64) PRIMARY KEY, name VARCHAR(128) NOT NULL, type VARCHAR(32) NOT NULL,
+                brand VARCHAR(64), model VARCHAR(128), ip VARCHAR(64), port INT DEFAULT 554,
+                rtsp_url VARCHAR(512), http_url VARCHAR(512), username VARCHAR(128), password VARCHAR(128),
+                channel INT DEFAULT 1, status VARCHAR(32) DEFAULT 'offline', enabled BOOLEAN DEFAULT TRUE,
+                go2rtc_id VARCHAR(64), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """);
+
+        CameraRepository repository = new CameraRepository(jdbc);
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // Dummy AppConfig
         Path scriptPath = tempDir.resolve("yolov8_security.py");
         Files.writeString(scriptPath, "# dummy");
-
         AppConfig appConfig = new AppConfig();
         AppConfig.PythonConfig pythonConfig = new AppConfig.PythonConfig();
         pythonConfig.setScriptPath(scriptPath.toString());
         appConfig.setPython(pythonConfig);
 
-        service = new CameraConfigService(appConfig, objectMapper);
-    }
-
-    private void writeCamerasJson(String json) throws IOException {
-        Files.writeString(tempDir.resolve("cameras.json"), json);
+        service = new CameraConfigService(repository, objectMapper, null, appConfig);
     }
 
     // --- Read tests ---
@@ -53,13 +72,15 @@ class CameraConfigServiceTest {
     }
 
     @Test
-    void getAllCameras_validFile_parses() throws IOException {
-        writeCamerasJson("""
-            {"cameras": [
-                {"id": "cam0", "type": "usb", "address": 0, "name": "主摄像头"},
-                {"id": "cam1", "type": "rtsp", "address": "rtsp://10.0.0.1:554/s1", "name": "走廊"}
-            ]}
-        """);
+    void getAllCameras_validFile_parses() {
+        Camera cam1 = new Camera();
+        cam1.setType("usb"); cam1.setAddress(0); cam1.setName("主摄像头");
+        service.addCamera(cam1);
+
+        Camera cam2 = new Camera();
+        cam2.setType("rtsp"); cam2.setAddress("rtsp://10.0.0.1:554/s1"); cam2.setName("走廊");
+        service.addCamera(cam2);
+
         List<Camera> result = service.getAllCameras();
         assertEquals(2, result.size());
         assertEquals("cam0", result.get(0).getId());
@@ -70,28 +91,22 @@ class CameraConfigServiceTest {
     }
 
     @Test
-    void getAllCameras_invalidJson_returnsEmpty() throws IOException {
-        writeCamerasJson("not valid json{{{");
-        List<Camera> result = service.getAllCameras();
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
-    }
+    void getCameraById_existingId_returnsCamera() {
+        Camera cam = new Camera();
+        cam.setType("usb"); cam.setAddress(0); cam.setName("主");
+        service.addCamera(cam);
 
-    @Test
-    void getCameraById_existingId_returnsCamera() throws IOException {
-        writeCamerasJson("""
-            {"cameras": [{"id": "cam0", "type": "usb", "address": 0, "name": "主"}]}
-        """);
         Camera result = service.getCameraById("cam0");
         assertNotNull(result);
         assertEquals("cam0", result.getId());
     }
 
     @Test
-    void getCameraById_nonExisting_returnsNull() throws IOException {
-        writeCamerasJson("""
-            {"cameras": [{"id": "cam0", "type": "usb", "address": 0, "name": "主"}]}
-        """);
+    void getCameraById_nonExisting_returnsNull() {
+        Camera cam = new Camera();
+        cam.setType("usb"); cam.setAddress(0); cam.setName("主");
+        service.addCamera(cam);
+
         Camera result = service.getCameraById("cam99");
         assertNull(result);
     }
@@ -179,10 +194,10 @@ class CameraConfigServiceTest {
     // --- Update tests ---
 
     @Test
-    void updateCamera_existingId_updates() throws IOException {
-        writeCamerasJson("""
-            {"cameras": [{"id": "cam0", "type": "usb", "address": 0, "name": "旧名称"}]}
-        """);
+    void updateCamera_existingId_updates() {
+        Camera cam = new Camera();
+        cam.setType("usb"); cam.setAddress(0); cam.setName("旧名称");
+        service.addCamera(cam);
 
         Camera update = new Camera();
         update.setType("usb"); update.setAddress(0); update.setName("新名称");
@@ -205,13 +220,14 @@ class CameraConfigServiceTest {
     // --- Delete tests ---
 
     @Test
-    void deleteCamera_existingId_deletes() throws IOException {
-        writeCamerasJson("""
-            {"cameras": [
-                {"id": "cam0", "type": "usb", "address": 0, "name": "A"},
-                {"id": "cam1", "type": "usb", "address": 1, "name": "B"}
-            ]}
-        """);
+    void deleteCamera_existingId_deletes() {
+        Camera cam1 = new Camera();
+        cam1.setType("usb"); cam1.setAddress(0); cam1.setName("A");
+        service.addCamera(cam1);
+
+        Camera cam2 = new Camera();
+        cam2.setType("usb"); cam2.setAddress(1); cam2.setName("B");
+        service.addCamera(cam2);
 
         boolean result = service.deleteCamera("cam0");
         assertTrue(result);
@@ -222,10 +238,10 @@ class CameraConfigServiceTest {
     }
 
     @Test
-    void deleteCamera_nonExisting_returnsFalse() throws IOException {
-        writeCamerasJson("""
-            {"cameras": [{"id": "cam0", "type": "usb", "address": 0, "name": "A"}]}
-        """);
+    void deleteCamera_nonExisting_returnsFalse() {
+        Camera cam = new Camera();
+        cam.setType("usb"); cam.setAddress(0); cam.setName("A");
+        service.addCamera(cam);
 
         boolean result = service.deleteCamera("cam99");
         assertFalse(result);
@@ -233,7 +249,7 @@ class CameraConfigServiceTest {
     }
 
     @Test
-    void deleteCamera_missingFile_returnsFalse() {
+    void deleteCamera_emptyDb_returnsFalse() {
         boolean result = service.deleteCamera("cam0");
         assertFalse(result);
     }

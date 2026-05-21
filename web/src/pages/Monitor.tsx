@@ -15,36 +15,25 @@ type AlarmType = "fight" | "fall" | "suicide" | "gathering";
 // ── 报警类型配置 ──
 
 const ALARM_CONFIGS: Record<AlarmType, {
-  hex: string; label: string; msg: string; dotBg: string;
+  hex: string; label: string; msg: string;
 }> = {
   fight: {
     hex: "#c13737", label: "打架报警",
     msg: "区域 A 检测到打架行为 — 连续拳击动作，双方肢体冲突特征明显",
-    dotBg: "#ef4444",
   },
   fall: {
     hex: "#f97316", label: "跌倒报警",
     msg: "区域 B 检测到跌倒事件 — 人员姿态异常，身体重心急剧下降",
-    dotBg: "#f97316",
   },
   suicide: {
     hex: "#7c3aed", label: "自杀报警",
     msg: "区域 C 检测到自残风险 — 异常姿态动作，疑似自我伤害行为",
-    dotBg: "#7c3aed",
   },
   gathering: {
     hex: "#eab308", label: "异常聚集报警",
     msg: "区域 D 检测到异常聚集 — 同一区域人数超过阈值，持续聚集",
-    dotBg: "#eab308",
   },
 };
-
-const ALARM_DOTS: { type: AlarmType; tip: string }[] = [
-  { type: "fight", tip: "打架" },
-  { type: "fall", tip: "跌倒" },
-  { type: "suicide", tip: "自杀" },
-  { type: "gathering", tip: "异常聚集" },
-];
 
 // AlarmType → (AlertType, AlertLevel) 映射
 const ALARM_TO_ALERT: Record<AlarmType, { type: AlertType; level: AlertLevel }> = {
@@ -139,23 +128,6 @@ function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: Al
   );
 }
 
-// ── 报警触发小圆点 ──
-
-function AlarmDots({ onTrigger }: { onTrigger: (type: AlarmType) => void }) {
-  return (
-    <div className="flex items-center gap-2 justify-center shrink-0 py-1">
-      {ALARM_DOTS.map(({ type, tip }) => (
-        <button key={type}
-          onClick={() => onTrigger(type)}
-          title={tip}
-          className="w-2 h-2 rounded-full opacity-30 hover:opacity-100 hover:scale-150 transition-all cursor-pointer"
-          style={{ backgroundColor: ALARM_CONFIGS[type].dotBg }}
-        />
-      ))}
-    </div>
-  );
-}
-
 // ── 主组件 ──
 
 export default function Monitor() {
@@ -226,6 +198,20 @@ export default function Monitor() {
     });
   }, []);
 
+  // Alt+X/C/V/B 快捷键触发报警
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      console.log("[alarm-hotkey]", e.key, "alt=", e.altKey);
+      if (!e.altKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      const map: Record<string, AlarmType> = { x: "fight", c: "fall", v: "suicide", b: "gathering" };
+      const type = map[e.key.toLowerCase()];
+      if (type) { e.preventDefault(); console.log("[alarm-hotkey] triggered:", type); handleAlarmTrigger(type); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleAlarmTrigger]);
+
   const gridCols: Record<GridMode, string> = { 2: "grid-cols-2", 4: "grid-cols-2", 6: "grid-cols-3" };
   const gridRows: Record<GridMode, string> = { 2: "grid-rows-1", 4: "grid-rows-2", 6: "grid-rows-2" };
 
@@ -286,8 +272,6 @@ export default function Monitor() {
                 );
               })}
             </div>
-            {/* 底部报警触发小圆点 */}
-            <AlarmDots onTrigger={handleAlarmTrigger} />
           </div>
         )}
       </main>

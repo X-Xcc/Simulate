@@ -34,7 +34,8 @@ public class AuthFilter extends OncePerRequestFilter {
         "/api/detection/start", "/api/detection/stop", "/api/detection/status",
         "/api/upload_training_resource",
         "/api/annotations/**",
-        "/api/update_frame", "/api/model_info", "/api/gpu_status"
+        "/api/update_frame", "/api/model_info", "/api/gpu_status",
+        "/api/discover"
     };
 
     // GET-only public API paths (monitor dashboard data)

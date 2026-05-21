@@ -68,3 +68,11 @@ test_snapshot*.jpg
 
 # Superpowers docs (local plans/specs)
 docs/superpowers/
+
+# Deploy packages & third-party binaries
+deploy-pkg/
+server/bin/
+
+# Agents
+.agents/
+skills-lock.json
