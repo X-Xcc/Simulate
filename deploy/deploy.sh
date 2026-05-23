@@ -85,6 +85,12 @@ setup_directories() {
     mkdir -p "${APP_DIR}/logs"
     mkdir -p "${APP_DIR}/web/dist"
 
+    # Empty data dir for port 5001 (zero-data instance)
+    mkdir -p "${APP_DIR}/data-empty/detections"
+    mkdir -p "${APP_DIR}/data-empty/frames"
+    mkdir -p "${APP_DIR}/data-empty/db"
+    log_info "Created data-empty directories for port 5001"
+
     # Create empty cameras.json if not present
     if [ ! -f "${APP_DIR}/detection/cameras.json" ]; then
         mkdir -p "${APP_DIR}/detection"
@@ -122,7 +128,25 @@ ENVEOF
 }
 
 # ============================================================
-# Step 4: Create systemd service
+# Step 4: Remove Nginx on port 80
+# ============================================================
+stop_nginx() {
+    log_info "Removing Nginx on port 80..."
+    if systemctl is-active --quiet nginx 2>/dev/null; then
+        systemctl stop nginx 2>/dev/null
+        systemctl disable nginx 2>/dev/null
+        log_info "Nginx stopped and disabled"
+    else
+        log_info "Nginx not running, skip"
+    fi
+    # Also kill anything on port 80
+    if command -v fuser &>/dev/null; then
+        fuser -k 80/tcp 2>/dev/null || true
+    fi
+}
+
+# ============================================================
+# Step 5: Create systemd service
 # ============================================================
 setup_service() {
     log_info "Creating systemd service..."
@@ -169,25 +193,57 @@ SVCEOF
     systemctl daemon-reload
     systemctl enable "${SERVICE_NAME}"
     log_info "Systemd service created and enabled"
+
+    # Second instance on port 5001 — empty data, all pages show zero
+    ANALYSIS_SERVICE="${SERVICE_NAME}-analysis"
+    cat > "/etc/systemd/system/${ANALYSIS_SERVICE}.service" << SVCEOF
+[Unit]
+Description=YOLOv8 Security Monitor - Zero-Data Panel (Port 5001)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${APP_DIR}
+EnvironmentFile=${APP_DIR}/.env
+Environment=DATA_DIR=./data-empty
+ExecStart=${JAVA_BIN} -Xms256m -Xmx512m -jar ${WAR_FILE} --server.port=5001
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:${APP_DIR}/logs/app-5001.log
+StandardError=append:${APP_DIR}/logs/app-5001.log
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=${APP_DIR}/data-empty ${APP_DIR}/logs ${APP_DIR}/detection
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+    systemctl enable "${ANALYSIS_SERVICE}"
+    log_info "Zero-data panel service created and enabled (port 5001)"
 }
 
 # ============================================================
-# Step 5: Firewall
+# Step 6: Firewall
 # ============================================================
 setup_firewall() {
-    log_info "Configuring firewall (port 5000)..."
+    log_info "Configuring firewall (ports 5000, 5001)..."
     if command -v ufw &>/dev/null; then
         ufw allow 5000/tcp 2>/dev/null && log_info "ufw: allowed port 5000"
+        ufw allow 5001/tcp 2>/dev/null && log_info "ufw: allowed port 5001"
     elif command -v firewall-cmd &>/dev/null; then
         firewall-cmd --permanent --add-port=5000/tcp 2>/dev/null
-        firewall-cmd --reload 2>/dev/null && log_info "firewalld: allowed port 5000"
+        firewall-cmd --permanent --add-port=5001/tcp 2>/dev/null
+        firewall-cmd --reload 2>/dev/null && log_info "firewalld: allowed ports 5000, 5001"
     else
-        log_warn "No firewall tool found. Make sure port 5000 is open in Alibaba Cloud security group!"
+        log_warn "No firewall tool found. Make sure ports 5000, 5001 are open in Alibaba Cloud security group!"
     fi
 }
 
 # ============================================================
-# Step 6: Start service
+# Step 7: Start service
 # ============================================================
 start_service() {
     log_info "Starting ${SERVICE_NAME}..."
@@ -195,11 +251,24 @@ start_service() {
     sleep 3
 
     if systemctl is-active --quiet "${SERVICE_NAME}"; then
-        log_info "Service is running!"
+        log_info "Main service (port 5000) is running!"
     else
         log_error "Service failed to start. Check logs:"
         log_error "  journalctl -u ${SERVICE_NAME} -n 50"
         log_error "  cat ${APP_DIR}/logs/app.log"
+        exit 1
+    fi
+
+    log_info "Starting ${SERVICE_NAME}-analysis (port 5001)..."
+    systemctl restart "${SERVICE_NAME}-analysis"
+    sleep 3
+
+    if systemctl is-active --quiet "${SERVICE_NAME}-analysis"; then
+        log_info "Analysis service (port 5001) is running!"
+    else
+        log_error "Analysis service failed to start. Check logs:"
+        log_error "  journalctl -u ${SERVICE_NAME}-analysis -n 50"
+        log_error "  cat ${APP_DIR}/logs/app-5001.log"
         exit 1
     fi
 }
@@ -216,6 +285,7 @@ main() {
     check_java
     setup_directories
     setup_env
+    stop_nginx
     setup_service
     setup_firewall
     start_service
@@ -225,15 +295,14 @@ main() {
     echo "  Deployment Complete!"
     echo "========================================"
     echo ""
-    echo "  URL:  http://$(hostname -I | awk '{print $1}'):5000"
-    echo "  Logs: tail -f ${APP_DIR}/logs/app.log"
-    echo "  Ctrl: systemctl status ${SERVICE_NAME}"
+    echo "  :5000 → 完整应用（前端 mock 假数据）"
+    echo "  :5001 → 完整应用（数据全零）"
+    echo "  Logs:     tail -f ${APP_DIR}/logs/app.log"
+    echo "  Logs(5001): tail -f ${APP_DIR}/logs/app-5001.log"
+    echo "  Ctrl:     systemctl status ${SERVICE_NAME}"
     echo ""
     echo "  Login with credentials from ${APP_DIR}/.env"
     echo ""
-
-    # Alibaba Cloud security group reminder
-    log_warn "Don't forget to open port 5000 in Alibaba Cloud security group!"
 }
 
 main "$@"

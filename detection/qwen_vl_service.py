@@ -358,7 +358,7 @@ def main():
         print("但 HTTP 服务仍会启动，您可以稍后重试加载模型")
     
     # 启动服务
-    port = int(os.environ.get('QWEN_VL_PORT', 5001))
+    port = int(os.environ.get('QWEN_VL_PORT', 5002))
     host = os.environ.get('QWEN_VL_HOST', '0.0.0.0')
     
     print(f"\n启动 HTTP 服务: http://{host}:{port}")

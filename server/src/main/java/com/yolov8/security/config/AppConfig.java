@@ -192,7 +192,7 @@ public class AppConfig {
     }
     
     public static class QwenVLConfig {
-        private String serviceUrl = "http://127.0.0.1:5001";
+        private String serviceUrl = "http://127.0.0.1:5002";
         private String modelPath = "./models/Qwen2.5-VL-7B-Instruct";
         private int timeout = 30000;
         private int maxRetries = 3;

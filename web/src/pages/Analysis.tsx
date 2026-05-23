@@ -4,7 +4,7 @@ import {
   BarChart, Bar, Cell
 } from "recharts";
 import {
-  TrendingUp, Map as MapIcon, BarChart2, Download,
+  TrendingUp, BarChart2, Download,
   AlertCircle, ShieldCheck, Target, Activity
 } from "lucide-react";
 import { useState, useMemo } from "react";
@@ -17,6 +17,9 @@ import {
 import { useRealAlerts } from "../lib/useRealAlerts";
 import { useToast } from "../components/Toast";
 import Prison3D from "../components/Prison3D";
+
+const isZeroPort = typeof window !== "undefined" && window.location.port === "5001";
+
 
 export default function Analysis() {
   const toast = useToast();
@@ -52,11 +55,23 @@ export default function Analysis() {
   const maxVal = Math.max(...Object.values(behaviorCounts as Record<string, number>), 1);
   const maxRegionalValue = regionalData.length > 0 ? Math.max(...regionalData.map(d => d.value)) : 1;
 
+  // 5001 端口 — 数据全部置零
+  const zero = (v: number) => isZeroPort ? 0 : v;
+  const zeroStr = (v: string) => isZeroPort ? "0" : v;
+  const zeroedTrendData = useMemo(
+    () => trendData.map(d => ({ ...d, alerts: zero(d.alerts) })),
+    [trendData],
+  );
+  const zeroedRegionalData = useMemo(
+    () => regionalData.map(d => ({ ...d, value: zero(d.value) })),
+    [regionalData],
+  );
+
   const radarData = [
-    { subject: "打架", A: behaviorCounts["打架"] ?? 0, fullMark: maxVal },
-    { subject: "跌倒", A: behaviorCounts["跌倒"] ?? 0, fullMark: maxVal },
-    { subject: "离岗", A: behaviorCounts["离岗"] ?? 0, fullMark: maxVal },
-    { subject: "聚集", A: behaviorCounts["人员聚集"] ?? 0, fullMark: maxVal },
+    { subject: "打架", A: zero(behaviorCounts["打架"] ?? 0), fullMark: maxVal },
+    { subject: "跌倒", A: zero(behaviorCounts["跌倒"] ?? 0), fullMark: maxVal },
+    { subject: "离岗", A: zero(behaviorCounts["离岗"] ?? 0), fullMark: maxVal },
+    { subject: "聚集", A: zero(behaviorCounts["人员聚集"] ?? 0), fullMark: maxVal },
   ];
 
   return (
@@ -89,10 +104,10 @@ export default function Analysis() {
       {/* 摘要卡片 */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "本周告警总数", value: totalAlerts.toString(), change: "+12.4%", icon: AlertCircle, color: "text-danger-red", bg: "bg-error-container/20" },
-          { label: "AI 拦截准确率", value: `${accuracy}%`, change: "+0.8%", icon: ShieldCheck, color: "text-success-green", bg: "bg-success-green/10" },
-          { label: "平均识别时延", value: avgLatency, change: "正常", icon: Target, color: "text-info-cyan", bg: "bg-info-cyan/5" },
-          { label: "设备负载", value: `${status.cpuUsage}%`, change: "运行中", icon: Activity, color: "text-outline", bg: "bg-surface-container-high" },
+          { label: "本周告警总数", value: zeroStr(totalAlerts.toString()), change: isZeroPort ? "—" : "+12.4%", icon: AlertCircle, color: "text-danger-red", bg: "bg-error-container/20" },
+          { label: "AI 拦截准确率", value: `${zeroStr(accuracy)}%`, change: isZeroPort ? "—" : "+0.8%", icon: ShieldCheck, color: "text-success-green", bg: "bg-success-green/10" },
+          { label: "平均识别时延", value: isZeroPort ? "0ms" : avgLatency, change: isZeroPort ? "—" : "正常", icon: Target, color: "text-info-cyan", bg: "bg-info-cyan/5" },
+          { label: "设备负载", value: `${zeroStr(status.cpuUsage.toString())}%`, change: isZeroPort ? "—" : "运行中", icon: Activity, color: "text-outline", bg: "bg-surface-container-high" },
         ].map((s, i) => (
           <div key={i} className="bg-white p-4 border border-outline-variant rounded-xl shadow-sm hover:shadow-md transition-all">
             <div className="flex justify-between items-start mb-2">
@@ -109,47 +124,39 @@ export default function Analysis() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  Prison3D — Three.js 3D 监区模型                      │
-        // │  演讲提示: "12 栋建筑独立热力着色，                     │
-        // │            绿色=正常区域，黄色=注意，红色=高危，          │
-        // │            颜色实时跟随 SSE 推送的告警数据变化"           │
-        // └──────────────────────────────────────────────────────┘ */}
-        {/* 3D 监区模型 */}
-        <section className="col-span-2 bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col h-[420px]">
-          <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center">
-            <h3 className="font-bold text-body-lg flex items-center gap-2"><MapIcon size={16} className="text-outline" /> 监区异常活动热力图</h3>
-            <span className="text-caption font-semibold text-success-green uppercase bg-success-green/10 px-2 py-0.5 rounded">Real-time</span>
-          </header>
-          <div className="flex-1 relative">
-            <Prison3D />
-          </div>
-        </section>
+      {/* 3D 监区热力图 */}
+      <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm h-[500px]">
+        <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50">
+          <h3 className="font-bold text-body-lg flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-info-cyan animate-pulse" />
+            3D 监区异常热力图
+          </h3>
+        </header>
+        <Prison3D />
+      </section>
 
-        {/* 7日趋势 */}
-        <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col h-[420px]">
-          <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50">
-            <h3 className="font-bold text-body-lg flex items-center gap-2"><BarChart2 size={16} className="text-outline" /> 七日告警趋势</h3>
-          </header>
-          <div className="flex-1 p-4 chart-grid">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient id="colorAlert" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1a56db" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#1a56db" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#9ca3af" }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#9ca3af" }} />
-                <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", boxShadow: "0 4px 12px rgba(0,0,0,0.06)", fontSize: "12px" }} />
-                <Area type="monotone" dataKey="alerts" stroke="#1a56db" strokeWidth={2} fillOpacity={1} fill="url(#colorAlert)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      </div>
+      {/* 7日趋势 */}
+      <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col h-[420px]">
+        <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50">
+          <h3 className="font-bold text-body-lg flex items-center gap-2"><BarChart2 size={16} className="text-outline" /> 七日告警趋势</h3>
+        </header>
+        <div className="flex-1 p-4 chart-grid">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={zeroedTrendData}>
+              <defs>
+                <linearGradient id="colorAlert" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#1a56db" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#1a56db" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#9ca3af" }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#9ca3af" }} />
+              <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", boxShadow: "0 4px 12px rgba(0,0,0,0.06)", fontSize: "12px" }} />
+              <Area type="monotone" dataKey="alerts" stroke="#1a56db" strokeWidth={2} fillOpacity={1} fill="url(#colorAlert)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
 
       <div className="grid grid-cols-2 gap-4">
         {/* ┌──────────────────────────────────────────────────────┐
@@ -176,11 +183,11 @@ export default function Analysis() {
             <div className="col-span-2 space-y-4 border-l border-outline-variant/30 pl-4">
               <div>
                 <p className="text-caption text-outline font-semibold uppercase mb-0.5">总检测数</p>
-                <p className="text-heading font-mono font-bold text-primary tabular-nums">{totalAlerts}</p>
+                <p className="text-heading font-mono font-bold text-primary tabular-nums">{zero(totalAlerts)}</p>
               </div>
               <div>
                 <p className="text-caption text-outline font-semibold uppercase mb-0.5">总告警数</p>
-                <p className="text-heading font-mono font-bold text-detect-purple tabular-nums">{totalAlerts}</p>
+                <p className="text-heading font-mono font-bold text-detect-purple tabular-nums">{zero(totalAlerts)}</p>
               </div>
               <div className="pt-3 border-t border-outline-variant/20 opacity-60">
                 <p className="text-caption font-semibold">模型: YOLOv8n-pose</p>
@@ -202,7 +209,7 @@ export default function Analysis() {
             <h3 className="font-bold text-body-lg flex items-center gap-2"><TrendingUp size={16} className="text-outline" /> 各监区告警分布</h3>
           </header>
           <div className="p-4 flex-1 flex flex-col justify-center">
-            {regionalData.map(item => (
+            {zeroedRegionalData.map(item => (
               <div key={item.name} className="flex items-center gap-3 mb-3 last:mb-0">
                 <span className="w-10 text-body-sm font-semibold text-right text-on-surface-variant">{item.name}</span>
                 <div className="flex-1 h-2.5 bg-surface-container-high rounded-full overflow-hidden">
