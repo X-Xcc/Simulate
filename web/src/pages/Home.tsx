@@ -1,174 +1,251 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { motion, useInView, useScroll, useTransform } from "motion/react";
+import * as THREE from "three";
 import {
-  Shield,
-  PersonStanding,
-  Swords,
-  Eye,
-  ScanEye,
-  MapPinOff,
-  Users,
-  ChevronDown,
-  ArrowRight,
-  Zap,
-  Cpu,
-  Radio,
-  Activity,
-  Terminal,
-  Gauge,
-  Layers,
+  Shield, ArrowRight, PersonStanding, Swords, ScanEye,
+  Eye, MapPinOff, Users, Radio, Zap, Activity, ChevronDown,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════
-   字体加载
+   星云粒子背景 — 圆形发光粒子
+   自定义 ShaderMaterial 实现圆形光粒 + 球形分布
    ═══════════════════════════════════════════ */
-function FontLoader() {
-  return (
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;500;600;700;800;900&family=Exo+2:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap"
-    />
-  );
-}
+function ParticleBackground() {
+  const pointsRef = useRef<THREE.Points>(null!);
+  const linesRef = useRef<THREE.LineSegments>(null!);
+  const mouseRef = useRef({ x: 0, y: 0 });
+  const mouseWorldRef = useRef(new THREE.Vector3());
+  const targetRotRef = useRef({ x: 0, y: 0 });
+  const rotRef = useRef({ x: 0, y: 0 });
+  const timeRef = useRef(0);
 
-/* ═══════════════════════════════════════════
-   Radar Canvas — 背景扫描线 + 距离环
-   ═══════════════════════════════════════════ */
-function RadarBackground() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const PARTICLE_COUNT = 4000;
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
-    let raf = 0;
-    let angle = 0;
+  // 自定义着色器：圆形发光粒子
+  const vertexShader = `
+    attribute float size;
+    attribute vec3 customColor;
+    varying vec3 vColor;
+    void main() {
+      vColor = customColor;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size * (200.0 / -mvPosition.z);
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `;
 
-    const resize = () => {
-      canvas.width = canvas.offsetWidth * devicePixelRatio;
-      canvas.height = canvas.offsetHeight * devicePixelRatio;
-      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-    };
-    resize();
-    window.addEventListener("resize", resize);
+  const fragmentShader = `
+    varying vec3 vColor;
+    void main() {
+      vec2 center = gl_PointCoord - vec2(0.5);
+      float dist = length(center);
+      if (dist > 0.5) discard;
+      float alpha = 1.0 - smoothstep(0.2, 0.5, dist);
+      gl_FragColor = vec4(vColor, alpha);
+    }
+  `;
 
-    const draw = () => {
-      const w = canvas.offsetWidth;
-      const h = canvas.offsetHeight;
-      ctx.clearRect(0, 0, w, h);
-
-      // 网格
-      ctx.strokeStyle = "rgba(255,255,255,0.02)";
-      ctx.lineWidth = 0.5;
-      const gap = 60;
-      for (let x = 0; x < w; x += gap) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let y = 0; y < h; y += gap) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
-
-      const cx = w / 2;
-      const cy = h / 2;
-      const len = Math.hypot(w, h);
-      angle += 0.005;
-
-      // 扫描线
-      const ex = cx + Math.cos(angle) * len;
-      const ey = cy + Math.sin(angle) * len;
-      const grad = ctx.createLinearGradient(cx, cy, ex, ey);
-      grad.addColorStop(0, "rgba(16,185,129,0.15)");
-      grad.addColorStop(0.5, "rgba(6,182,212,0.06)");
-      grad.addColorStop(1, "rgba(16,185,129,0)");
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
-
-      // 扫描扇面
-      const sweep = ctx.createRadialGradient(cx, cy, 0, cx, cy, len);
-      sweep.addColorStop(0, "rgba(16,185,129,0.04)");
-      sweep.addColorStop(1, "rgba(16,185,129,0)");
-      ctx.fillStyle = sweep;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, len, angle - 0.7, angle);
-      ctx.closePath();
-      ctx.fill();
-
-      // 距离环
-      const maxR = Math.min(w, h) * 0.42;
-      for (let i = 1; i <= 4; i++) {
-        const r = (maxR / 4) * i;
-        ctx.strokeStyle = `rgba(16,185,129,${0.03 + i * 0.005})`;
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // 十字准线
-      ctx.strokeStyle = "rgba(16,185,129,0.04)";
-      ctx.lineWidth = 0.5;
-      ctx.beginPath(); ctx.moveTo(cx, cy - maxR); ctx.lineTo(cx, cy + maxR); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(cx - maxR, cy); ctx.lineTo(cx + maxR, cy); ctx.stroke();
-
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
-    };
+  // 预计算粒子大小和颜色
+  const particleSizes = useMemo(() => {
+    const sizes = new Float32Array(PARTICLE_COUNT);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      sizes[i] = 1.5 + Math.random() * 3.5; // 1.5-5.0 大小
+    }
+    return sizes;
   }, []);
 
-  return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-60" />;
-}
+  const particleColors = useMemo(() => {
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    // 淡蓝 + 淡紫 + 淡青 配色
+    const colorPalette = [
+      [0.7, 0.85, 1.0],   // 淡蓝
+      [0.75, 0.8, 0.95],  // 冷蓝
+      [0.8, 0.75, 0.9],   // 淡紫
+      [0.75, 0.85, 0.9],  // 淡青
+      [0.85, 0.8, 0.9],   // 浅紫蓝
+    ];
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+      const brightness = 0.7 + Math.random() * 0.3;
+      colors[i * 3] = color[0] * brightness;
+      colors[i * 3 + 1] = color[1] * brightness;
+      colors[i * 3 + 2] = color[2] * brightness;
+    }
+    return colors;
+  }, []);
 
-/* ═══════════════════════════════════════════
-   浮动粒子
-   ═══════════════════════════════════════════ */
-function FloatingParticles() {
-  const particles = Array.from({ length: 30 }, (_, i) => ({
-    id: i,
-    left: `${(i * 37 + 13) % 100}%`,
-    top: `${(i * 53 + 7) % 100}%`,
-    size: 1 + (i % 3),
-    delay: `${(i * 0.6) % 10}s`,
-    duration: `${5 + (i % 6) * 1.8}s`,
-    color: i % 3 === 0
-      ? "rgba(6,182,212,0.4)"
-      : i % 3 === 1
-        ? "rgba(139,92,246,0.35)"
-        : "rgba(16,185,129,0.45)",
-  }));
+  // 初始化粒子位置和速度
+  useEffect(() => {
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const velocities = new Float32Array(PARTICLE_COUNT * 3);
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const i3 = i * 3;
+      // 球形分布
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const r = 35 + Math.random() * 65;
+      positions[i3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i3 + 2] = r * Math.cos(phi);
+      // 极缓慢漂浮
+      velocities[i3] = (Math.random() - 0.5) * 0.008;
+      velocities[i3 + 1] = (Math.random() - 0.5) * 0.008;
+      velocities[i3 + 2] = (Math.random() - 0.5) * 0.008;
+    }
+
+    (pointsRef.current as any)._positions = positions;
+    (pointsRef.current as any)._velocities = velocities;
+
+    // 初始化几何
+    const geo = pointsRef.current.geometry;
+    (geo.attributes.position.array as Float32Array).set(positions);
+    geo.attributes.position.needsUpdate = true;
+  }, []);
+
+  // 鼠标跟踪
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const x = (e.clientX / window.innerWidth) * 2 - 1;
+      const y = -(e.clientY / window.innerHeight) * 2 + 1;
+      mouseRef.current = { x, y };
+      mouseWorldRef.current.set(x * 60, y * 50, 0);
+      targetRotRef.current = { x: y * 0.3, y: x * 0.3 };
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
+  // 每帧更新
+  useFrame((_, delta) => {
+    if (!pointsRef.current || !(pointsRef.current as any)._positions) return;
+
+    timeRef.current += delta;
+    const positions = (pointsRef.current as any)._positions as Float32Array;
+    const velocities = (pointsRef.current as any)._velocities as Float32Array;
+
+    // 球形缓慢自转 + 鼠标响应
+    rotRef.current.x += (targetRotRef.current.x - rotRef.current.x) * 0.01;
+    rotRef.current.y += (targetRotRef.current.y - rotRef.current.y) * 0.01;
+    pointsRef.current.rotation.x = rotRef.current.x + timeRef.current * 0.015;
+    pointsRef.current.rotation.y = rotRef.current.y + timeRef.current * 0.01;
+
+    // 更新粒子位置
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const i3 = i * 3;
+      positions[i3] += velocities[i3];
+      positions[i3 + 1] += velocities[i3 + 1];
+      positions[i3 + 2] += velocities[i3 + 2];
+
+      // 鼠标斥力
+      const dx = positions[i3] - mouseWorldRef.current.x;
+      const dy = positions[i3 + 1] - mouseWorldRef.current.y;
+      const dz = positions[i3 + 2] - mouseWorldRef.current.z;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      if (dist < 20 && dist > 0) {
+        const force = (20 - dist) / 20 * 0.4;
+        positions[i3] += (dx / dist) * force;
+        positions[i3 + 1] += (dy / dist) * force;
+        positions[i3 + 2] += (dz / dist) * force;
+      }
+
+      // 边界反弹
+      if (Math.abs(positions[i3]) > 100) velocities[i3] *= -1;
+      if (Math.abs(positions[i3 + 1]) > 80) velocities[i3 + 1] *= -1;
+      if (Math.abs(positions[i3 + 2]) > 80) velocities[i3 + 2] *= -1;
+    }
+
+    // 更新几何
+    const geo = pointsRef.current.geometry;
+    (geo.attributes.position.array as Float32Array).set(positions);
+    geo.attributes.position.needsUpdate = true;
+
+    // 更新连接线
+    if (linesRef.current) {
+      linesRef.current.rotation.x = pointsRef.current.rotation.x;
+      linesRef.current.rotation.y = pointsRef.current.rotation.y;
+
+      const lineGeo = linesRef.current.geometry;
+      const linePos = lineGeo.attributes.position.array as Float32Array;
+      let lineIndex = 0;
+      const maxDist = 9;
+
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const i3 = i * 3;
+        const x1 = positions[i3];
+        const y1 = positions[i3 + 1];
+        const z1 = positions[i3 + 2];
+
+        for (let j = i + 1; j < PARTICLE_COUNT && lineIndex < 2000; j++) {
+          const j3 = j * 3;
+          const dx = x1 - positions[j3];
+          const dy = y1 - positions[j3 + 1];
+          const dz = z1 - positions[j3 + 2];
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+          if (dist < maxDist) {
+            linePos[lineIndex++] = x1;
+            linePos[lineIndex++] = y1;
+            linePos[lineIndex++] = z1;
+            linePos[lineIndex++] = positions[j3];
+            linePos[lineIndex++] = positions[j3 + 1];
+            linePos[lineIndex++] = positions[j3 + 2];
+          }
+        }
+      }
+
+      lineGeo.setDrawRange(0, lineIndex);
+      lineGeo.attributes.position.needsUpdate = true;
+    }
+  });
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((p) => (
-        <div
-          key={p.id}
-          className="home-particle"
-          style={{
-            left: p.left,
-            top: p.top,
-            width: p.size,
-            height: p.size,
-            background: p.color,
-            animationDelay: p.delay,
-            animationDuration: p.duration,
-          }}
+    <>
+      {/* 粒子层 */}
+      <points ref={pointsRef}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[new Float32Array(PARTICLE_COUNT * 3), 3]}
+          />
+          <bufferAttribute
+            attach="attributes-size"
+            args={[particleSizes, 1]}
+          />
+          <bufferAttribute
+            attach="attributes-customColor"
+            args={[particleColors, 3]}
+          />
+        </bufferGeometry>
+        <shaderMaterial
+          vertexShader={vertexShader}
+          fragmentShader={fragmentShader}
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
         />
-      ))}
-    </div>
+      </points>
+      {/* 连接线 */}
+      <lineSegments ref={linesRef}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[new Float32Array(12000), 3]}
+          />
+        </bufferGeometry>
+        <lineBasicMaterial color="#8090a0" transparent opacity={0.08} blending={THREE.AdditiveBlending} />
+      </lineSegments>
+    </>
   );
 }
 
 /* ═══════════════════════════════════════════
-   数字递增动画
+   数字递增
    ═══════════════════════════════════════════ */
-function CountUp({ value, suffix = "", prefix = "", duration = 2 }: {
+function CountUp({ value, suffix = "", prefix = "", duration = 2.5 }: {
   value: number; suffix?: string; prefix?: string; duration?: number;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -196,13 +273,10 @@ function CountUp({ value, suffix = "", prefix = "", duration = 2 }: {
 }
 
 /* ═══════════════════════════════════════════
-   Scroll Reveal 包装器
+   Scroll Reveal
    ═══════════════════════════════════════════ */
 function Reveal({
-  children,
-  className = "",
-  delay = 0,
-  direction = "up",
+  children, className = "", delay = 0, direction = "up",
 }: {
   children: React.ReactNode;
   className?: string;
@@ -210,7 +284,7 @@ function Reveal({
   direction?: "up" | "down" | "left" | "right" | "scale";
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once: true, margin: "-80px" });
+  const isInView = useInView(ref, { once: true, margin: "-60px" });
 
   const variants = {
     hidden: {
@@ -220,437 +294,215 @@ function Reveal({
       scale: direction === "scale" ? 0.92 : 1,
     },
     visible: {
-      opacity: 1,
-      y: 0,
-      x: 0,
-      scale: 1,
-      transition: {
-        duration: 0.7,
-        delay,
-        ease: "easeOut" as const,
-      },
+      opacity: 1, y: 0, x: 0, scale: 1,
+      transition: { duration: 0.9, delay, ease: [0.22, 1, 0.36, 1] as const },
     },
   };
 
   return (
-    <motion.div
-      ref={ref}
-      className={className}
-      initial="hidden"
-      animate={isInView ? "visible" : "hidden"}
-      variants={variants}
-    >
+    <motion.div ref={ref} className={className} initial="hidden" animate={isInView ? "visible" : "hidden"} variants={variants}>
       {children}
     </motion.div>
   );
 }
 
 /* ═══════════════════════════════════════════
-   检测能力配置
+   数据
    ═══════════════════════════════════════════ */
 const FEATURES = [
-  {
-    icon: PersonStanding,
-    name: "跌倒检测",
-    desc: "基于 YOLOv8 姿态估计的实时跌倒识别，3D 骨骼关键点分析，毫秒级响应",
-    color: "#ef4444",
-    accent: "from-red-500/10 to-red-500/0",
-  },
-  {
-    icon: Swords,
-    name: "打架检测",
-    desc: "多目标动作分析与冲突预警，速度场异常行为捕捉，智能分级告警",
-    color: "#f97316",
-    accent: "from-orange-500/10 to-orange-500/0",
-  },
-  {
-    icon: ScanEye,
-    name: "疲劳检测",
-    desc: "面部特征驱动的疲劳状态分析，头部姿态追踪，PERCLOS 算法",
-    color: "#eab308",
-    accent: "from-yellow-500/10 to-yellow-500/0",
-  },
-  {
-    icon: Eye,
-    name: "眼疲劳检测",
-    desc: "EAR 算法精准眨眼频率监测，微表情识别，视线追踪分析",
-    color: "#8b5cf6",
-    accent: "from-violet-500/10 to-violet-500/0",
-  },
-  {
-    icon: MapPinOff,
-    name: "离岗检测",
-    desc: "电子围栏与区域越界实时告警，时空轨迹追踪，自适应阈值",
-    color: "#06b6d4",
-    accent: "from-cyan-500/10 to-cyan-500/0",
-  },
-  {
-    icon: Users,
-    name: "人员聚集",
-    desc: "密度分析与异常聚集自动识别，热力图预警，人群流动建模",
-    color: "#22c55e",
-    accent: "from-emerald-500/10 to-emerald-500/0",
-  },
+  { icon: PersonStanding, name: "跌倒检测", desc: "3D 骨骼关键点分析，毫秒级跌倒识别" },
+  { icon: Swords, name: "打架检测", desc: "多目标动作分析与冲突预警" },
+  { icon: ScanEye, name: "疲劳检测", desc: "面部特征驱动的疲劳状态分析" },
+  { icon: Eye, name: "眼疲劳检测", desc: "EAR 算法精准眨眼频率监测" },
+  { icon: MapPinOff, name: "自杀检测", desc: "电子围栏与区域越界实时告警" },
+  { icon: Users, name: "人员聚集", desc: "密度分析与异常聚集自动识别" },
 ];
 
-/* ═══════════════════════════════════════════
-   架构节点
-   ═══════════════════════════════════════════ */
 const ARCH_NODES = [
-  { label: "摄像头接入", sub: "RTSP / HTTP / USB", icon: Radio, color: "#22c55e" },
-  { label: "视频流解码", sub: "OpenCV + CUDA 加速", icon: Cpu, color: "#06b6d4" },
-  { label: "AI 推理引擎", sub: "YOLOv8n-pose · TensorRT", icon: Zap, color: "#8b5cf6" },
-  { label: "行为分析引擎", sub: "6 种检测算法并行", icon: Activity, color: "#f97316" },
-  { label: "智能告警推送", sub: "SSE 实时 · WebSocket", icon: Shield, color: "#ef4444" },
+  { label: "摄像头接入", sub: "RTSP / HTTP / USB", icon: Radio },
+  { label: "AI 推理引擎", sub: "YOLOv8n-pose · TensorRT", icon: Zap },
+  { label: "行为分析", sub: "6 种检测算法并行", icon: Activity },
+  { label: "智能告警", sub: "SSE 实时推送", icon: Shield },
 ];
 
 /* ═══════════════════════════════════════════
-   技术栈标签
-   ═══════════════════════════════════════════ */
-const TECH_STACK = [
-  { name: "Python", icon: Terminal },
-  { name: "Spring Boot", icon: Layers },
-  { name: "React", icon: Gauge },
-  { name: "CUDA", icon: Cpu },
-];
-
-/* ═══════════════════════════════════════════
-   主页组件
+   主页
    ═══════════════════════════════════════════ */
 export default function Home() {
   const navigate = useNavigate();
-  const [scrolled, setScrolled] = useState(false);
   const heroRef = useRef<HTMLDivElement>(null);
-
-  const { scrollYProgress } = useScroll({
-    target: heroRef,
-    offset: ["start start", "end start"],
-  });
+  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
   const heroY = useTransform(scrollYProgress, [0, 1], [0, 200]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.6], [1, 0]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 60);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // Hero 进入动画序列
-  const stagger = {
-    hidden: {},
-    visible: {
-      transition: { staggerChildren: 0.12, delayChildren: 0.3 },
-    },
-  };
-
-  const fadeItem = {
-    hidden: { opacity: 0, y: 24, filter: "blur(8px)" },
-    visible: {
-      opacity: 1,
-      y: 0,
-      filter: "blur(0px)",
-      transition: { duration: 0.8, ease: "easeOut" as const },
-    },
+  const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.15, delayChildren: 0.6 } } };
+  const fadeUp = {
+    hidden: { opacity: 0, y: 30 },
+    visible: { opacity: 1, y: 0, transition: { duration: 1.2, ease: [0.22, 1, 0.36, 1] as const } },
   };
 
   return (
     <>
-      <FontLoader />
-      <div className="min-h-screen bg-[#030817] text-white overflow-x-hidden selection:bg-emerald-500/30">
-        {/* ── 导航栏 ── */}
-        <header
-          className={`fixed top-0 inset-x-0 z-50 transition-all duration-500 ${
-            scrolled
-              ? "bg-[#030817]/60 backdrop-blur-2xl border-b border-white/[0.04] shadow-[0_1px_30px_rgba(0,0,0,0.3)]"
-              : "bg-transparent"
-          }`}
-        >
-          <div className="max-w-[1200px] mx-auto px-6 h-[64px] flex items-center justify-between">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              className="flex items-center gap-3"
-            >
-              <div className="relative">
-                <Shield className="w-[22px] h-[22px] text-emerald-400" />
-                <div className="absolute inset-0 w-[22px] h-[22px] rounded-full bg-emerald-400/20 blur-lg" />
-              </div>
-              <span
-                className="text-[15px] font-semibold tracking-tight"
-                style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-              >
-                长明灯
-              </span>
-              <span
-                className="hidden sm:inline text-[10px] text-white/15 tracking-[0.35em] uppercase ml-1"
-                style={{ fontFamily: "'Orbitron', sans-serif" }}
-              >
-                Everlight
-              </span>
-            </motion.div>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&display=swap" />
+      <style>{`
+        @font-face {
+          font-family: '演示流云楷';
+          src: url('/fonts/演示流云楷.ttf') format('truetype');
+          font-weight: normal;
+          font-style: normal;
+          font-display: swap;
+        }
+      `}</style>
 
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              className="flex items-center gap-3"
-            >
-              <a
-                href="#features"
-                className="hidden md:inline text-[13px] text-white/30 hover:text-white/60 transition-colors duration-300"
-                style={{ fontFamily: "'Exo 2', sans-serif" }}
-              >
-                功能
-              </a>
-              <a
-                href="#metrics"
-                className="hidden md:inline text-[13px] text-white/30 hover:text-white/60 transition-colors duration-300"
-                style={{ fontFamily: "'Exo 2', sans-serif" }}
-              >
-                指标
-              </a>
-              <a
-                href="#arch"
-                className="hidden md:inline text-[13px] text-white/30 hover:text-white/60 transition-colors duration-300"
-                style={{ fontFamily: "'Exo 2', sans-serif" }}
-              >
-                架构
-              </a>
-              <div className="w-px h-4 bg-white/10 hidden md:block mx-1" />
-              <button
-                onClick={() => navigate("/login")}
-                className="group relative px-4 py-[7px] rounded-lg bg-white/[0.04] border border-white/[0.08]
-                           text-[13px] font-medium text-white/60 hover:text-white hover:bg-white/[0.08]
-                           hover:border-white/[0.15] transition-all duration-300 cursor-pointer"
-                style={{ fontFamily: "'Exo 2', sans-serif" }}
-              >
-                进入系统
-                <ArrowRight className="inline-block w-3 h-3 ml-1 -translate-y-px opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-300" />
-              </button>
-            </motion.div>
-          </div>
+      <div className="relative min-h-screen text-gray-900 overflow-x-hidden" style={{ background: "#f8f8fa" }}>
+
+        {/* ── 全屏粒子背景 (fixed) ── */}
+        <div className="fixed inset-0 z-0">
+          <Canvas camera={{ position: [0, 0, 50], fov: 75 }} dpr={[1, 2]} gl={{ antialias: true }}>
+            <ParticleBackground />
+          </Canvas>
+        </div>
+
+        {/* ── 左侧栏导航 (仿 Active Theory) ── */}
+        <nav className="fixed left-8 top-0 bottom-0 z-50 hidden lg:flex flex-col justify-center items-start gap-6">
+          {[
+            { label: "首页", href: "#hero", active: true },
+            { label: "功能", href: "#features" },
+            { label: "指标", href: "#metrics" },
+            { label: "架构", href: "#arch" },
+          ].map((item) => (
+            <a key={item.label} href={item.href}
+               className={`text-[13px] tracking-[0.05em] transition-all duration-700 ${
+                 item.active ? "text-gray-700" : "text-gray-400 hover:text-gray-700"
+               }`}
+               style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 300 }}>
+              {item.label}
+            </a>
+          ))}
+        </nav>
+
+        {/* ── 顶栏 ── */}
+        <header className="fixed top-0 inset-x-0 z-50 px-8 lg:px-12 py-8 flex items-center justify-between">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 2, delay: 0.3 }}
+            className="flex items-center gap-3">
+            <Shield className="w-3.5 h-3.5 text-gray-500" />
+            <span className="text-[12px] tracking-[0.15em] text-gray-500 uppercase"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+              Everlight
+            </span>
+          </motion.div>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1.5, delay: 0.8 }}
+            className="flex items-center gap-6">
+            <button onClick={() => navigate("/login")}
+              className="text-[11px] tracking-[0.25em] text-gray-500 hover:text-gray-700 transition-colors duration-700 uppercase"
+              style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+              Enter
+            </button>
+          </motion.div>
         </header>
 
-        {/* ── Hero ── */}
-        <section ref={heroRef} className="relative h-screen flex flex-col items-center justify-center px-6 noise-overlay scanline">
-          {/* 背景层 */}
-          <RadarBackground />
-          <FloatingParticles />
+        {/* ════════════════════════════════════
+            Hero — 仿 Active Theory 大字居中
+            ════════════════════════════════════ */}
+        <section ref={heroRef} id="hero" className="relative h-screen flex items-center justify-center z-10">
+          <motion.div style={{ y: heroY, opacity: heroOpacity }}
+            className="text-center px-8 select-none">
+            <motion.div variants={stagger} initial="hidden" animate="visible">
 
-          {/* 渐变光球 */}
-          <div className="hero-blob hero-blob-1" style={{ top: "10%", left: "20%" }} />
-          <div className="hero-blob hero-blob-2" style={{ top: "30%", right: "10%" }} />
-          <div className="hero-blob hero-blob-3" style={{ bottom: "20%", left: "40%" }} />
-
-          {/* 内容层 */}
-          <motion.div
-            style={{ y: heroY, opacity: heroOpacity }}
-            className="relative z-10 text-center max-w-[900px]"
-          >
-            <motion.div
-              variants={stagger}
-              initial="hidden"
-              animate="visible"
-              className="flex flex-col items-center"
-            >
-              {/* 状态徽章 */}
-              <motion.div
-                variants={fadeItem}
-                className="inline-flex items-center gap-2.5 px-4 py-[6px] rounded-full bg-white/[0.03] border border-white/[0.06] mb-10"
-              >
-                <span className="relative flex h-[6px] w-[6px]">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex rounded-full h-[6px] w-[6px] bg-emerald-400" />
-                </span>
-                <span
-                  className="text-[10px] text-white/30 tracking-[0.25em] uppercase"
-                  style={{ fontFamily: "'Share Tech Mono', monospace" }}
-                >
-                  System Online · AI Active · All Modules Running
-                </span>
-              </motion.div>
-
-              {/* 主标题 */}
-              <motion.h1
-                variants={fadeItem}
-                className="text-[clamp(3rem,8vw,7rem)] font-bold leading-[0.9] tracking-[-0.04em]"
-              >
-                <span
-                  className="block text-gradient-white"
-                  style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-                >
-                  监狱智能
-                </span>
-                <span
-                  className="block mt-2 text-gradient-emerald"
-                  style={{ fontFamily: "'Share Tech Mono', monospace" }}
-                >
-                  行为分析平台
-                </span>
+              {/* 主标题 — 演示流云楷字体 */}
+              <motion.h1 variants={fadeUp}
+                className="text-[clamp(5rem,16vw,14rem)] leading-[0.82] tracking-[-0.02em] text-gray-900"
+                style={{ fontFamily: "'演示流云楷', 'LiuQianYan', serif" }}>
+                长明灯
               </motion.h1>
 
-              {/* 副标题 */}
-              <motion.p
-                variants={fadeItem}
-                className="mt-8 text-[15px] text-white/20 tracking-[0.4em] uppercase"
-                style={{ fontFamily: "'Orbitron', sans-serif", fontWeight: 400 }}
-              >
-                AI · Realtime · Prevention
+              <motion.p variants={fadeUp}
+                className="mt-8 text-[clamp(0.55rem,0.9vw,0.7rem)] tracking-[0.8em] text-gray-500 uppercase"
+                style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+                Prison Behavioral Analysis System
               </motion.p>
 
-              {/* CTA */}
-              <motion.div variants={fadeItem} className="mt-12 flex items-center gap-4">
-                <button
-                  onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
-                  className="group relative px-8 py-3.5 rounded-xl font-semibold text-[14px] cursor-pointer
-                             text-white transition-all duration-300 overflow-hidden"
-                  style={{
-                    fontFamily: "'Exo 2', sans-serif",
-                    background: "linear-gradient(135deg, #059669, #0d9488)",
-                    boxShadow: "0 0 40px rgba(16,185,129,0.2), 0 0 80px rgba(16,185,129,0.05), inset 0 1px 0 rgba(255,255,255,0.1)",
-                  }}
-                >
-                  <span className="relative z-10">了解更多</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                </button>
-                <button
-                  onClick={() => navigate("/login")}
-                  className="group px-8 py-3.5 rounded-xl font-medium text-[14px] cursor-pointer
-                             bg-white/[0.03] border border-white/[0.08] text-white/50
-                             hover:bg-white/[0.06] hover:text-white/80 hover:border-white/[0.12]
-                             transition-all duration-300"
-                  style={{ fontFamily: "'Exo 2', sans-serif" }}
-                >
-                  直接体验
-                  <ArrowRight className="inline-block w-3.5 h-3.5 ml-1.5 -translate-y-px opacity-0 group-hover:opacity-100 transition-all duration-300" />
+              {/* CTA — 无边框文字链 */}
+              <motion.div variants={fadeUp} className="mt-16">
+                <button onClick={() => navigate("/login")}
+                  className="group text-[12px] tracking-[0.3em] text-gray-500 hover:text-gray-700 transition-colors duration-1000 uppercase"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+                  Start
+                  <span className="inline-block ml-3 w-8 h-px bg-gray-300 group-hover:w-14 group-hover:bg-gray-500 transition-all duration-1000 align-middle" />
                 </button>
               </motion.div>
             </motion.div>
           </motion.div>
 
-          {/* 滚动指示器 */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 2, duration: 0.8 }}
-            className="absolute bottom-10 z-10"
-          >
-            <div className="w-[22px] h-[36px] rounded-full border border-white/15 flex items-start justify-center pt-[6px]">
-              <motion.div
-                animate={{ y: [0, 10, 0] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                className="w-[3px] h-[6px] rounded-full bg-white/30"
-              />
-            </div>
+          {/* 底部 SCROLL 提示 */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 3 }}
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1">
+            <span className="text-[9px] tracking-[0.4em] text-gray-400 uppercase mb-1"
+                  style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>Scroll</span>
+            <motion.div animate={{ y: [0, 5, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}>
+              <ChevronDown className="w-3 h-3 text-gray-400" />
+            </motion.div>
           </motion.div>
         </section>
 
-        {/* ── 检测能力 (Bento Grid) ── */}
-        <section id="features" className="relative py-32 px-6">
-          <div className="max-w-[1200px] mx-auto">
-            <Reveal className="text-center mb-20">
-              <span
-                className="text-[10px] text-emerald-500/50 tracking-[0.4em] uppercase block mb-3"
-                style={{ fontFamily: "'Orbitron', sans-serif" }}
-              >
-                Detection Capabilities
-              </span>
-              <h2
-                className="text-[clamp(2rem,4vw,3.5rem)] font-bold tracking-tight"
-                style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-              >
-                六大检测能力
-              </h2>
-              <p
-                className="mt-4 text-[14px] text-white/20 max-w-lg mx-auto leading-relaxed"
-                style={{ fontFamily: "'Exo 2', sans-serif" }}
-              >
-                基于 YOLOv8 姿态估计，覆盖监狱核心安全场景，全天候智能守护
+        {/* ════════════════════════════════════
+            关于 — 仿 Active Theory 文案区
+            ════════════════════════════════════ */}
+        <section className="relative z-10 min-h-screen flex items-center px-8 lg:px-32 py-40">
+          <div className="max-w-[1400px]">
+            <Reveal>
+              <p className="text-[48px] text-gray-700"
+                 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 300 }}>
+                长明灯为监狱场景打造全天候智能行为分析系统
               </p>
             </Reveal>
+            <Reveal delay={0.1}>
+              <p className="mt-8 text-[27px] leading-[1.8] text-gray-500 max-w-[600px]"
+                 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 300 }}>
+                覆盖跌倒、打架、疲劳、眼疲劳、自杀、人员聚集六大核心场景。基于 YOLOv8 姿态估计，从摄像头接入到智能告警，全链路毫秒级响应。
+              </p>
+            </Reveal>
+            <Reveal delay={0.2}>
+              <div className="mt-14 flex gap-10">
+                {["Python", "YOLOv8", "Spring Boot", "React", "CUDA"].map((t) => (
+                  <span key={t} className="text-[14px] tracking-[0.3em] text-gray-400 uppercase"
+                        style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </section>
 
-            {/* Bento Grid: 1 大 + 5 小 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {/* 大卡片 — 跌倒检测 */}
-              {(() => {
-                const FallIcon = FEATURES[0].icon;
-                return (
-              <Reveal delay={0} className="sm:col-span-2 lg:col-span-2 lg:row-span-2">
-                <div
-                  className="group relative h-full min-h-[320px] rounded-2xl p-[1px] cursor-default overflow-hidden"
-                  style={{
-                    background: `linear-gradient(135deg, ${FEATURES[0].color}25, transparent 60%)`,
-                  }}
-                >
-                  <div className="relative rounded-2xl bg-[#070d1a]/90 backdrop-blur-sm p-8 h-full flex flex-col justify-between">
-                    {/* 背景光晕 */}
-                    <div className="absolute -top-20 -right-20 w-60 h-60 rounded-full bg-red-500/[0.06] blur-[80px] group-hover:bg-red-500/[0.10] transition-colors duration-700" />
+        {/* ════════════════════════════════════
+            检测能力 — 极简列表式
+            ════════════════════════════════════ */}
+        <section id="features" className="relative z-10 px-8 lg:px-32 py-40">
+          <div className="max-w-[1400px]">
+            <Reveal>
+              <span className="text-[10px] tracking-[0.5em] text-gray-500 uppercase block mb-20"
+                    style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+                Detection
+              </span>
+            </Reveal>
 
-                    <div className="relative">
-                      <div
-                        className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3"
-                        style={{ backgroundColor: FEATURES[0].color + "12", color: FEATURES[0].color }}
-                      >
-                        <FallIcon className="w-7 h-7" />
-                      </div>
-                      <h3
-                        className="text-xl font-bold mb-3"
-                        style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-                      >
-                        {FEATURES[0].name}
-                      </h3>
-                      <p
-                        className="text-[13px] text-white/25 leading-relaxed max-w-sm"
-                        style={{ fontFamily: "'Exo 2', sans-serif" }}
-                      >
-                        {FEATURES[0].desc}
-                      </p>
-                    </div>
-
-                    {/* 底部装饰线 */}
-                    <div className="relative mt-6 h-[1px] bg-gradient-to-r from-red-500/20 via-transparent to-transparent" />
-                  </div>
-                </div>
-              </Reveal>
-                );
-              })()}
-
-              {/* 小卡片 — 其余 5 个 */}
-              {FEATURES.slice(1).map((f, i) => (
-                <Reveal key={f.name} delay={0.08 * (i + 1)}>
-                  <div
-                    className="group relative h-full rounded-2xl p-[1px] cursor-default overflow-hidden"
-                    style={{
-                      background: `linear-gradient(135deg, ${f.color}18, transparent 50%)`,
-                    }}
-                  >
-                    <div className="relative rounded-2xl bg-[#070d1a]/80 backdrop-blur-sm p-5 h-full">
-                      <div
-                        className="absolute -top-10 -right-10 w-28 h-28 rounded-full blur-[50px] opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-                        style={{ backgroundColor: f.color + "10" }}
-                      />
-
-                      <div
-                        className="relative w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110"
-                        style={{ backgroundColor: f.color + "10", color: f.color }}
-                      >
-                        <f.icon className="w-[18px] h-[18px]" />
-                      </div>
-
-                      <h3
-                        className="relative text-[14px] font-semibold mb-1.5"
-                        style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-                      >
+            <div className="space-y-0">
+              {FEATURES.map((f, i) => (
+                <Reveal key={f.name} delay={i * 0.06}>
+                  <div className="group flex items-center gap-6 py-7 border-t border-gray-200 hover:border-gray-300 transition-all duration-700 cursor-default">
+                    <f.icon className="w-[18px] h-[18px] text-gray-400 shrink-0 group-hover:text-gray-700 transition-colors duration-700" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[48px] text-gray-700 group-hover:text-gray-900 transition-colors duration-700"
+                            style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 500 }}>
                         {f.name}
-                      </h3>
-                      <p
-                        className="relative text-[12px] text-white/20 leading-relaxed"
-                        style={{ fontFamily: "'Exo 2', sans-serif" }}
-                      >
+                      </span>
+                      <span className="ml-4 text-[27px] text-gray-400 hidden sm:inline"
+                            style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
                         {f.desc}
-                      </p>
+                      </span>
                     </div>
+                    <ArrowRight className="w-4 h-4 text-gray-200 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-700 shrink-0" />
                   </div>
                 </Reveal>
               ))}
@@ -658,47 +510,33 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── 核心指标 ── */}
-        <section id="metrics" className="relative py-32 px-6">
-          <div className="max-w-[1200px] mx-auto">
-            <Reveal className="text-center mb-20">
-              <span
-                className="text-[10px] text-emerald-500/50 tracking-[0.4em] uppercase block mb-3"
-                style={{ fontFamily: "'Orbitron', sans-serif" }}
-              >
+        {/* ════════════════════════════════════
+            指标
+            ════════════════════════════════════ */}
+        <section id="metrics" className="relative z-10 px-8 lg:px-32 py-40">
+          <div className="max-w-[1400px]">
+            <Reveal>
+              <span className="text-[10px] tracking-[0.5em] text-gray-500 uppercase block mb-20"
+                    style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
                 Performance
               </span>
-              <h2
-                className="text-[clamp(2rem,4vw,3.5rem)] font-bold tracking-tight"
-                style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-              >
-                核心指标
-              </h2>
             </Reveal>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-8 justify-items-center">
               {[
-                { value: 96.5, suffix: "%", label: "检测准确率", color: "text-emerald-400", glow: "shadow-emerald-500/5" },
-                { value: 200, suffix: "ms", prefix: "<", label: "响应延迟", color: "text-cyan-400", glow: "shadow-cyan-500/5" },
-                { value: 50, suffix: "+", label: "并发摄像头", color: "text-violet-400", glow: "shadow-violet-500/5" },
-                { value: 99.9, suffix: "%", label: "系统可用性", color: "text-emerald-400", glow: "shadow-emerald-500/5" },
+                { value: 96.5, suffix: "%", label: "检测准确率" },
+                { value: 200, suffix: "ms", prefix: "<", label: "响应延迟" },
+                { value: 50, suffix: "+", label: "并发摄像头" },
+                { value: 99.9, suffix: "%", label: "系统可用性" },
               ].map((m, i) => (
                 <Reveal key={m.label} delay={i * 0.1}>
-                  <div
-                    className={`group relative rounded-2xl bg-white/[0.02] border border-white/[0.04] p-7
-                               hover:bg-white/[0.035] hover:border-white/[0.07] transition-all duration-500
-                               shadow-lg ${m.glow}`}
-                  >
-                    <div
-                      className={`text-[clamp(2.5rem,5vw,3.5rem)] font-bold tracking-tight ${m.color}`}
-                      style={{ fontFamily: "'Share Tech Mono', monospace" }}
-                    >
+                  <div>
+                    <div className="text-[clamp(2.2rem,4.5vw,3.5rem)] text-gray-700"
+                         style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
                       <CountUp value={m.value} suffix={m.suffix} prefix={m.prefix ?? ""} />
                     </div>
-                    <div
-                      className="mt-3 text-[13px] text-white/25"
-                      style={{ fontFamily: "'Exo 2', sans-serif" }}
-                    >
+                    <div className="mt-3 text-[11px] text-gray-500 tracking-[0.05em]"
+                         style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
                       {m.label}
                     </div>
                   </div>
@@ -708,75 +546,34 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── 技术架构 (数据流管道) ── */}
-        <section id="arch" className="relative py-32 px-6">
-          <div className="max-w-[800px] mx-auto">
-            <Reveal className="text-center mb-24">
-              <span
-                className="text-[10px] text-emerald-500/50 tracking-[0.4em] uppercase block mb-3"
-                style={{ fontFamily: "'Orbitron', sans-serif" }}
-              >
+        {/* ════════════════════════════════════
+            架构 — 表格式极简
+            ════════════════════════════════════ */}
+        <section id="arch" className="relative z-10 px-8 lg:px-32 py-40">
+          <div className="max-w-[1400px]">
+            <Reveal>
+              <span className="text-[10px] tracking-[0.5em] text-gray-500 uppercase block mb-20"
+                    style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
                 Architecture
               </span>
-              <h2
-                className="text-[clamp(2rem,4vw,3.5rem)] font-bold tracking-tight"
-                style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-              >
-                技术架构
-              </h2>
-              <p
-                className="mt-4 text-[14px] text-white/20"
-                style={{ fontFamily: "'Exo 2', sans-serif" }}
-              >
-                从摄像头接入到智能告警，全链路毫秒级响应
-              </p>
             </Reveal>
 
-            {/* 竖向管道 */}
-            <div className="relative">
-              {/* 中心线 */}
-              <div className="absolute left-[23px] sm:left-1/2 top-0 bottom-0 w-px sm:-translate-x-px">
-                <div className="w-full h-full bg-gradient-to-b from-emerald-500/20 via-emerald-500/8 to-transparent data-flow-line" />
-              </div>
-
+            <div className="space-y-0">
               {ARCH_NODES.map((node, i) => (
-                <Reveal
-                  key={node.label}
-                  delay={i * 0.12}
-                  direction={i % 2 === 0 ? "left" : "right"}
-                  className="relative mb-12 last:mb-0"
-                >
-                  <div className={`flex items-center gap-5 sm:gap-0 ${i % 2 === 0 ? "sm:flex-row" : "sm:flex-row-reverse"}`}>
-                    {/* 文字区 */}
-                    <div className={`flex-1 ${i % 2 === 0 ? "sm:pr-12 sm:text-right" : "sm:pl-12 sm:text-left"} pl-16 sm:pl-0`}>
-                      <div
-                        className="text-[15px] font-semibold mb-1"
-                        style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-                      >
+                <Reveal key={node.label} delay={i * 0.08}>
+                  <div className="group flex items-center gap-6 py-7 border-t border-gray-200 hover:border-gray-300 transition-all duration-700">
+                    <node.icon className="w-[18px] h-[18px] text-gray-400 shrink-0 group-hover:text-gray-700 transition-colors duration-700" />
+                    <div className="flex-1">
+                      <span className="text-[48px] text-gray-700 group-hover:text-gray-900 transition-colors duration-700"
+                            style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 500 }}>
                         {node.label}
-                      </div>
-                      <div
-                        className="text-[12px] text-white/20 font-light tracking-wide"
-                        style={{ fontFamily: "'Share Tech Mono', monospace" }}
-                      >
+                      </span>
+                      <span className="ml-4 text-[27px] text-gray-400"
+                            style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
                         {node.sub}
-                      </div>
+                      </span>
                     </div>
-
-                    {/* 节点 */}
-                    <div className="absolute left-0 sm:relative sm:left-auto shrink-0 z-10">
-                      <div
-                        className="w-12 h-12 rounded-full bg-[#070d1a] border flex items-center justify-center
-                                   shadow-[0_0_25px_rgba(16,185,129,0.06)] transition-shadow duration-500
-                                   hover:shadow-[0_0_35px_rgba(16,185,129,0.12)]"
-                        style={{ borderColor: node.color + "25" }}
-                      >
-                        <node.icon className="w-5 h-5" style={{ color: node.color }} />
-                      </div>
-                    </div>
-
-                    {/* 对侧空白 */}
-                    <div className="hidden sm:block flex-1" />
+                    <ArrowRight className="w-4 h-4 text-gray-200 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-700 shrink-0" />
                   </div>
                 </Reveal>
               ))}
@@ -784,64 +581,33 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── CTA Section ── */}
-        <section className="relative py-32 px-6">
-          <Reveal className="max-w-[600px] mx-auto text-center">
-            <h2
-              className="text-[clamp(1.8rem,3.5vw,2.8rem)] font-bold tracking-tight mb-5"
-              style={{ fontFamily: "'Noto Sans SC', sans-serif" }}
-            >
-              准备好开始了吗？
-            </h2>
-            <p
-              className="text-[14px] text-white/20 mb-10 leading-relaxed"
-              style={{ fontFamily: "'Exo 2', sans-serif" }}
-            >
-              部署长明灯，让 AI 为您的安防体系注入智能
+        {/* ════════════════════════════════════
+            CTA — 居中斜体
+            ════════════════════════════════════ */}
+        <section className="relative z-10 min-h-[50vh] flex items-center justify-center px-8 py-40">
+          <Reveal className="text-center">
+            <p className="text-[clamp(1.4rem,3vw,2.4rem)] text-gray-500 mb-10"
+               style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 300, fontStyle: "italic" }}>
+              准备好开始了吗
             </p>
-            <button
-              onClick={() => navigate("/login")}
-              className="group relative px-10 py-4 rounded-xl font-semibold text-[15px] cursor-pointer
-                         text-white transition-all duration-300 overflow-hidden"
-              style={{
-                fontFamily: "'Exo 2', sans-serif",
-                background: "linear-gradient(135deg, #059669, #0d9488)",
-                boxShadow: "0 0 60px rgba(16,185,129,0.15), inset 0 1px 0 rgba(255,255,255,0.1)",
-              }}
-            >
-              <span className="relative z-10">立即体验</span>
-              <ArrowRight className="inline-block w-4 h-4 ml-2 -translate-y-px relative z-10" />
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+            <button onClick={() => navigate("/login")}
+              className="text-[11px] tracking-[0.4em] text-gray-500 hover:text-gray-700 transition-colors duration-1000 uppercase"
+              style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+              立即体验 →
             </button>
           </Reveal>
         </section>
 
         {/* ── 页脚 ── */}
-        <footer className="relative py-14 border-t border-white/[0.03]">
-          <div className="max-w-[1200px] mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-2.5 text-white/15 text-[12px]">
-              <Shield className="w-3.5 h-3.5 text-emerald-500/25" />
-              <span style={{ fontFamily: "'Noto Sans SC', sans-serif" }}>长明灯 · 监狱智能行为分析系统</span>
-            </div>
-            <div className="flex items-center gap-2">
-              {TECH_STACK.map((t) => (
-                <span
-                  key={t.name}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.02] border border-white/[0.035] text-[11px] text-white/12"
-                  style={{ fontFamily: "'Share Tech Mono', monospace" }}
-                >
-                  <t.icon className="w-3 h-3" />
-                  {t.name}
-                </span>
-              ))}
-            </div>
-            <span
-              className="text-[11px] text-white/10"
-              style={{ fontFamily: "'Share Tech Mono', monospace" }}
-            >
-              &copy; 2026
-            </span>
-          </div>
+        <footer className="relative z-10 py-8 px-8 lg:px-12 flex items-center justify-between border-t border-gray-100">
+          <span className="text-[10px] text-gray-400 tracking-[0.1em]"
+                style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+            长明灯 · 监狱智能行为分析系统
+          </span>
+          <a href="#hero" className="text-[10px] text-gray-400 tracking-[0.15em] hover:text-gray-700 transition-colors duration-500 uppercase"
+             style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}>
+            Back to top
+          </a>
         </footer>
       </div>
     </>

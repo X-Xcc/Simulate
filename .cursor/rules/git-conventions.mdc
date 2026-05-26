@@ -1,0 +1,65 @@
+---
+description: "Git commit conventions, branch workflow, and branch finishing checklist"
+alwaysApply: false
+---
+
+## Git 提交规范
+
+### Commit Message 格式
+```
+<type>(<scope>): <subject>
+
+<body>
+```
+
+**Type（保留英文关键字）**：feat, fix, refactor, style, docs, test, chore, build, perf, ci, revert
+
+**示例**：
+```
+feat(检测): 增加人员聚集检测
+fix(前端): 修复 Dashboard 缓存不失效问题
+perf(列表): 虚拟滚动优化大数据量渲染
+```
+
+### Subject 规则
+- 中文描述，动宾短语，不超过 50 字符
+- 不加句号结尾
+- 不要写"修改了代码""更新代码"这种无意义描述
+
+### Body 规则
+- 说明**为什么**做（背景/原因）
+- 说明**怎么做**（技术方案）
+- 说明**影响范围**（模块/接口）
+- 正文与标题之间空一行
+
+### Breaking Changes
+```
+feat(接口)!: 重构用户信息返回结构
+
+BREAKING CHANGE: /api/user/info 返回结构变更
+- avatar 字段移入 profile 对象
+- 移除 nickname 字段，统一使用 displayName
+```
+
+数据库表结构变更、公共 API 变更、配置文件格式变更 → 必须标注。
+
+### 分支策略
+- `main` — 生产就绪
+- `feature/<name>` — 新功能
+- `fix/<name>` — Bug 修复
+- `refactor/<name>` — 重构
+
+### 提交前自查
+- [ ] type 正确选择
+- [ ] scope 准确描述影响模块
+- [ ] subject 为动宾短语且不超过 50 字符
+- [ ] body 说明变更原因和方案
+- [ ] 一次提交只做一件事（原子性）
+- [ ] 不提交 `.env`、`node_modules`、构建产物
+- [ ] 不 `--no-verify`，不 force push 到 main
+
+### 分支收尾流程
+1. 验证所有测试通过
+2. `git pull --rebase origin main`
+3. 选择：本地合并 / 创建 PR / 保持现状 / 丢弃
+4. 合并后删除远程和本地分支

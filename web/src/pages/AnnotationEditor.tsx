@@ -31,7 +31,7 @@ const LABELS = [
   { name: "打架", color: "#ef4444" },
   { name: "跌倒", color: "#f97316" },
   { name: "聚集", color: "#3b82f6" },
-  { name: "离岗", color: "#22c55e" },
+  { name: "自杀", color: "#22c55e" },
 ];
 
 let _id = 0;

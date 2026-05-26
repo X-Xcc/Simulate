@@ -172,6 +172,21 @@ export async function takeScreenshot(type: string, cameraIds?: string[]): Promis
   return apiPost("/api/screenshot", { type, cameraIds });
 }
 
+export interface UploadScreenshotResult {
+  alertId: string;
+  imageFilename: string;
+  snapshotUrl: string;
+}
+
+export async function uploadScreenshot(params: {
+  base64: string;
+  type: string;
+  cameraId: string;
+  cameraName: string;
+}): Promise<UploadScreenshotResult> {
+  return apiPost("/api/screenshot/upload", params);
+}
+
 // --- Settings ---
 
 export async function fetchSettings(signal?: AbortSignal): Promise<Settings> {

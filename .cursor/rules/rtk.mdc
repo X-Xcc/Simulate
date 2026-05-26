@@ -1,0 +1,30 @@
+---
+description: "RTK CLI reference — LLM context optimizer, proxy for system commands"
+alwaysApply: true
+---
+
+## RTK CLI (v0.34.3)
+
+High-performance CLI proxy — filters/summarizes system output before reaching LLM context.
+Path: `~/.cargo/bin/rtk`. Use in built-in terminal for any shell command.
+
+### Key Commands
+
+| Command | Purpose |
+|---------|---------|
+| `rtk ls` | Token-optimized directory listing |
+| `rtk tree` | Directory tree with token optimization |
+| `rtk read <file>` | Read file with intelligent filtering |
+| `rtk diff` | Ultra-condensed diff (only changed lines) |
+| `rtk grep <pattern>` | Compact grep, groups by file |
+| `rtk test` | Run tests, show only failures |
+| `rtk err <cmd>` | Run command, show only errors/warnings |
+| `rtk log` | Filter/deduplicate log output |
+| `rtk git`, `rtk gh`, `rtk glab` | Git/GitHub/GitLab with compact output |
+| `rtk docker`, `rtk kubectl` | Docker/K8s with compact output |
+| `rtk pnpm`, `rtk dotnet` | Package manager compact output |
+| `rtk env` | Environment vars (sensitive masked) |
+| `rtk deps` | Summarize project dependencies |
+| `rtk summary <cmd>` | Heuristic summary of any command |
+
+**When to use:** Always prepend `rtk` to terminal commands when output would be verbose. Saves tokens, keeps context clean.

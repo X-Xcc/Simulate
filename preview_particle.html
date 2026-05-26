@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>粒子背景预览</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #0a0a0f; }
+    canvas { display: block; }
+    .info {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.6);
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      pointer-events: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div class="info">移动鼠标与粒子互动</div>
+  <canvas id="canvas"></canvas>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // ── 场景初始化 ──
+    const canvas = document.getElementById('canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 50;
+
+    // ── 粒子系统 ──
+    const PARTICLE_COUNT = 5000;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const velocities = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const sizes = new Float32Array(PARTICLE_COUNT);
+
+    // 深蓝色系配色
+    const colorPalette = [
+      new THREE.Color(0x1a2a4a), // 深蓝
+      new THREE.Color(0x2a3a5a), // 中蓝
+      new THREE.Color(0x3a4a6a), // 亮蓝
+      new THREE.Color(0x4a5a7a), // 浅蓝
+    ];
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const i3 = i * 3;
+
+      // 随机位置 - 球形分布
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const r = 30 + Math.random() * 70;
+
+      positions[i3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i3 + 2] = r * Math.cos(phi);
+
+      // 随机速度
+      velocities[i3] = (Math.random() - 0.5) * 0.02;
+      velocities[i3 + 1] = (Math.random() - 0.5) * 0.02;
+      velocities[i3 + 2] = (Math.random() - 0.5) * 0.02;
+
+      // 颜色
+      const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+      colors[i3] = color.r;
+      colors[i3 + 1] = color.g;
+      colors[i3 + 2] = color.b;
+
+      // 大小
+      sizes[i] = Math.random() * 2 + 0.5;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    // 自定义着色器
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 },
+        uMouse: { value: new THREE.Vector2(0, 0) },
+        uMouseWorld: { value: new THREE.Vector3(0, 0, 0) },
+      },
+      vertexShader: `
+        attribute float size;
+        attribute vec3 color;
+        varying vec3 vColor;
+        varying float vAlpha;
+        uniform float uTime;
+        uniform vec3 uMouseWorld;
+
+        void main() {
+          vColor = color;
+
+          vec3 pos = position;
+
+          // 基础脉动
+          float pulse = sin(uTime * 0.5 + position.x * 0.1) * 0.5 + 0.5;
+          vAlpha = 0.3 + pulse * 0.4;
+
+          // 与鼠标的距离影响
+          float distToMouse = distance(pos, uMouseWorld);
+          float mouseInfluence = smoothstep(30.0, 0.0, distToMouse);
+          vAlpha += mouseInfluence * 0.5;
+
+          // 靠近鼠标时发亮
+          vColor = mix(vColor, vec3(0.4, 0.5, 0.8), mouseInfluence * 0.5);
+
+          vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+          gl_PointSize = size * (200.0 / -mvPosition.z);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        void main() {
+          // 圆形粒子
+          vec2 center = gl_PointCoord - vec2(0.5);
+          float dist = length(center);
+
+          if (dist > 0.5) discard;
+
+          // 柔和边缘 + 光晕
+          float alpha = smoothstep(0.5, 0.1, dist) * vAlpha;
+          float glow = exp(-dist * 4.0) * 0.5;
+
+          vec3 finalColor = vColor + glow;
+
+          gl_FragColor = vec4(finalColor, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const particles = new THREE.Points(geometry, material);
+    scene.add(particles);
+
+    // ── 连接线 ──
+    const lineGeometry = new THREE.BufferGeometry();
+    const linePositions = new Float32Array(PARTICLE_COUNT * 30 * 3); // 预留空间
+    lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0x2a3a5a,
+      transparent: true,
+      opacity: 0.15,
+    });
+    const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
+    scene.add(lines);
+
+    // ── 鼠标跟踪 ──
+    const mouse = new THREE.Vector2();
+    const mouseWorld = new THREE.Vector3();
+    const raycaster = new THREE.Raycaster();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+    let targetRotationX = 0;
+    let targetRotationY = 0;
+    let rotationX = 0;
+    let rotationY = 0;
+
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      // 计算世界坐标
+      raycaster.setFromCamera(mouse, camera);
+      raycaster.ray.intersectPlane(plane, mouseWorld);
+
+      // 目标旋转
+      targetRotationX = mouse.y * 0.3;
+      targetRotationY = mouse.x * 0.3;
+    });
+
+    // ── 窗口调整 ──
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ── 动画循环 ──
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const time = clock.getElapsedTime();
+      material.uniforms.uTime.value = time;
+      material.uniforms.uMouse.value.set(mouse.x, mouse.y);
+      material.uniforms.uMouseWorld.value.copy(mouseWorld);
+
+      // 平滑旋转
+      rotationX += (targetRotationX - rotationX) * 0.02;
+      rotationY += (targetRotationY - rotationY) * 0.02;
+
+      particles.rotation.x = rotationX + time * 0.02;
+      particles.rotation.y = rotationY + time * 0.01;
+
+      // 更新粒子位置
+      const positions = geometry.attributes.position.array;
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const i3 = i * 3;
+
+        // 基础运动
+        positions[i3] += velocities[i3];
+        positions[i3 + 1] += velocities[i3 + 1];
+        positions[i3 + 2] += velocities[i3 + 2];
+
+        // 鼠标斥力
+        const dx = positions[i3] - mouseWorld.x;
+        const dy = positions[i3 + 1] - mouseWorld.y;
+        const dz = positions[i3 + 2] - mouseWorld.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (dist < 15 && dist > 0) {
+          const force = (15 - dist) / 15 * 0.3;
+          positions[i3] += (dx / dist) * force;
+          positions[i3 + 1] += (dy / dist) * force;
+          positions[i3 + 2] += (dz / dist) * force;
+        }
+
+        // 边界反弹
+        if (Math.abs(positions[i3]) > 100) velocities[i3] *= -1;
+        if (Math.abs(positions[i3 + 1]) > 100) velocities[i3 + 1] *= -1;
+        if (Math.abs(positions[i3 + 2]) > 100) velocities[i3 + 2] *= -1;
+      }
+      geometry.attributes.position.needsUpdate = true;
+
+      // 更新连接线
+      const linePositions = lineGeometry.attributes.position.array;
+      let lineIndex = 0;
+      const maxDistance = 12;
+
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const i3 = i * 3;
+        const x1 = positions[i3];
+        const y1 = positions[i3 + 1];
+        const z1 = positions[i3 + 2];
+
+        for (let j = i + 1; j < PARTICLE_COUNT; j++) {
+          if (lineIndex >= linePositions.length / 3 - 1) break;
+
+          const j3 = j * 3;
+          const dx = x1 - positions[j3];
+          const dy = y1 - positions[j3 + 1];
+          const dz = z1 - positions[j3 + 2];
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+          if (dist < maxDistance) {
+            linePositions[lineIndex++] = x1;
+            linePositions[lineIndex++] = y1;
+            linePositions[lineIndex++] = z1;
+            linePositions[lineIndex++] = positions[j3];
+            linePositions[lineIndex++] = positions[j3 + 1];
+            linePositions[lineIndex++] = positions[j3 + 2];
+          }
+        }
+      }
+
+      lineGeometry.setDrawRange(0, lineIndex);
+      lineGeometry.attributes.position.needsUpdate = true;
+      lines.rotation.x = particles.rotation.x;
+      lines.rotation.y = particles.rotation.y;
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  </script>
+</body>
+</html>

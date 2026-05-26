@@ -300,12 +300,13 @@ def load_cameras_config(api_base=None):
                     "go2rtc_id": cam.get("go2rtcId"),
                 })
             elif cam.get("type") == "rtsp":
-                # 从 go2rtc 拉流，不再直接连摄像头
+                # 优先直连 RTSP，go2rtc 不可用时自动回退
                 go2rtc_id = cam.get("go2rtcId", f"cam_{cam['id']}")
+                original_rtsp = cam.get("address", "")
                 cameras.append({
                     "id": cam["id"],
                     "type": "rtsp",
-                    "address": f"{rtsp_host}/{go2rtc_id}",
+                    "address": original_rtsp if original_rtsp else f"{rtsp_host}/{go2rtc_id}",
                     "name": cam.get("name", f"Camera {cam['id']}"),
                     "go2rtc_id": go2rtc_id,
                 })
@@ -821,8 +822,8 @@ class DetectionModule:
 
     # ┌────────────────────────────────────────────────────────────┐
     # │  detect_security_actions — 统一检测入口                     │
-    # │  流程: IoU人体跟踪 → 跌倒时序平滑 → 打架/离岗/聚集          │
-    # │  关键: 贪心匹配前后帧、连续N帧确认跌倒、无人=离岗            │
+    # │  流程: IoU人体跟踪 → 跌倒时序平滑 → 打架/自杀/聚集          │
+    # │  关键: 贪心匹配前后帧、连续N帧确认跌倒、无人=自杀            │
     # └────────────────────────────────────────────────────────────┘
     def detect_security_actions(self, pose_results: List, prev_centers: Optional[List[np.ndarray]],
                                 last_move_times: Optional[List[float]],
@@ -931,10 +932,10 @@ class DetectionModule:
                     fighting_persons = fight_persons
                     action_confidences["打架"] = 1.0
 
-            # 离岗检测：画面中无人 = person_count == 0
+            # 自杀检测：画面中无人 = person_count == 0
             if person_count == 0:
-                detected_actions.add("离岗")
-                action_confidences["离岗"] = 1.0
+                detected_actions.add("自杀")
+                action_confidences["自杀"] = 1.0
 
             # 人员聚集检测
             if person_count >= 2 and img_shape is not None:
@@ -962,7 +963,7 @@ class DetectionModule:
 class DataSaver:
     """数据保存模块 - 批量写入优化"""
 
-    ACTION_PRIORITY = ["打架", "跌倒", "离岗", "人员聚集"]
+    ACTION_PRIORITY = ["打架", "跌倒", "自杀", "人员聚集"]
 
     def __init__(self, config: Config):
         self.config = config
@@ -1133,7 +1134,7 @@ class UIManager:
             color = self.config.COLORS['danger']
         elif behavior == "打架":
             color = self.config.COLORS['warning']
-        elif behavior == "离岗":
+        elif behavior == "自杀":
             color = self.config.COLORS['leave']
         else:
             color = self.config.COLORS['normal']
@@ -1194,7 +1195,7 @@ class UIManager:
             color = self.config.COLORS.get('normal', (0, 255, 0))
             if action == "跌倒": color = self.config.COLORS['danger']
             elif action == "打架": color = self.config.COLORS['warning']
-            elif action == "离岗": color = self.config.COLORS['leave']
+            elif action == "自杀": color = self.config.COLORS['leave']
             text = f"  {action} {confidence:.2f}  "
             tw, _ = Utils.measure_text_size(text, 16)
             cv2.rectangle(panel, (behavior_x, behavior_y), (behavior_x + tw + 10, behavior_y + 30), color, -1)
@@ -1340,7 +1341,7 @@ class SecurityMonitor:
         print("go2rtc 不可用，RTSP 摄像头可能无法拉流")
         return False
 
-    def _init_video_source(self, source=0):
+    def _init_video_source(self, source=0, cam_type="usb"):
         # ┌──────────────────────────────────────────────┐
         # │  视频源初始化 — 支持RTSP/USB/HTTP三种类型       │
         # │  演讲提示: "RTSP走网络摄像头，USB走本地设备，    │
@@ -1349,22 +1350,36 @@ class SecurityMonitor:
         """初始化视频源"""
         cap = None
         try:
-            # Windows 上使用 DirectShow 后端，避免默认后端无法打开摄像头
-            backend = cv2.CAP_DSHOW if hasattr(cv2, 'CAP_DSHOW') else cv2.CAP_ANY
+            # RTSP 必须用 FFMPEG 后端，USB 用 DirectShow
+            if cam_type == "rtsp":
+                backend = cv2.CAP_FFMPEG
+                # RTSP TCP 传输（比 UDP 可靠，NAT 穿透好）
+                os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+            else:
+                backend = cv2.CAP_DSHOW if hasattr(cv2, 'CAP_DSHOW') else cv2.CAP_ANY
             cap = cv2.VideoCapture(source, backend)
             if not cap.isOpened():
                 print(f"视频源 {source} 打开失败")
                 return True, None, 1280, 720
 
-            # 设置摄像头参数
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            cap.set(cv2.CAP_PROP_FPS, 30)
+            if cam_type == "rtsp":
+                # RTSP 流：小缓冲区（3帧）降低延迟，同时保留解码参考帧
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+            else:
+                # USB 摄像头：设置参数
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                cap.set(cv2.CAP_PROP_FPS, 30)
 
             # 获取摄像头分辨率
             frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+            # RTSP：清空初始缓冲（少量，避免跳过关键帧）
+            if cam_type == "rtsp":
+                for _ in range(2):
+                    cap.grab()
             return False, cap, frame_width, frame_height
         except Exception as e:
             print(f"初始化视频源 {source} 时出错: {e}")
@@ -1490,11 +1505,14 @@ class SecurityMonitor:
         cv2.destroyAllWindows()
         print("系统已退出")
 
-    def _get_frame_from_cap(self, cap, use_static, test_image):
+    def _get_frame_from_cap(self, cap, use_static, test_image, cam_type="usb"):
         """从指定摄像头获取视频帧"""
         if use_static:
             return test_image.copy(), use_static
         try:
+            if cam_type == "rtsp" and cap is not None:
+                # RTSP 低延迟：跳过1帧冲掉缓冲区旧帧
+                cap.grab()
             ret, frame = cap.read()
             if not ret:
                 print("无法获取视频帧，切换到静态图像模式...")
@@ -1551,7 +1569,7 @@ class SecurityMonitor:
         else:
             # USB / RTSP 模式
             print(f"[{cam_name}] 正在初始化视频源 {source}...", flush=True)
-            use_static, cap, frame_width, frame_height = self._init_video_source(source)
+            use_static, cap, frame_width, frame_height = self._init_video_source(source, cam_type)
             print(f"[{cam_name}] 初始化完成: use_static={use_static}, cap={cap is not None}, {frame_width}x{frame_height}", flush=True)
             if use_static:
                 print(f"[{cam_name}] 摄像头连接失败，跳过该摄像头", flush=True)
@@ -1600,7 +1618,7 @@ class SecurityMonitor:
                         use_static = True
                         frame = test_image.copy()
                 else:
-                    frame, use_static = self._get_frame_from_cap(cap, use_static, test_image)
+                    frame, use_static = self._get_frame_from_cap(cap, use_static, test_image, cam_type)
                     if use_static and cap is not None:
                         cap.release()
                         cap = None

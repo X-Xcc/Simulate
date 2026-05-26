@@ -1,0 +1,54 @@
+---
+description: "UI/UX design intelligence — accessibility, touch, layout, typography, color"
+globs:
+  - "*.tsx"
+  - "*.css"
+  - "*.ts"
+alwaysApply: false
+---
+
+## UI/UX 设计准则（按优先级）
+
+### 1. 无障碍（CRITICAL）
+- **颜色对比度** — 普通文字最低 4.5:1（WCAG AA）
+- **焦点状态** — 所有交互元素必须有可见 focus ring
+- **aria-label** — 纯图标按钮必须有 aria-label
+- **表单关联** — 用 `<label htmlFor>` 关联输入框
+- **键盘导航** — Tab 顺序匹配视觉顺序
+- **色盲友好** — 状态不只用颜色区分，加图标/文字
+
+### 2. 触控与交互（CRITICAL）
+- **触控目标** — 最小 44x44px（移动端必须）
+- **加载按钮** — 异步操作时禁用按钮，显示 spinner
+- **错误反馈** — 错误信息紧邻问题位置，明确具体
+- **cursor-pointer** — 所有可点击元素加 `cursor-pointer`
+
+### 3. 性能（HIGH）
+- **图片优化** — WebP 格式、srcset、lazy loading
+- **减少动画** — 检查 `prefers-reduced-motion`
+- **预留空间** — 异步内容加载前预留占位空间，防止布局跳动
+
+### 4. 布局与响应式（HIGH）
+- **viewport** — `width=device-width initial-scale=1`
+- **可读字号** — 移动端正文最小 16px
+- **水平滚动** — 内容必须适配视口宽度
+- **z-index** — 定义层级：10(dropdown) 20(sticky) 30(modal) 50(toast)
+
+### 5. 字体与颜色（MEDIUM）
+- **行高** — 正文 1.5-1.75
+- **行长** — 限制 65-75 字符/行
+- **中英混排** — 中文与英文/数字之间加空格
+
+### 6. 动画（MEDIUM）
+- **时长** — 微交互 150-300ms
+- **性能** — 只用 transform/opacity 做动画，不用 width/height
+- **加载态** — 骨架屏或 spinner，不一闪而过
+
+### 7. 风格一致性（MEDIUM）
+- 同一风格贯穿全部页面
+- SVG 图标，不用 emoji 做图标
+- 空状态：图标 + 文案 + 操作按钮
+
+## 本项目技术栈
+React 19 + Tailwind v4 + Recharts + Lucide Icons + Motion (Framer)
+暗色主题（监控场景）、`bg-gray-800` 卡片、`rounded-lg`、`shadow-sm`

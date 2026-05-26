@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>暗物质粒子</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #030308; }
+    canvas { display: block; }
+    .info { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); color: rgba(150,100,200,0.6); font-family: monospace; font-size: 12px; letter-spacing: 0.15em; pointer-events: none; z-index: 10; }
+  </style>
+</head>
+<body>
+  <div class="info">DARK MATTER — 鼠标吸引聚集</div>
+  <canvas id="canvas"></canvas>
+  <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+  <script type="module">
+    import * as THREE from 'three';
+    const canvas = document.getElementById('canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 50;
+
+    const COUNT = 300;
+    const geo = new THREE.BufferGeometry();
+    const positions = new Float32Array(COUNT * 3);
+    const velocities = new Float32Array(COUNT * 3);
+    const sizes = new Float32Array(COUNT);
+    const colors = new Float32Array(COUNT * 3);
+
+    for (let i = 0; i < COUNT; i++) {
+      const i3 = i * 3;
+      positions[i3] = (Math.random() - 0.5) * 100;
+      positions[i3+1] = (Math.random() - 0.5) * 80;
+      positions[i3+2] = (Math.random() - 0.5) * 50;
+      velocities[i3] = (Math.random() - 0.5) * 0.1;
+      velocities[i3+1] = (Math.random() - 0.5) * 0.1;
+      velocities[i3+2] = (Math.random() - 0.5) * 0.05;
+      sizes[i] = Math.random() * 8 + 4;
+      const t = Math.random();
+      colors[i3] = 0.15 + t * 0.2;
+      colors[i3+1] = 0.1 + t * 0.15;
+      colors[i3+2] = 0.25 + t * 0.25;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uMouse: { value: new THREE.Vector3(0, 0, 0) }, uAttract: { value: 0 } },
+      vertexShader: `
+        attribute float size;
+        attribute vec3 color;
+        varying vec3 vColor;
+        varying float vAlpha;
+        uniform float uTime;
+        uniform vec3 uMouse;
+        uniform float uAttract;
+
+        void main() {
+          vColor = color;
+          vec3 pos = position;
+
+          // 大粒子脉动
+          float pulse = sin(uTime * 0.3 + position.x * 0.1 + position.y * 0.1) * 0.2 + 0.8;
+          vAlpha = 0.4 + pulse * 0.3;
+
+          // 鼠标吸引时变亮
+          float dist = distance(pos, uMouse);
+          float attractGlow = uAttract * smoothstep(30.0, 0.0, dist);
+          vAlpha += attractGlow * 0.4;
+          vColor = mix(vColor, vec3(0.3, 0.2, 0.5), attractGlow * 0.5);
+
+          vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+          gl_PointSize = size * pulse * (200.0 / -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        void main() {
+          vec2 c = gl_PointCoord - 0.5;
+          float d = length(c);
+          if (d > 0.5) discard;
+
+          // 核心光晕
+          float core = smoothstep(0.3, 0.0, d);
+          float glow = exp(-d * 3.0) * 0.5;
+          float edge = smoothstep(0.5, 0.2, d);
+
+          vec3 finalColor = vColor + core * 0.3 + glow;
+          float alpha = edge * vAlpha;
+
+          gl_FragColor = vec4(finalColor, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const particles = new THREE.Points(geo, mat);
+    scene.add(particles);
+
+    // 中心吸引力指示器
+    const attractorGeo = new THREE.SphereGeometry(1, 32, 32);
+    const attractorMat = new THREE.MeshBasicMaterial({ color: 0x6644aa, transparent: true, opacity: 0.3 });
+    const attractor = new THREE.Mesh(attractorGeo, attractorMat);
+    scene.add(attractor);
+
+    const mouse = new THREE.Vector2();
+    const mouseWorld = new THREE.Vector3();
+    const raycaster = new THREE.Raycaster();
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    let attractStrength = 0;
+
+    window.addEventListener('mousemove', e => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      raycaster.ray.intersectPlane(plane, mouseWorld);
+      attractor.position.copy(mouseWorld);
+    });
+
+    window.addEventListener('mousedown', () => attractStrength = 1);
+    window.addEventListener('mouseup', () => attractStrength = 0);
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    let t = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      t += 0.01;
+
+      mat.uniforms.uTime.value = t;
+      mat.uniforms.uMouse.value.lerp(mouseWorld, 0.05);
+      attractorMat.opacity = 0.2 + Math.sin(t) * 0.1;
+
+      // 平滑吸引力过渡
+      mat.uniforms.uAttract.value += (attractStrength - mat.uniforms.uAttract.value) * 0.05;
+
+      const pos = geo.attributes.position.array;
+      for (let i = 0; i < COUNT; i++) {
+        const i3 = i * 3;
+
+        // 基础运动
+        pos[i3] += velocities[i3];
+        pos[i3+1] += velocities[i3+1];
+        pos[i3+2] += velocities[i3+2];
+
+        // 鼠标吸引力
+        const dx = mouseWorld.x - pos[i3];
+        const dy = mouseWorld.y - pos[i3+1];
+        const dz = mouseWorld.z - pos[i3+2];
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+        if (dist > 0.1 && dist < 50) {
+          const force = attractStrength * 0.05 / (dist * 0.1);
+          pos[i3] += (dx / dist) * force;
+          pos[i3+1] += (dy / dist) * force;
+          pos[i3+2] += (dz / dist) * force;
+        }
+
+        // 边界反弹
+        if (Math.abs(pos[i3]) > 50) velocities[i3] *= -0.9;
+        if (Math.abs(pos[i3+1]) > 40) velocities[i3+1] *= -0.9;
+        if (Math.abs(pos[i3+2]) > 25) velocities[i3+2] *= -0.9;
+
+        // 阻力
+        velocities[i3] *= 0.995;
+        velocities[i3+1] *= 0.995;
+        velocities[i3+2] *= 0.995;
+      }
+      geo.attributes.position.needsUpdate = true;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

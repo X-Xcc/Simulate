@@ -16,6 +16,7 @@ import Audit from "./pages/Audit";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import ModelTraining from "./pages/ModelTraining";
+import Training from "./pages/Training";
 import Layout from "./components/Layout";
 import AppErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./components/ThemeProvider";
@@ -47,6 +48,7 @@ function AppRoutes() {
         <Route path="/maintenance" element={<AppErrorBoundary><Maintenance /></AppErrorBoundary>} />
         <Route path="/audit" element={<AppErrorBoundary><Audit /></AppErrorBoundary>} />
         <Route path="/model-training" element={<AppErrorBoundary><ModelTraining /></AppErrorBoundary>} />
+        <Route path="/training" element={<AppErrorBoundary><Training /></AppErrorBoundary>} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

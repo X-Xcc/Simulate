@@ -52,7 +52,7 @@ function randomDelta() {
 }
 
 function countAlertsByType(alerts: Alert[]): Record<string, number> {
-  const counts: Record<string, number> = { "打架": 0, "跌倒": 0, "离岗": 0, "人员聚集": 0 };
+  const counts: Record<string, number> = { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
   for (const alert of alerts) {
     if (counts[alert.type] !== undefined) {
       counts[alert.type]++;
@@ -63,24 +63,39 @@ function countAlertsByType(alerts: Alert[]): Record<string, number> {
 
 // ── Store 创建 ───────────────────────────────────────────────────────────────
 
+const isZeroPort = typeof window !== "undefined" && window.location.port === "5001";
+const ZERO = isZeroPort; // 5001清零，5000显示假数据
+
+// 月度 labels（供 week/day 派生）
+const MONTH_LABELS_30 = Array.from({ length: 30 }, (_, i) => `${i + 1}日`);
+const DAY_LABELS_24 = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, "0")}:00`);
+const WEEK_LABELS = ["1日","2日","3日","4日","5日","6日","7日"];
+
 export const useMockStore = create<MockStore>((set, get) => {
-  const initAlerts = mock.generateAlerts(50);
-  const initBehaviorCounts = countAlertsByType(initAlerts);
-  const initTotalDetections = initAlerts.length + Math.floor(Math.random() * 3000 + 5000);
+  const emptyCounts = { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
+
+  // 5000 端口：填充真实假数据
+  const mockTrend = mock.generateTrendData("month");
+  const statsCompare = mock.generateStatsCompare();
+  const statsSummary = mock.generateStatsSummary();
+  // 让 statsSummary 的 behaviorCounts 与 trendData 月度求和一致
+  const monthSums = { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
+  for (const key of Object.keys(mockTrend.data)) {
+    monthSums[key as keyof typeof monthSums] =
+      (mockTrend.data[key] as number[]).reduce((s, v) => s + v, 0);
+  }
+  statsSummary.behaviorCounts = monthSums;
+  statsSummary.total = Object.values(monthSums).reduce((s, v) => s + v, 0);
 
   return {
     cameras: mock.generateCameras(),
-    alerts: initAlerts,
-    statsSummary: {
-      behaviorCounts: initBehaviorCounts,
-      total: initTotalDetections,
-      compare: {},
-    },
-    statsCompare: mock.generateStatsCompare(),
+    alerts: mock.generateAlerts(20),
+    statsSummary,
+    statsCompare,
     trendData: {
-      day: mock.generateTrendData("day"),
-      week: mock.generateTrendData("week"),
-      month: mock.generateTrendData("month"),
+      day:    mock.generateTrendData("day"),
+      week:   mock.generateTrendData("week"),
+      month:  mockTrend,
       quarter: mock.generateTrendData("quarter"),
     },
     heatmapData: mock.generateHeatmapData(),
@@ -94,8 +109,8 @@ export const useMockStore = create<MockStore>((set, get) => {
     auditLogs: mock.generateAuditLogs(100),
     automationRate: mock.generateAutomationRate(),
     auditTrend: {
-      day: mock.generateAuditTrend("day"),
-      week: mock.generateAuditTrend("week"),
+      day:   mock.generateAuditTrend("day"),
+      week:  mock.generateAuditTrend("week"),
     },
 
     evidenceBump: 0,
@@ -103,57 +118,7 @@ export const useMockStore = create<MockStore>((set, get) => {
     _timers: [],
 
     start() {
-      const timers: ReturnType<typeof setInterval>[] = [];
-
-      // 每 8 秒：30% 概率生成新告警 → 同步更新 statsSummary
-      timers.push(setInterval(() => {
-        if (Math.random() > 0.7) {
-          const newAlerts = mock.generateAlerts(1);
-          const alertType = newAlerts[0].type;
-
-          set((state) => {
-            const updatedAlerts = [...newAlerts, ...state.alerts].slice(0, 100);
-            const newBehaviorCounts = { ...state.statsSummary.behaviorCounts };
-            newBehaviorCounts[alertType] = (newBehaviorCounts[alertType] || 0) + 1;
-
-            return {
-              alerts: updatedAlerts,
-              statsSummary: {
-                behaviorCounts: newBehaviorCounts,
-                total: state.statsSummary.total + 1,
-                compare: state.statsSummary.compare,
-              },
-            };
-          });
-        }
-      }, 8000));
-
-      // 每 3 秒：CPU/memory/GPU 波动
-      timers.push(setInterval(() => {
-        set((state) => ({
-          systemStatus: {
-            ...state.systemStatus,
-            cpuUsage: Math.max(10, Math.min(95, state.systemStatus.cpuUsage + (Math.random() > 0.5 ? 1 : -1) * randomDelta())),
-            memoryUsage: Math.max(20, Math.min(90, state.systemStatus.memoryUsage + (Math.random() > 0.5 ? 1 : -1) * randomDelta())),
-            gpuUsage: Math.max(30, Math.min(99, state.systemStatus.gpuUsage + (Math.random() > 0.5 ? 1 : -1) * randomDelta())),
-            lastUpdate: new Date().toLocaleString("zh-CN"),
-          },
-        }));
-      }, 3000));
-
-      // 每 5 秒：camera personCount 波动
-      timers.push(setInterval(() => {
-        set((state) => ({
-          cameras: state.cameras.map((c) => ({
-            ...c,
-            personCount: c.status === "online"
-              ? Math.max(0, c.personCount + (Math.random() > 0.5 ? 1 : -1))
-              : 0,
-          })),
-        }));
-      }, 5000));
-
-      set({ _timers: timers });
+      // 清零模式：不启动定时器
     },
 
     stop() {

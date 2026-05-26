@@ -2,14 +2,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   VideoOff, Loader2, CameraOff,
   AlertTriangle, Volume2, CheckCircle2,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { fetchCameras, takeScreenshot } from "../services/dataService";
+import { fetchCameras, takeScreenshot, uploadScreenshot } from "../services/dataService";
 import { useAlarmSound } from "../hooks/useAlarmSound";
 import { useMockStore } from "../lib/mockStore";
 import { Camera, Alert, AlertLevel, AlertType } from "../types";
 
-type GridMode = 2 | 4 | 6;
+type GridMode = 2 | 4 | 8 | 16;
 type AlarmType = "fight" | "fall" | "suicide" | "gathering";
 
 // ── 报警类型配置 ──
@@ -85,7 +86,7 @@ function captureFrame(slotId: string): string | null {
 
 // ── 报警覆盖层（单个弹窗） ──
 
-function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: () => void }) {
+function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: (type: AlarmType, isFalseAlarm?: boolean) => void }) {
   const cfg = ALARM_CONFIGS[alarmType];
   const c = cfg.hex;
   return (
@@ -103,11 +104,17 @@ function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: () => vo
         <div className="border rounded-lg p-3" style={{ backgroundColor: `${c}0d`, borderColor: `${c}33` }}>
           <p className="font-semibold text-caption" style={{ color: c }}>{cfg.msg}</p>
         </div>
-        <button onClick={onAck}
-          className="w-full py-2 rounded-lg font-bold text-caption text-white transition-all active:scale-95 shadow-lg flex items-center justify-center gap-1.5 hover:opacity-90"
-          style={{ backgroundColor: c, boxShadow: `0 4px 14px ${c}4d` }}>
-          <CheckCircle2 size={15} /> 确认处理
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => onAck(alarmType, false)}
+            className="flex-1 py-2 rounded-lg font-bold text-caption text-white transition-all active:scale-95 shadow-lg flex items-center justify-center gap-1.5 hover:opacity-90"
+            style={{ backgroundColor: c, boxShadow: `0 4px 14px ${c}4d` }}>
+            <CheckCircle2 size={15} /> 确认
+          </button>
+          <button onClick={() => onAck(alarmType, true)}
+            className="flex-1 py-2 rounded-lg font-bold text-caption text-white/80 bg-white/20 hover:bg-white/30 transition-all active:scale-95 border border-white/30">
+            误报
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -115,14 +122,101 @@ function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: () => vo
 
 // ── 报警覆盖层（多个报警叠加） ──
 
-function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: AlarmType) => void }) {
+function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: AlarmType, isFalseAlarm?: boolean) => void }) {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[2px]"
       style={{ animation: "alarm-flash-overlay 0.6s ease-in-out infinite" }}>
       <div className="flex flex-col items-center gap-2">
         {alarms.map(type => (
-          <AlarmCard key={type} alarmType={type} onAck={() => onAck(type)} />
+          <AlarmCard key={type} alarmType={type} onAck={(t, isFalse) => onAck(t, isFalse)} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 报警大屏（第3个窗口弹出） ──────────────────────────────────────────────
+
+function AlarmFullscreenDialog({
+  alarmType,
+  cameras,
+  onAck,
+}: {
+  alarmType: AlarmType;
+  cameras: Camera[];
+  onAck: (type: AlarmType, isFalseAlarm: boolean) => void;
+}) {
+  const cfg = ALARM_CONFIGS[alarmType];
+  const c = cfg.hex;
+  const [now, setNow] = useState("");
+
+  useEffect(() => {
+    const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const cam3 = cameras[0]; // 第一个摄像头
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex flex-col bg-black animate-fade-in-up"
+      onClick={e => e.stopPropagation()}
+    >
+      {/* 顶部报警横幅 */}
+      <div
+        className="flex items-center justify-center gap-3 py-4 shrink-0"
+        style={{ backgroundColor: c }}
+      >
+        <AlertTriangle size={22} className="text-white animate-pulse" />
+        <h2 className="text-white font-bold text-xl tracking-wide">{cfg.label}</h2>
+        <Volume2 size={20} className="text-white animate-pulse" />
+        <span className="ml-4 text-white/80 font-mono tabular-nums">{now}</span>
+      </div>
+
+      {/* 摄像头视频内容 */}
+      <div className="flex-1 min-h-0 relative bg-zinc-900">
+        {cam3 ? (
+          <CameraSlot
+            name={`视频1 - ${cam3.name}`}
+            streamUrl={cam3.streamUrl}
+            isOnline={cam3.status === "online"}
+            go2rtcId={cam3.go2rtcId}
+            cameraId={cam3.id}
+          />
+        ) : (
+          <div className="relative w-full h-full flex items-center justify-center">
+            <img
+              src={cameras[0] ? `/video_feed?cam=${cameras[0].id}` : "/video_feed?cam=0"}
+              alt="视频1"
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+            <div className="relative z-10 text-center">
+              <VideoOff size={64} className="mx-auto text-white/20 mb-4" />
+              <p className="text-white/40 text-2xl font-semibold">无摄像头连接</p>
+              <p className="text-white/20 text-body-sm mt-1">视频1 暂无视频源</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 底部操作按钮 */}
+      <div className="flex items-center justify-center gap-8 py-6 shrink-0" style={{ backgroundColor: `${c}22` }}>
+        <button
+          onClick={() => onAck(alarmType, false)}
+          className="px-10 py-3 rounded-xl font-bold text-lg text-white transition-all active:scale-95 shadow-xl hover:opacity-90"
+          style={{ backgroundColor: c, boxShadow: `0 0 30px ${c}60` }}
+        >
+          确认
+        </button>
+        <button
+          onClick={() => onAck(alarmType, true)}
+          className="px-10 py-3 rounded-xl font-bold text-lg text-white/80 bg-white/20 backdrop-blur-sm transition-all active:scale-95 hover:bg-white/30 border border-white/30"
+        >
+          误报
+        </button>
       </div>
     </div>
   );
@@ -133,8 +227,10 @@ function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: Al
 export default function Monitor() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
-  const [gridMode, setGridMode] = useState<GridMode>(2);
+  const [gridMode, setGridMode] = useState<GridMode>(4);
   const [activeAlarms, setActiveAlarms] = useState<Set<AlarmType>>(new Set());
+  const [alarmFullscreen, setAlarmFullscreen] = useState(false);
+  const [gridDropdownOpen, setGridDropdownOpen] = useState(false);
 
   useAlarmSound(activeAlarms.size > 0);
 
@@ -159,13 +255,19 @@ export default function Monitor() {
       next.add(type);
       return next;
     });
+    setAlarmFullscreen(true);
 
     // 本地截帧（用于 Monitor 页面弹窗即时展示）
-    const captured = captureFrame("cam-slot-0") || captureFrame("cam-slot-empty") || "";
+    const captured = captureFrame("cam-slot-" + cameras[0]?.id)
+      || captureFrame("cam-slot-0")
+      || captureFrame("cam-slot-empty")
+      || "";
 
     const { type: alertType, level } = ALARM_TO_ALERT[type];
     const cfg = ALARM_CONFIGS[type];
     const cam = cameras[0];
+
+    // 先用本地截图显示弹窗
     const alert: Alert = {
       id: `ALT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       cameraId: cam?.id ?? "cam-001",
@@ -181,22 +283,61 @@ export default function Monitor() {
     };
     useMockStore.getState().addAlert(alert);
 
-    // 等后端截图写盘完成后再触发 Evidence 刷新，避免 404 竞态
-    try {
-      await takeScreenshot(type);
-    } catch (err) {
-      console.warn("截图失败:", err);
+    // 上传截图到服务器保存，跨刷新保留
+    if (captured) {
+      try {
+        const result = await uploadScreenshot({
+          base64: captured,
+          type,
+          cameraId: cam?.id ?? "cam-001",
+          cameraName: cam?.name ?? "视频1",
+        });
+        // 服务器返回真实 URL，更新到 mockStore
+        if (result?.snapshotUrl) {
+          useMockStore.setState(state => ({
+            alerts: state.alerts.map(a =>
+              a.id === alert.id ? { ...a, snapshotUrl: result.snapshotUrl } : a
+            ),
+          }));
+        }
+      } catch (err) {
+        console.warn("上传截图失败:", err);
+      }
     }
+
     useMockStore.setState(s => ({ evidenceBump: s.evidenceBump + 1 }));
   }, [cameras]);
 
-  const handleAlarmAcknowledge = useCallback((type: AlarmType) => {
+  const handleAlarmAcknowledge = useCallback((type: AlarmType, isFalseAlarm: boolean = false) => {
+    // 如果是误报，也记录到 mockStore
+    if (isFalseAlarm) {
+      const cfg = ALARM_CONFIGS[type];
+      const cam = cameras[0];
+      const alert: Alert = {
+        id: `ALT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        cameraId: cam?.id ?? "cam-001",
+        cameraName: cam?.name ?? "视频1",
+        type: ALARM_TO_ALERT[type].type,
+        level: AlertLevel.WARNING,
+        time: new Date().toISOString(),
+        snapshotUrl: "",
+        status: "ignored",
+        confidence: 0,
+        duration: "00:00:00",
+        message: `[误报] ${cfg.msg}`,
+      };
+      useMockStore.getState().addAlert(alert);
+    }
+
     setActiveAlarms(prev => {
       const next = new Set(prev);
       next.delete(type);
+      if (next.size === 0) {
+        setAlarmFullscreen(false);
+      }
       return next;
     });
-  }, []);
+  }, [cameras]);
 
   // Alt+X/C/V/B 快捷键触发报警
   useEffect(() => {
@@ -212,8 +353,8 @@ export default function Monitor() {
     return () => window.removeEventListener("keydown", handler);
   }, [handleAlarmTrigger]);
 
-  const gridCols: Record<GridMode, string> = { 2: "grid-cols-2", 4: "grid-cols-2", 6: "grid-cols-3" };
-  const gridRows: Record<GridMode, string> = { 2: "grid-rows-1", 4: "grid-rows-2", 6: "grid-rows-2" };
+  const gridCols: Record<GridMode, string> = { 2: "grid-cols-2", 4: "grid-cols-2", 8: "grid-cols-4", 16: "grid-cols-4" };
+  const gridRows: Record<GridMode, string> = { 2: "grid-rows-1", 4: "grid-rows-2", 8: "grid-rows-2", 16: "grid-rows-4" };
 
   const visibleCameras = cameras.slice(0, gridMode);
   const slots = Array.from({ length: gridMode }, (_, i) => visibleCameras[i] ?? null);
@@ -226,19 +367,38 @@ export default function Monitor() {
   return (
     <div className="flex flex-col h-full min-h-0 gap-3 animate-fade-in-up">
       <header className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          {([2, 4, 6] as GridMode[]).map(n => (
-            <button key={n} onClick={() => setGridMode(n)}
-              className={cn(
-                "h-8 px-3 rounded-lg text-caption font-semibold border transition-all",
-                gridMode === n
-                  ? "bg-primary text-white border-primary"
-                  : "bg-white border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
-              )}>
-              {n === 2 ? "2窗口" : n === 4 ? "4窗口" : "6窗口"}
-            </button>
-          ))}
+        {/* 窗口数下拉选择器 */}
+        <div className="relative">
+          <button
+            onClick={() => setGridDropdownOpen(!gridDropdownOpen)}
+            className="flex items-center gap-2 h-9 px-4 rounded-lg border border-outline-variant bg-white hover:bg-surface-container-high transition-all text-caption font-semibold"
+          >
+            <span>{gridMode}窗口</span>
+            <ChevronDown size={16} className={cn("transition-transform", gridDropdownOpen && "rotate-180")} />
+          </button>
+          {gridDropdownOpen && (
+            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl z-50 min-w-[120px] py-1">
+              {([2, 4, 8, 16] as GridMode[]).map(n => (
+                <button
+                  key={n}
+                  onClick={() => { setGridMode(n); setGridDropdownOpen(false); }}
+                  className={cn(
+                    "w-full px-4 py-2 text-left text-caption transition-colors",
+                    gridMode === n
+                      ? "bg-primary text-white font-semibold"
+                      : "hover:bg-surface-container-high"
+                  )}
+                >
+                  {n}窗口
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+        {/* 点击外部关闭下拉 */}
+        {gridDropdownOpen && (
+          <div className="fixed inset-0 z-40" onClick={() => setGridDropdownOpen(false)} />
+        )}
       </header>
 
       {/* 视频网格 */}
@@ -254,7 +414,19 @@ export default function Monitor() {
           <div className="flex flex-col h-full min-h-0 gap-1.5">
             <div className={cn("grid gap-1.5 flex-1 min-h-0", gridCols[gridMode], gridRows[gridMode])}>
               {slots.map((cam, i) => {
-                if (i === 0) {
+                if (i === 0 && cam) {
+                  return (
+                    <CameraSlot
+                      key={cam.id}
+                      name={getDisplayName(cam)}
+                      streamUrl={cam.streamUrl}
+                      isOnline={cam.status === "online"}
+                      go2rtcId={cam.go2rtcId}
+                      cameraId={cam.id}
+                    />
+                  );
+                }
+                if (i === 0 && !cam) {
                   return <LiveCameraSlot key="live" name="视频1 (本地)" activeAlarms={activeAlarms} onAck={handleAlarmAcknowledge} />;
                 }
                 return cam ? (
@@ -275,6 +447,15 @@ export default function Monitor() {
           </div>
         )}
       </main>
+
+      {/* 报警大屏弹窗 */}
+      {alarmFullscreen && activeAlarms.size > 0 && (
+        <AlarmFullscreenDialog
+          alarmType={[...activeAlarms][0]}
+          cameras={cameras}
+          onAck={handleAlarmAcknowledge}
+        />
+      )}
     </div>
   );
 }
@@ -308,8 +489,9 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
   return (
     <div className="bg-zinc-900/80 rounded-lg border border-white/[0.04] flex items-center justify-center">
       <div className="text-center">
-        <VideoOff size={32} className="mx-auto text-white/[0.06]" />
-        <span className="block mt-1 text-white/15 text-caption">视频{index + 1}</span>
+        <VideoOff size={40} className="mx-auto text-white/20 mb-3" />
+        <p className="text-white/40 text-lg font-semibold">无摄像头连接</p>
+        <p className="text-white/20 text-body-sm mt-1">视频{index + 1}</p>
       </div>
     </div>
   );

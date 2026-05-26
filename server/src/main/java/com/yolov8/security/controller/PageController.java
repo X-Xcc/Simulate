@@ -12,20 +12,18 @@ public class PageController {
      */
     @GetMapping({"/", "/index", "/login", "/dashboard", "/monitor", "/alerts",
                  "/devices", "/evidence", "/analysis", "/maintenance", "/audit",
-                 "/monitor/fullscreen", "/training"})
+                 "/monitor/fullscreen"})
     public String spaIndex() {
         return "forward:/index.html";
     }
 
     @GetMapping("/annotation")
     public String annotationPage() {
-        // Forward to index.html, React Router handles /annotation route
         return "forward:/index.html";
     }
 
-    @GetMapping("/training.html")
+    @GetMapping("/training")
     public String trainingPage() {
-        // Forward to index.html, React Router handles /training route
-        return "forward:/index.html";
+        return "forward:/training.html";
     }
 }

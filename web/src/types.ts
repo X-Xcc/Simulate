@@ -48,7 +48,7 @@ export enum AlertType {
   FIGHT = "打架",
   FALL = "跌倒",
   CROWD = "人员聚集",
-  ABSENCE = "离岗",
+  ABSENCE = "自杀",
 }
 
 export interface Alert {
@@ -276,7 +276,7 @@ export interface LabelOption {
 export const LABEL_OPTIONS: LabelOption[] = [
   { id: 0, name: "跌倒", color: "#f97316" },
   { id: 1, name: "打架", color: "#ef4444" },
-  { id: 4, name: "离岗", color: "#22c55e" },
+  { id: 4, name: "自杀", color: "#ef4444" },
   { id: 5, name: "聚集", color: "#3b82f6" },
 ];
 

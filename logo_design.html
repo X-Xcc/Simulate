@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YOLOv8 Security - 项目Logo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      min-height: 100vh;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 1rem;
+      margin-bottom: 60px;
+    }
+
+    .logo-container {
+      display: flex;
+      gap: 60px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 60px;
+    }
+
+    .logo-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .logo-card:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-4px);
+    }
+
+    .logo-card.dark {
+      background: #0f172a;
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .logo-card.light {
+      background: #ffffff;
+      color: #0f172a;
+    }
+
+    .logo-card h3 {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .logo-card.light h3 {
+      color: #64748b;
+    }
+
+    .info {
+      max-width: 600px;
+      text-align: center;
+      color: #94a3b8;
+      line-height: 1.6;
+      margin-bottom: 40px;
+    }
+
+    .features {
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #cbd5e1;
+      font-size: 0.875rem;
+    }
+
+    .feature-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .download-btn {
+      margin-top: 60px;
+      padding: 14px 32px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .download-btn:hover {
+      background: #2563eb;
+      transform: translateY(-2px);
+    }
+
+    /* Animation */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .pulse {
+      animation: pulse 2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <h1>YOLOv8 Security</h1>
+  <p class="subtitle">监狱智能行为分析系统 · Logo Design</p>
+
+  <div class="logo-container">
+    <!-- Logo 1: 简约线条版 -->
+    <div class="logo-card dark">
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        <!-- 外框 -->
+        <rect x="10" y="10" width="100" height="100" rx="12" stroke="#3b82f6" stroke-width="2"/>
+        <!-- Y字母 -->
+        <path d="M35 35 L50 60 L65 35" stroke="#3b82f6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M50 60 L50 85" stroke="#3b82f6" stroke-width="4" stroke-linecap="round"/>
+        <!-- 8点 (姿态检测) -->
+        <circle cx="85" cy="40" r="4" fill="#60a5fa"/>
+        <circle cx="95" cy="55" r="4" fill="#60a5fa"/>
+        <!-- 视线 -->
+        <path d="M78 45 Q85 42 92 45" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <circle cx="85" cy="40" r="12" stroke="#60a5fa" stroke-width="1" stroke-dasharray="3 3" fill="none"/>
+      </svg>
+      <h3>线条版 · Dark</h3>
+    </div>
+
+    <!-- Logo 2: 全填充版 -->
+    <div class="logo-card dark">
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        <!-- 背景圆 -->
+        <circle cx="60" cy="60" r="50" fill="#1e3a5f"/>
+        <!-- Y字母 -->
+        <path d="M40 40 L55 60 L70 40" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M55 60 L55 80" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+        <!-- 8 - 姿态 -->
+        <ellipse cx="75" cy="55" rx="10" ry="12" fill="none" stroke="#3b82f6" stroke-width="3"/>
+        <circle cx="75" cy="45" r="4" fill="#3b82f6"/>
+        <circle cx="75" cy="55" r="4" fill="#3b82f6"/>
+        <circle cx="75" cy="65" r="4" fill="#3b82f6"/>
+        <!-- 眼睛扫描线 -->
+        <line x1="30" y1="70" x2="90" y2="70" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4 4"/>
+      </svg>
+      <h3>全填充版 · Dark</h3>
+    </div>
+
+    <!-- Logo 3: 极简版 -->
+    <div class="logo-card dark">
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        <!-- 眼睛轮廓 -->
+        <path d="M25 60 Q60 25 95 60 Q60 95 25 60 Z" stroke="#3b82f6" stroke-width="2" fill="none"/>
+        <!-- Y -->
+        <text x="52" y="68" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#ffffff">Y</text>
+        <!-- 扫描线 -->
+        <line x1="35" y1="60" x2="85" y2="60" stroke="#60a5fa" stroke-width="1" stroke-dasharray="2 4"/>
+      </svg>
+      <h3>极简版 · Dark</h3>
+    </div>
+
+    <!-- Logo 4: 浅色背景版 -->
+    <div class="logo-card light">
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        <!-- 背景 -->
+        <rect x="10" y="10" width="100" height="100" rx="12" fill="#0f172a"/>
+        <!-- Y字母 -->
+        <path d="M40 40 L55 60 L70 40" stroke="#3b82f6" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M55 60 L55 80" stroke="#3b82f6" stroke-width="5" stroke-linecap="round"/>
+        <!-- 8 - 姿态检测 -->
+        <circle cx="78" cy="42" r="5" fill="#ffffff"/>
+        <circle cx="88" cy="58" r="5" fill="#ffffff"/>
+        <circle cx="78" cy="74" r="5" fill="#ffffff"/>
+        <line x1="80" y1="46" x2="86" y2="54" stroke="#ffffff" stroke-width="2"/>
+        <line x1="86" y1="62" x2="80" y2="70" stroke="#ffffff" stroke-width="2"/>
+      </svg>
+      <h3>浅色背景版</h3>
+    </div>
+
+    <!-- Logo 5: 盾牌版 -->
+    <div class="logo-card dark">
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        <!-- 盾牌 -->
+        <path d="M60 15 L95 30 L95 65 Q95 90 60 105 Q25 90 25 65 L25 30 Z" fill="none" stroke="#3b82f6" stroke-width="2"/>
+        <!-- Y -->
+        <path d="M48 45 L60 62 L72 45" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M60 62 L60 80" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+        <!-- 姿态点 -->
+        <circle cx="75" cy="50" r="3" fill="#60a5fa"/>
+        <circle cx="82" cy="65" r="3" fill="#60a5fa"/>
+      </svg>
+      <h3>盾牌版 · Dark</h3>
+    </div>
+
+    <!-- Logo 6: 动态版 -->
+    <div class="logo-card dark">
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+        <!-- 圆环 -->
+        <circle cx="60" cy="60" r="45" stroke="#1e3a5f" stroke-width="3" fill="none"/>
+        <circle cx="60" cy="60" r="35" stroke="#3b82f6" stroke-width="2" fill="none" stroke-dasharray="8 4"/>
+        <!-- Y -->
+        <text x="42" y="72" font-family="Arial, sans-serif" font-size="36" font-weight="bold" fill="#ffffff">Y</text>
+        <!-- 8 -->
+        <text x="68" y="68" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#60a5fa">8</text>
+        <!-- 扫描线 -->
+        <circle cx="60" cy="60" r="50" stroke="#3b82f6" stroke-width="1" stroke-dasharray="2 6" class="pulse"/>
+      </svg>
+      <h3>动态版 · Dark</h3>
+    </div>
+  </div>
+
+  <div class="info">
+    <p>以上Logo设计融合了项目核心元素：</p>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <span class="feature-dot" style="background: #3b82f6;"></span>
+      <span>YOLOv8 姿态检测</span>
+    </div>
+    <div class="feature">
+      <span class="feature-dot" style="background: #60a5fa;"></span>
+      <span>智能视觉识别</span>
+    </div>
+    <div class="feature">
+      <span class="feature-dot" style="background: #93c5fd;"></span>
+      <span>安全监控分析</span>
+    </div>
+  </div>
+
+  <a href="logo.svg" download="yolov8-security-logo.svg" class="download-btn">
+    下载推荐Logo (SVG)
+  </a>
+
+  <script>
+    // 创建推荐Logo的SVG并触发下载
+    const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <!-- 背景圆 -->
+  <circle cx="128" cy="128" r="110" fill="#1e3a5f"/>
+  
+  <!-- 外圈 -->
+  <circle cx="128" cy="128" r="110" stroke="#3b82f6" stroke-width="3" fill="none"/>
+  
+  <!-- 内部圆环 -->
+  <circle cx="128" cy="128" r="85" stroke="#1e40af" stroke-width="1" stroke-dasharray="6 6" fill="none"/>
+  
+  <!-- Y 字母 -->
+  <path d="M88 90 L112 128 L136 90" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M112 128 L112 170" stroke="#ffffff" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- 8 姿态检测 -->
+  <ellipse cx="160" cy="110" rx="18" ry="22" fill="none" stroke="#60a5fa" stroke-width="4"/>
+  <circle cx="160" cy="95" r="6" fill="#60a5fa"/>
+  <circle cx="160" cy="110" r="6" fill="#60a5fa"/>
+  <circle cx="160" cy="125" r="6" fill="#60a5fa"/>
+  
+  <!-- 扫描线 -->
+  <line x1="60" y1="145" x2="180" y2="145" stroke="#3b82f6" stroke-width="2" stroke-dasharray="4 8" opacity="0.6"/>
+  
+  <!-- 眼睛元素 -->
+  <path d="M70 130 Q128 100 186 130" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.5"/>
+</svg>`;
+
+    // 创建并下载SVG
+    document.querySelector('.download-btn').addEventListener('click', function(e) {
+      e.preventDefault();
+      const blob = new Blob([logoSvg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'yolov8-security-logo.svg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>

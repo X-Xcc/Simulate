@@ -83,7 +83,10 @@ function handleResponseError(res: Response, body: any): never {
     clearToken();
     cache.clear();
     pending.clear();
-    window.dispatchEvent(new Event("rtk:token-invalid"));
+    // Mock 模式下无 JWT，不触发踢回登录
+    if (localStorage.getItem("mock_auth") !== "true") {
+      window.dispatchEvent(new Event("rtk:token-invalid"));
+    }
   }
   throw new Error(body.error || body.message || "请求失败");
 }

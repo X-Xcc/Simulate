@@ -1,5 +1,0 @@
-{
-  "cameras": [
-    { "id": "0", "type": "usb", "address": 0, "name": "内置摄像头" }
-  ]
-}

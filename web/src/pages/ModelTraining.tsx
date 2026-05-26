@@ -6,8 +6,10 @@ import {
   Play, Square, Upload, Loader2, BrainCircuit,
   TerminalSquare, Image as ImageIcon, FileVideo,
   Cpu, Gauge, Activity, Timer, BookOpen,
+  CheckCircle2, X, Download, BarChart3,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { AnimatePresence, motion } from "motion/react";
 import { apiUpload } from "../lib/api";
 import type { TrainingStatus, TrainingLog } from "../types";
 
@@ -27,7 +29,7 @@ const LOG_POOL: Array<{ level: TrainingLog["level"]; msg: string }> = [
   { level: "WARN", msg: "学习率调整: lr 衰减至 0.00081, 接近末期" },
   { level: "SYNC", msg: "GPU: RTX 5060, CUDA 12.8, 显存占用 4812MB / 8192MB" },
   { level: "SYNC", msg: "GPU 温度 67°C, 推理速度 34ms/step" },
-  { level: "DATA", msg: "标签统计: 跌倒 89 例, 打架 56 例, 离岗 102 例, 聚集 79 例" },
+  { level: "DATA", msg: "标签统计: 跌倒 89 例, 打架 56 例, 自杀 102 例, 聚集 79 例" },
 ];
 
 // 模拟训练指标的数学模型（演示用）
@@ -158,6 +160,17 @@ export default function ModelTraining() {
   const isCompleted = status.status === "completed";
   const canStart = uploadDone && !isTraining;
   const progressPct = totalEpochs > 0 ? Math.round((status.current_epoch / totalEpochs) * 100) : 0;
+
+  // ── 训练完成弹窗 ───────────────────────────────────────────────────────
+  const [showDoneDialog, setShowDoneDialog] = useState(false);
+  const prevStatusRef = useRef<TrainingStatus["status"]>("idle");
+
+  useEffect(() => {
+    if (prevStatusRef.current === "running" && status.status === "completed") {
+      setShowDoneDialog(true);
+    }
+    prevStatusRef.current = status.status;
+  }, [status.status]);
 
   // Auto-scroll logs
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
@@ -443,13 +456,71 @@ export default function ModelTraining() {
         </div>
       </div>
 
-      {/*
-        预留 API 接口（未实现）:
-        POST /api/training/start    — 提交训练任务 (body: TrainingConfig)
-        POST /api/training/stop     — 停止训练
-        GET  /api/training/status   — 查询训练状态 (TrainingStatus)
-        GET  /api/training/logs     — 获取训练日志 (TrainingLog[])
-      */}
+      {/* 训练完成弹窗 */}
+      <AnimatePresence>
+        {showDoneDialog && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center"
+            onClick={() => setShowDoneDialog(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-[440px] overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* 渐变横幅 */}
+              <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 size={24} className="text-white" />
+                  <div>
+                    <div className="text-white font-bold text-lg">训练完成</div>
+                    <div className="text-white/70 text-body-sm">模型已成功完成微调</div>
+                  </div>
+                </div>
+                <button onClick={() => setShowDoneDialog(false)} className="text-white/80 hover:text-white">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* 指标卡片 */}
+              <div className="grid grid-cols-3 gap-3 px-6 py-5">
+                <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
+                  <BarChart3 size={18} className="text-emerald-500 mx-auto mb-1" />
+                  <div className="font-mono font-bold text-body text-gray-800">{status.map50.toFixed(4)}</div>
+                  <div className="text-[10px] text-gray-500 font-semibold">mAP@0.5</div>
+                </div>
+                <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-100">
+                  <Activity size={18} className="text-amber-500 mx-auto mb-1" />
+                  <div className="font-mono font-bold text-body text-gray-800">{status.loss.toFixed(4)}</div>
+                  <div className="text-[10px] text-gray-500 font-semibold">Final Loss</div>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                  <Timer size={18} className="text-blue-500 mx-auto mb-1" />
+                  <div className="font-mono font-bold text-body text-gray-800">{formatDuration(status.elapsed_seconds)}</div>
+                  <div className="text-[10px] text-gray-500 font-semibold">训练时长</div>
+                </div>
+              </div>
+
+              {/* 操作按钮 */}
+              <div className="flex gap-3 px-6 pb-6">
+                <button
+                  onClick={() => { setShowDoneDialog(false); start(); }}
+                  className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-body flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
+                >
+                  重新训练
+                </button>
+                <button
+                  onClick={() => setShowDoneDialog(false)}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-semibold text-body flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-shadow"
+                >
+                   确认完成
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

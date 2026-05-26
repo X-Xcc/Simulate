@@ -9,7 +9,7 @@ import { getToken } from "../lib/api";
 import Lightbox from "../components/Lightbox";
 
 const PAGE_SIZE = 12;
-const TABS = ["全部", "打架", "跌倒", "离岗", "人员聚集"];
+const TABS = ["全部", "打架", "跌倒", "自杀", "人员聚集"];
 
 export default function Evidence() {
   const toast = useToast();

@@ -161,7 +161,7 @@ export default function Training() {
 
   /** Real upload to backend */
   const uploadFile = async (file: File) => {
-    const id = crypto.randomUUID();
+    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const item: UploadItem = {
       id,
       name: file.name,

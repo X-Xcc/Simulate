@@ -27,6 +27,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Base64;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -731,6 +732,66 @@ public class StatsController {
             log.error("截图接口异常", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("截图失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 上传前端捕获的 base64 截图到服务器，保存到 evidence 目录，并创建 Alert 记录。
+     * 前端 Monitor 页面手动报警时调用。
+     */
+    @PostMapping("/screenshot/upload")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> uploadScreenshot(
+            @RequestBody Map<String, Object> body) {
+        try {
+            String base64Data = (String) body.get("base64");
+            String alarmType = (String) body.getOrDefault("type", "fight");
+            String cameraId = (String) body.getOrDefault("cameraId", "cam-unknown");
+            String cameraName = (String) body.getOrDefault("cameraName", "未知摄像头");
+
+            if (base64Data == null || base64Data.isBlank()) {
+                return ResponseEntity.badRequest().body(ApiResponse.error("base64 参数必填"));
+            }
+
+            // 去掉 data URL 前缀（如果有）
+            if (base64Data.contains(",")) {
+                base64Data = base64Data.split(",")[1];
+            }
+
+            byte[] jpeg = Base64.getDecoder().decode(base64Data);
+
+            String zhType = ALARM_TYPE_MAP.getOrDefault(alarmType, "打架");
+            String level = "suicide".equals(alarmType) ? "high" : "medium";
+
+            // 保存到 evidence 目录
+            DetectionData det = detectionService.saveManualDetection(jpeg, cameraId, cameraName, List.of(zhType));
+
+            // 创建 Alert
+            Alert alert = new Alert();
+            alert.setType(zhType);
+            alert.setLevel(level);
+            alert.setTime(det.getTimestamp());
+            alert.setCameraId(cameraId);
+            alert.setCameraName(cameraName);
+            alert.setImageFilename(det.getImageFilename());
+            alert.setSnapshotUrl("/api/images/" + det.getImageFilename());
+            alert.setMessage("手动报警: " + zhType);
+            alert.setConfidence(100.0);
+            alertService.addAlert(alert);
+
+            // SSE 广播更新
+            KanbanEventBus.publish("alerts", alertService.getAllAlerts());
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("alertId", alert.getId());
+            result.put("imageFilename", det.getImageFilename());
+            result.put("snapshotUrl", alert.getSnapshotUrl());
+            return ResponseEntity.ok(ApiResponse.success(result));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("无效的 base64 数据: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("上传截图异常", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("上传失败: " + e.getMessage()));
         }
     }
 

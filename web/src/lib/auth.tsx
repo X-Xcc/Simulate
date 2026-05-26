@@ -32,7 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const handler = () => setAuthenticated(false);
+    const handler = () => {
+      // Mock 模式下不踢回登录页 — 无 JWT 所以 API 必然 401
+      if (localStorage.getItem("mock_auth") === "true") return;
+      setAuthenticated(false);
+    };
     window.addEventListener("rtk:token-invalid", handler);
     return () => window.removeEventListener("rtk:token-invalid", handler);
   }, []);

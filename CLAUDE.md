@@ -8,6 +8,32 @@
 3. 全程用中文回复，除非涉及代码/命令/技术术语
 未完成前，禁止任何回答或操作。
 
+## 核心准则
+
+### 1. Think Before Coding（先想后写）
+- 动手前必须想清楚：需求是什么？有几种实现路径？各有什么 trade-off？
+- 不明确就问：假设要明确说出口，不确定的假设禁止藏在代码里
+- 多解时列出来：方案有歧义时，先和用户讨论清楚再写
+- 先复现再修：调试时先复现 bug，追踪代码路径，找最小修复点
+
+### 2. Simplicity First（极简优先）
+- 不加没要求的功能：不为单次用法抽象，不处理不可能的错误
+- 能用 50 行搞定就不写 100 行：问自己"资深工程师看到会说过度设计吗？"
+- 删除优于添加：死代码、废弃 import、未使用的变量 — 改完立即清理
+- 不顺手改进相邻代码：只改该改的行，每行都能追溯到用户需求
+
+### 3. Surgical Changes（精准修改）
+- 只改该改的：改完后代码要能通过原有测试，行为不变
+- diff 可审查：一次 PR 聚焦一个目标，逻辑清晰的 commit
+- 改完即验证：声称修复了就要跑测试，不说"应该能用"
+- 破坏性操作要谨慎：rm、drop、force push — 列出风险再执行
+
+### 4. Goal-Driven Execution（目标驱动）
+- 目标可验证：能跑测试就算完成，"应该能用"不算
+- 大任务列计划：多步任务要拆成可验证的子目标，设检查点
+- 先难后易：核心路径先走通，边角情况后补
+- 完成标准明确：每个改动都要有明确的验收条件
+
 ## Project
 
 监狱智能行为分析系统 — 实时监控 YOLOv8 姿态估计，检测跌倒/打架/疲劳/眼疲劳/离岗/人员聚集。
@@ -81,11 +107,17 @@ React SPA (Vite)
 ## Commands
 
 ```bash
+# 远程服务器
+REMOTE_SERVER=http://10.23.82.186:5000       # 主服务
+REMOTE_SERVER_5001=http://10.23.82.186:5001  # 空数据模式
+
+# 启动服务器 → 启动远程 http://10.23.82.186:5000 和 5001
+
 cd detection && python yolov8_security.py          # Python 检测
 cd tests && python -m pytest test_detection.py -v  # Python 测试
 cd web && npm run dev / npm run build              # 前端开发/构建
 cd server && .\mvnw clean package -DskipTests      # Java 构建
-cd server && .\mvnw spring-boot:run                # Java 运行
+cd server && .\mvnw spring-boot:run                # Java 运行 (本地)
 cd server && .\mvnw test                            # Java 测试
 start.bat / stop / restart / build                  # Windows 一键
 ```
