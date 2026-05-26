@@ -1,25 +1,56 @@
 #!/usr/bin/env python3
-import paramiko
+import shutil
+import subprocess
+import time
+from pathlib import Path
 
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh.connect('10.23.82.186', port=2006, username='root')
+ROOT = Path(__file__).resolve().parent
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(exist_ok=True)
 
-# 用 ffmpeg 直接拉 RTSP 流，转成 HTTP FLV
-# 海康: rtsp://admin:asdfgh12@192.168.1.64:554/Streaming/Channels/101
-# 大华: rtsp://admin:asdfgh12@192.168.1.65:554/cam/realmonitor?channel=1&subtype=0
+STREAMS = {
+    "cam-10": "rtsp://admin:asdfgh12@192.168.1.10:554/cam/realmonitor?channel=1&subtype=0",
+    "cam-11": "rtsp://admin:ASDFGH12@192.168.1.11:554/cam/realmonitor?channel=1&subtype=0",
+}
 
-hik_url = "rtsp://admin:asdfgh12@192.168.1.64:554/Streaming/Channels/101"
-dh_url = "rtsp://admin:asdfgh12@192.168.1.65:554/cam/realmonitor?channel=1&subtype=0"
 
-# 杀掉旧进程
-ssh.exec_command('pkill -f ffmpeg 2>/dev/null; sleep 1')
+def main() -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise FileNotFoundError("本机 PATH 中找不到 ffmpeg，请先安装 ffmpeg 或把 ffmpeg.exe 加入 PATH")
 
-# 启动 ffmpeg 拉流
-ssh.exec_command(f'nohup ffmpeg -rtsp_transport tcp -i "{hik_url}" -c copy -f flv rtmp://127.0.0.1:1935/hik-01 > /opt/yolov8-security/ffmpeg_hik.log 2>&1 &')
-ssh.exec_command(f'nohup ffmpeg -rtsp_transport tcp -i "{dh_url}" -c copy -f flv rtmp://127.0.0.1:1935/dh-01 > /opt/yolov8-security/ffmpeg_dh.log 2>&1 &')
+    subprocess.run(
+        ["taskkill", "/F", "/IM", "ffmpeg.exe"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
 
-_, o, _ = ssh.exec_command('sleep 3 && ps aux | grep ffmpeg | grep -v grep && echo "---hik---" && tail -5 /opt/yolov8-security/ffmpeg_hik.log && echo "---dh---" && tail -5 /opt/yolov8-security/ffmpeg_dh.log')
-print(o.read().decode())
+    for stream_id, rtsp_url in STREAMS.items():
+        log_path = LOG_DIR / f"ffmpeg_{stream_id}.log"
+        log_file = log_path.open("w", encoding="utf-8")
+        subprocess.Popen(
+            [
+                ffmpeg,
+                "-rtsp_transport",
+                "tcp",
+                "-i",
+                rtsp_url,
+                "-c",
+                "copy",
+                "-f",
+                "rtsp",
+                f"rtsp://127.0.0.1:8554/{stream_id}",
+            ],
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        print(f"started ffmpeg {stream_id}, log: {log_path}")
 
-ssh.close()
+    time.sleep(3)
+    subprocess.run(["tasklist", "/FI", "IMAGENAME eq ffmpeg.exe"], check=False)
+
+
+if __name__ == "__main__":
+    main()

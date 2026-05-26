@@ -1688,7 +1688,7 @@ class SecurityMonitor:
                         if can_submit:
                             self._pending_frames += 1
                     if can_submit:
-                        future = self._frame_executor.submit(self._send_frame_session, frame.copy(), cam_str, session, person_num)
+                        future = self._frame_executor.submit(self._send_frame_session, frame_out.copy(), cam_str, session, person_num)
                         future.add_done_callback(lambda _: self._release_frame_slot())
 
                 # 9. 日志
@@ -1773,6 +1773,35 @@ class SecurityMonitor:
             )
         except Exception:
             pass
+
+    def _draw_torso_boxes(self, result, frame_out):
+        """用红框标出人体躯干区域（肩膀 + 髋部关键点）。"""
+        try:
+            if result.keypoints is None:
+                return
+            keypoints = result.keypoints.data
+            for kp in keypoints:
+                kp_np = kp.cpu().numpy() if hasattr(kp, 'cpu') else kp
+                if len(kp_np) < 13:
+                    continue
+                torso_points = kp_np[[5, 6, 11, 12]]
+                valid = torso_points[torso_points[:, 2] > 0.35]
+                if len(valid) < 2:
+                    continue
+                x1, y1 = valid[:, :2].min(axis=0)
+                x2, y2 = valid[:, :2].max(axis=0)
+                pad_x = max(12, int((x2 - x1) * 0.35))
+                pad_y = max(18, int((y2 - y1) * 0.45))
+                h, w = frame_out.shape[:2]
+                x1 = max(0, int(x1) - pad_x)
+                y1 = max(0, int(y1) - pad_y)
+                x2 = min(w - 1, int(x2) + pad_x)
+                y2 = min(h - 1, int(y2) + pad_y)
+                cv2.rectangle(frame_out, (x1, y1), (x2, y2), (0, 0, 255), 4)
+                cv2.putText(frame_out, "TORSO", (x1, max(25, y1 - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        except Exception as e:
+            print(f"绘制躯干红框失败: {e}")
 
     def _draw_fighting_persons(self, result, fighting_persons, frame_out):
         """框选打架人员"""

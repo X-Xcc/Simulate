@@ -19,19 +19,19 @@ const ALARM_CONFIGS: Record<AlarmType, {
   hex: string; label: string; msg: string;
 }> = {
   fight: {
-    hex: "#c13737", label: "打架报警",
+    hex: "#dc2626", label: "打架报警",
     msg: "区域 A 检测到打架行为 — 连续拳击动作，双方肢体冲突特征明显",
   },
   fall: {
-    hex: "#f97316", label: "跌倒报警",
+    hex: "#dc2626", label: "跌倒报警",
     msg: "区域 B 检测到跌倒事件 — 人员姿态异常，身体重心急剧下降",
   },
   suicide: {
-    hex: "#7c3aed", label: "自杀报警",
+    hex: "#dc2626", label: "自杀报警",
     msg: "区域 C 检测到自残风险 — 异常姿态动作，疑似自我伤害行为",
   },
   gathering: {
-    hex: "#eab308", label: "异常聚集报警",
+    hex: "#dc2626", label: "异常聚集报警",
     msg: "区域 D 检测到异常聚集 — 同一区域人数超过阈值，持续聚集",
   },
 };
@@ -135,6 +135,22 @@ function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: Al
   );
 }
 
+// ── 报警摄像头实时播放 ──────────────────────────────────────────────
+
+function AlarmRealtimePlayer({ streamId }: { streamId: string }) {
+  const realtimeUrl = `http://${window.location.hostname}:1984/stream.html?src=${streamId}`;
+
+  return (
+    <iframe
+      key={streamId}
+      src={realtimeUrl}
+      className="absolute inset-0 w-full h-full border-0 bg-black"
+      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+      allowFullScreen
+    />
+  );
+}
+
 // ── 报警大屏（第3个窗口弹出） ──────────────────────────────────────────────
 
 function AlarmFullscreenDialog({
@@ -157,7 +173,8 @@ function AlarmFullscreenDialog({
     return () => clearInterval(iv);
   }, []);
 
-  const cam3 = cameras[0]; // 第一个摄像头
+  const alarmCamera = cameras.find(c => c.id === "cam-11") ?? cameras[1] ?? cameras[0]; // 报警时弹出摄像头2
+  const alarmCameraGo2rtcId = alarmCamera?.go2rtcId || (alarmCamera ? `cam_${alarmCamera.id}` : undefined);
 
   return (
     <div
@@ -177,26 +194,23 @@ function AlarmFullscreenDialog({
 
       {/* 摄像头视频内容 */}
       <div className="flex-1 min-h-0 relative bg-zinc-900">
-        {cam3 ? (
-          <CameraSlot
-            name={`视频1 - ${cam3.name}`}
-            streamUrl={cam3.streamUrl}
-            isOnline={cam3.status === "online"}
-            go2rtcId={cam3.go2rtcId}
-            cameraId={cam3.id}
-          />
+        {alarmCamera && alarmCameraGo2rtcId ? (
+          <>
+            <AlarmRealtimePlayer streamId={alarmCameraGo2rtcId} />
+            <div className="absolute top-4 left-4 z-30 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-red-600 animate-pulse" />
+              <span className="px-3 py-1 bg-black/70 backdrop-blur-sm rounded text-white text-sm font-mono font-semibold">
+                报警画面 - 摄像头2
+              </span>
+            </div>
+            <AlarmOverlay alarms={[alarmType]} onAck={(type, isFalse) => onAck(type, !!isFalse)} />
+          </>
         ) : (
           <div className="relative w-full h-full flex items-center justify-center">
-            <img
-              src={cameras[0] ? `/video_feed?cam=${cameras[0].id}` : "/video_feed?cam=0"}
-              alt="视频1"
-              className="absolute inset-0 w-full h-full object-cover"
-              onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
             <div className="relative z-10 text-center">
               <VideoOff size={64} className="mx-auto text-white/20 mb-4" />
               <p className="text-white/40 text-2xl font-semibold">无摄像头连接</p>
-              <p className="text-white/20 text-body-sm mt-1">视频1 暂无视频源</p>
+              <p className="text-white/20 text-body-sm mt-1">报警画面暂无视频源</p>
             </div>
           </div>
         )}
@@ -227,7 +241,7 @@ function AlarmFullscreenDialog({
 export default function Monitor() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
-  const [gridMode, setGridMode] = useState<GridMode>(4);
+  const [gridMode, setGridMode] = useState<GridMode>(2);
   const [activeAlarms, setActiveAlarms] = useState<Set<AlarmType>>(new Set());
   const [alarmFullscreen, setAlarmFullscreen] = useState(false);
   const [gridDropdownOpen, setGridDropdownOpen] = useState(false);
@@ -257,15 +271,17 @@ export default function Monitor() {
     });
     setAlarmFullscreen(true);
 
+    const alarmCam = cameras[1] ?? cameras[0];
+
     // 本地截帧（用于 Monitor 页面弹窗即时展示）
-    const captured = captureFrame("cam-slot-" + cameras[0]?.id)
+    const captured = captureFrame("cam-slot-" + alarmCam?.id)
       || captureFrame("cam-slot-0")
       || captureFrame("cam-slot-empty")
       || "";
 
     const { type: alertType, level } = ALARM_TO_ALERT[type];
     const cfg = ALARM_CONFIGS[type];
-    const cam = cameras[0];
+    const cam = alarmCam;
 
     // 先用本地截图显示弹窗
     const alert: Alert = {
@@ -345,7 +361,7 @@ export default function Monitor() {
       console.log("[alarm-hotkey]", e.key, "alt=", e.altKey);
       if (!e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
-      const map: Record<string, AlarmType> = { x: "fight", c: "fall", v: "suicide", b: "gathering" };
+      const map: Record<string, AlarmType> = { x: "fight", c: "fall", v: "suicide", d: "gathering" };
       const type = map[e.key.toLowerCase()];
       if (type) { e.preventDefault(); console.log("[alarm-hotkey] triggered:", type); handleAlarmTrigger(type); }
     };
@@ -358,6 +374,7 @@ export default function Monitor() {
 
   const visibleCameras = cameras.slice(0, gridMode);
   const slots = Array.from({ length: gridMode }, (_, i) => visibleCameras[i] ?? null);
+  const primaryCamera = cameras[0] ?? null;
 
   const getDisplayName = (cam: Camera) => {
     const idx = cameras.findIndex(c => c.id === cam.id);
@@ -414,6 +431,51 @@ export default function Monitor() {
           <div className="flex flex-col h-full min-h-0 gap-1.5">
             <div className={cn("grid gap-1.5 flex-1 min-h-0", gridCols[gridMode], gridRows[gridMode])}>
               {slots.map((cam, i) => {
+                if (gridMode === 2) {
+                  if (i === 0) {
+                    return (
+                      <LiveCameraSlot
+                        key="local-front-camera-main"
+                        slotId="cam-slot-local-front"
+                        name="视频1 - 本地前置摄像头"
+                        activeAlarms={activeAlarms}
+                        onAck={handleAlarmAcknowledge}
+                      />
+                    );
+                  }
+                  if (i === 1 && primaryCamera) {
+                    return (
+                      <CameraSlot
+                        key={primaryCamera.id}
+                        name="视频2 - 摄像头1"
+                        streamUrl={primaryCamera.streamUrl}
+                        isOnline={primaryCamera.status === "online"}
+                        go2rtcId={primaryCamera.go2rtcId}
+                        cameraId={primaryCamera.id}
+                      />
+                    );
+                  }
+                }
+                if (i === 2) {
+                  return (
+                    <LiveCameraSlot
+                      key="local-front-camera"
+                      slotId="cam-slot-local-front-grid"
+                      name="视频3 - 本地前置摄像头"
+                      activeAlarms={activeAlarms}
+                      onAck={handleAlarmAcknowledge}
+                    />
+                  );
+                }
+                if (i === 3) {
+                  return (
+                    <AIDetectionSlot
+                      key="ai-detection-cam11"
+                      cameraId="cam-11"
+                      name="视频4 - AI检测画面 摄像头2"
+                    />
+                  );
+                }
                 if (i === 0 && cam) {
                   return (
                     <CameraSlot
@@ -497,10 +559,60 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
   );
 }
 
+// ── AI 检测画面 ──
+
+function AIDetectionSlot({ cameraId, name }: { cameraId: string; name: string }) {
+  const [now, setNow] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const feedUrl = `/video_feed?cam=${cameraId}`;
+
+  useEffect(() => {
+    const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  return (
+    <div id={`cam-slot-ai-${cameraId}`} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-red-500/50 hover:shadow-[0_0_20px_rgba(220,38,38,0.18)] transition-all duration-300">
+      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
+        style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
+      {!loadFailed ? (
+        <img
+          src={feedUrl}
+          alt={name}
+          className="absolute inset-0 w-full h-full object-cover"
+          onLoad={() => setLoadFailed(false)}
+          onError={() => setLoadFailed(true)}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="text-center px-4">
+            <VideoOff size={34} className="mx-auto text-red-400/70 mb-2" />
+            <p className="text-white/60 text-body-sm font-semibold">AI检测画面未连接</p>
+            <p className="text-white/30 text-caption mt-1">请先启动后端和 Python 检测服务</p>
+          </div>
+        </div>
+      )}
+      <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
+        <span className={cn("w-2 h-2 rounded-full", loadFailed ? "bg-red-400" : "bg-red-600 animate-pulse")} />
+        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
+          {name}
+        </span>
+      </div>
+      <div className="absolute top-2 right-2 z-10">
+        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/60 text-caption font-mono tabular-nums">
+          {now}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ── 本地实时摄像头 ──
 
-function LiveCameraSlot({ name, activeAlarms, onAck }: {
-  name: string; activeAlarms: Set<AlarmType>; onAck: (type: AlarmType) => void;
+function LiveCameraSlot({ name, activeAlarms, onAck, slotId = "cam-slot-0" }: {
+  name: string; activeAlarms: Set<AlarmType>; onAck: (type: AlarmType) => void; slotId?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -546,7 +658,7 @@ function LiveCameraSlot({ name, activeAlarms, onAck }: {
   }, []);
 
   return (
-    <div id="cam-slot-0" className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
+    <div id={slotId} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
         style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
       {error ? (
@@ -598,7 +710,8 @@ function CameraSlot({
   const [loadFailed, setLoadFailed] = useState(false);
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasGo2rtc = !!go2rtcId;
-  const go2rtcUrl = `http://${window.location.hostname}:1984/ui.html?src=${go2rtcId || "cam_" + cameraId}`;
+  const go2rtcStreamId = go2rtcId || "cam_" + cameraId;
+  const go2rtcUrl = `http://${window.location.hostname}:1984/stream.html?src=${go2rtcStreamId}`;
   const fallbackUrl = `/video_feed?cam=${cameraId}`;
 
   useEffect(() => {
