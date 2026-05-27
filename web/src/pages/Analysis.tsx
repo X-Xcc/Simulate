@@ -10,6 +10,7 @@ import {
 import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
+import { isZeroPort } from "../lib/api";
 import {
   useMockSystemStatus,
   useMockTrendData, useMockModelInfo, useMockRegionalStats, useMockFpsStats,
@@ -17,8 +18,6 @@ import {
 import { useRealAlerts } from "../lib/useRealAlerts";
 import { useToast } from "../components/Toast";
 import Prison3D from "../components/Prison3D";
-
-const isZeroPort = typeof window !== "undefined" && window.location.port === "5001";
 
 
 export default function Analysis() {

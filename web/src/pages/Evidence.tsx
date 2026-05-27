@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
 import { fetchEvidenceList, EvidenceItem } from "../services/dataService";
 import { useMockStore } from "../lib/mockStore";
-import { getToken } from "../lib/api";
+import { getToken, API_BASE } from "../lib/api";
 import Lightbox from "../components/Lightbox";
 
 const PAGE_SIZE = 12;
@@ -62,7 +62,7 @@ export default function Evidence() {
       const headers: Record<string, string> = {};
       const token = getToken();
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const res = await fetch(url, { headers });
+      const res = await fetch(`${API_BASE}${url}`, { headers });
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");

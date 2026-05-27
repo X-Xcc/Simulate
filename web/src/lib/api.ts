@@ -1,4 +1,5 @@
-const API_BASE = "";
+export const API_BASE = `${window.location.protocol}//${window.location.hostname}:5000`;
+export const isZeroPort = typeof window !== "undefined" && window.location.port === "5001";
 
 // JWT Token management
 export function getToken(): string | null {
@@ -83,10 +84,7 @@ function handleResponseError(res: Response, body: any): never {
     clearToken();
     cache.clear();
     pending.clear();
-    // Mock 模式下无 JWT，不触发踢回登录
-    if (localStorage.getItem("mock_auth") !== "true") {
-      window.dispatchEvent(new Event("rtk:token-invalid"));
-    }
+    window.dispatchEvent(new Event("rtk:token-invalid"));
   }
   throw new Error(body.error || body.message || "请求失败");
 }
@@ -302,7 +300,7 @@ export function apiDownload(path: string, signal?: AbortSignal): void {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  fetch(path, { headers, signal })
+  fetch(`${API_BASE}${path}`, { headers, signal })
     .then(res => res.blob())
     .then(blob => {
       const url = URL.createObjectURL(blob);

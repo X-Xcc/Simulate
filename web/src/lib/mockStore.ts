@@ -4,6 +4,7 @@
  */
 
 import { create } from "zustand";
+import { isZeroPort } from "./api";
 import {
   Camera, Alert, AuditLog, SystemStatus, Settings,
   RegionalStat, StatsSummary, ModelInfo, FpsStats,
@@ -63,7 +64,6 @@ function countAlertsByType(alerts: Alert[]): Record<string, number> {
 
 // ── Store 创建 ───────────────────────────────────────────────────────────────
 
-const isZeroPort = typeof window !== "undefined" && window.location.port === "5001";
 const ZERO = isZeroPort; // 5001清零，5000显示假数据
 
 // 月度 labels（供 week/day 派生）

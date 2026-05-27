@@ -13,7 +13,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 5000,
+    host: '0.0.0.0',
     proxy: {
       '/api': 'http://localhost:5000',
       '/video_feed': 'http://localhost:5000',

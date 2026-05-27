@@ -1433,11 +1433,13 @@ class SecurityMonitor:
                 f"{WEB_SERVER_URL}/api/update_frame",
                 files={'frame': ('frame.jpg', img_encoded.tobytes(), 'image/jpeg')},
                 data={'cam': cam},
-                timeout=0.5
+                timeout=1.5
             )
+            if response.status_code != 200:
+                print(f"[摄像头 {cam}] 帧上传失败: HTTP {response.status_code} {response.text[:200]}")
             return response.status_code == 200
-        except Exception:
-            # 发送失败静默处理
+        except Exception as e:
+            print(f"[摄像头 {cam}] 帧上传异常: {e}")
             return False
 
     def report_model_info(self):
@@ -1664,22 +1666,8 @@ class SecurityMonitor:
                     fighting_persons = cached_fighting_persons
                     action_confidences = cached_action_confidences
 
-                # 4. 可视化关键点
-                frame_out = results[0].plot() if results and len(results) > 0 else frame.copy()
-
-                # 5. 框选打架人员
-                if "打架" in actions and results and len(results) > 0:
-                    self._draw_fighting_persons(results[0], fighting_persons, frame_out)
-
-                # 7. 绘制人员聚集框
-                if "人员聚集" in actions and results and len(results) > 0:
-                    all_kp = []
-                    for r in results:
-                        if r.keypoints is not None:
-                            for kp in r.keypoints.data:
-                                all_kp.append(kp.cpu().numpy() if hasattr(kp, 'cpu') else kp)
-                    if len(all_kp) >= self.config.GATHER_THRESHOLD:
-                        self._draw_gathering_persons(results[0], all_kp, frame_out)
+                # 4. 原始帧（不画人体框/关键点，保持画面干净）
+                frame_out = frame.copy()
 
                 # 8. 发送帧到 web（异步，不阻塞主循环，队列上限3帧）
                 if frame_count % SEND_FRAME_INTERVAL == 0 and session is not None and self._frame_executor is not None:
@@ -1765,14 +1753,16 @@ class SecurityMonitor:
                 frame_resized = cv2.resize(frame, (self.web_stream_width, self.web_stream_height))
             encode_params = [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
             _, img_encoded = cv2.imencode('.jpg', frame_resized, encode_params)
-            session.post(
+            response = session.post(
                 f"{WEB_SERVER_URL}/api/update_frame",
                 files={'frame': ('frame.jpg', img_encoded.tobytes(), 'image/jpeg')},
                 data={'cam': cam, 'person_count': str(person_count)},
-                timeout=0.5
+                timeout=1.5
             )
-        except Exception:
-            pass
+            if response.status_code != 200:
+                print(f"[摄像头 {cam}] 帧上传失败: HTTP {response.status_code} {response.text[:200]}")
+        except Exception as e:
+            print(f"[摄像头 {cam}] 帧上传异常: {e}")
 
     def _draw_torso_boxes(self, result, frame_out):
         """用红框标出人体躯干区域（肩膀 + 髋部关键点）。"""

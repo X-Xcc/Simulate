@@ -16,10 +16,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.imageio.ImageIO;
 
@@ -61,6 +58,19 @@ public class VideoStreamController {
 
     // Python POST进来，MJPEG读出去
     /**
+     * Update frame bytes for a specific camera.
+     * The incoming Python payload is already JPEG, so keep it as-is to avoid extra decode/re-encode work.
+     */
+    public void updateFrame(byte[] frameBytes, String camId) {
+        String id = (camId != null && !camId.isEmpty()) ? camId : DEFAULT_CAM;
+        if (frameBytes == null || frameBytes.length == 0) {
+            return;
+        }
+        latestFrameBytes.put(id, frameBytes);
+        lastFrameIds.put(id, System.currentTimeMillis());
+    }
+
+    /**
      * Update frame for a specific camera. Converts to JPEG bytes immediately.
      */
     public void updateFrame(BufferedImage frame, String camId) {
@@ -68,8 +78,7 @@ public class VideoStreamController {
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(frame, "jpg", baos);
-            latestFrameBytes.put(id, baos.toByteArray());
-            lastFrameIds.put(id, System.currentTimeMillis());
+            updateFrame(baos.toByteArray(), id);
         } catch (IOException e) {
             log.error("Error encoding frame for cam={}", id, e);
         }
@@ -239,68 +248,15 @@ public class VideoStreamController {
         for (int i = 0; i < width; i += 50) g2d.drawLine(i, 0, i, height);
         for (int i = 0; i < height; i += 50) g2d.drawLine(0, i, width, i);
 
-        // Camera-specific label
-        String camLabel = getCameraLabel(cam);
-
-        // Detection boxes
-        Random random = new Random(cam.hashCode()); // Deterministic per camera
-        int boxCount = 2 + random.nextInt(3);
-        for (int i = 0; i < boxCount; i++) {
-            int boxX = 100 + random.nextInt(width - 400);
-            int boxY = 150 + random.nextInt(height - 350);
-            int boxWidth = 150 + random.nextInt(100);
-            int boxHeight = 200 + random.nextInt(100);
-
-            Color boxColor;
-            String label;
-            if (random.nextBoolean()) {
-                boxColor = new Color(239, 68, 68);
-                label = "person: " + (75 + random.nextInt(20)) + "%";
-            } else {
-                boxColor = new Color(245, 158, 11);
-                label = "object: " + (65 + random.nextInt(25)) + "%";
-            }
-
-            g2d.setColor(boxColor);
-            g2d.drawRect(boxX, boxY, boxWidth, boxHeight);
-            g2d.fillRect(boxX, boxY, g2d.getFontMetrics().stringWidth(label) + 16, 24);
-
-            g2d.setColor(Color.WHITE);
-            g2d.setFont(new Font("Consolas", Font.BOLD, 14));
-            g2d.drawString(label, boxX + 8, boxY + 17);
-        }
-
-        // Info panels
+        // Camera label centered
         g2d.setColor(new Color(0, 0, 0, 150));
-        g2d.fillRect(20, 20, 400, 120);
-        g2d.fillRect(width - 320, 20, 300, 80);
-        g2d.fillRect(20, height - 100, width - 40, 80);
+        g2d.fillRect(0, height / 2 - 40, width, 80);
 
-        // Title
-        g2d.setColor(Color.WHITE);
-        g2d.setFont(new Font("Microsoft YaHei", Font.BOLD, 28));
-        g2d.drawString("YOLOv8 智能监控系统", 40, 60);
-
-        g2d.setFont(new Font("Microsoft YaHei", Font.PLAIN, 18));
-        g2d.drawString("实时目标检测 - " + camLabel, 40, 95);
-
-        // Status
-        g2d.setColor(new Color(16, 185, 129));
-        g2d.fillOval(width - 300, 40, 16, 16);
-        g2d.setColor(Color.WHITE);
-        g2d.setFont(new Font("Microsoft YaHei", Font.BOLD, 16));
-        g2d.drawString("系统在线", width - 275, 55);
-
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        g2d.setFont(new Font("Consolas", Font.PLAIN, 16));
-        g2d.drawString(sdf.format(new Date()), width - 300, 85);
-
-        // Stats
-        g2d.setColor(Color.WHITE);
-        g2d.setFont(new Font("Microsoft YaHei", Font.PLAIN, 18));
-        g2d.drawString("检测人数: " + (2 + random.nextInt(4)), 40, height - 65);
-        g2d.drawString("FPS: " + (25 + random.nextInt(10)), 200, height - 65);
-        g2d.drawString("置信度: " + (78 + random.nextInt(15)) + "%", 360, height - 65);
+        g2d.setColor(new Color(160, 180, 200));
+        g2d.setFont(new Font("Microsoft YaHei", Font.BOLD, 24));
+        String label = "等待视频信号 - " + getCameraLabel(cam);
+        FontMetrics fm = g2d.getFontMetrics();
+        g2d.drawString(label, (width - fm.stringWidth(label)) / 2, height / 2 + 8);
 
         g2d.dispose();
         return image;

@@ -5,11 +5,19 @@ import com.yolov8.security.service.SettingsService;
 import com.yolov8.security.service.SettingsService.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.yolov8.security.controller.VideoStreamController;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.math.BigDecimal;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 
 @RestController
@@ -18,9 +26,14 @@ public class ApiController {
 
     private static final Logger log = LoggerFactory.getLogger(ApiController.class);
     private final SettingsService settingsService;
+    private final VideoStreamController videoStreamController;
+    private final Path uploadDir;
 
-    public ApiController(SettingsService settingsService) {
+    public ApiController(SettingsService settingsService, VideoStreamController videoStreamController,
+                         @Value("${app.file.upload-dir:./data}") String uploadDir) {
         this.settingsService = settingsService;
+        this.videoStreamController = videoStreamController;
+        this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize();
     }
 
     // --- Settings endpoints ---
@@ -34,6 +47,72 @@ public class ApiController {
             log.error("Error getting settings", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("读取设置失败: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping(value = "/update_frame", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateFrame(
+            @RequestParam("frame") MultipartFile frame,
+            @RequestParam(value = "cam", required = false) String cam,
+            @RequestParam(value = "person_count", required = false, defaultValue = "0") int personCount) {
+        String camId = (cam == null || cam.isBlank()) ? "0" : cam.trim();
+        try {
+            byte[] frameBytes = frame.getBytes();
+            if (frameBytes.length == 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("空帧数据"));
+            }
+            videoStreamController.updateFrame(frameBytes, camId);
+            log.debug("Frame updated successfully: cam={}, personCount={}, bytes={}",
+                    camId, personCount, frameBytes.length);
+            return ResponseEntity.ok(ApiResponse.success(Map.of(
+                    "status", "ok",
+                    "cam", camId,
+                    "person_count", personCount,
+                    "bytes", frameBytes.length
+            )));
+        } catch (IOException e) {
+            log.error("Error updating frame", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("更新帧失败: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping(value = "/upload_training_resource", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> uploadTrainingResource(
+            @RequestParam("file") MultipartFile file) {
+        try {
+            if (file.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("文件为空"));
+            }
+
+            String originalName = StringUtils.cleanPath(file.getOriginalFilename() == null ? "" : file.getOriginalFilename());
+            if (originalName.isBlank()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("文件名无效"));
+            }
+
+            Files.createDirectories(uploadDir);
+            String storedName = System.currentTimeMillis() + "-" + originalName;
+            Path target = uploadDir.resolve(storedName).normalize();
+            if (!target.startsWith(uploadDir)) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(ApiResponse.error("非法文件名"));
+            }
+
+            file.transferTo(target);
+            return ResponseEntity.ok(ApiResponse.success(Map.of(
+                    "status", "ok",
+                    "filename", originalName,
+                    "stored_name", storedName,
+                    "size", file.getSize(),
+                    "content_type", file.getContentType()
+            )));
+        } catch (IOException e) {
+            log.error("Error uploading training resource", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("上传失败: " + e.getMessage()));
         }
     }
 

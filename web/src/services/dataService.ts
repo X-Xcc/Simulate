@@ -1,5 +1,5 @@
 import { Camera, DiscoveredCamera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse, AnnotationData, ImageItem } from "../types";
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken, API_BASE } from "../lib/api";
 
 // --- Camera Config ---
 
@@ -33,7 +33,7 @@ export async function fetchCameras(signal?: AbortSignal): Promise<Camera[]> {
 // --- Auth ---
 
 export async function login(username: string, password: string): Promise<void> {
-  const res = await fetch("/api/login", {
+  const res = await fetch(`${API_BASE}/api/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
@@ -383,7 +383,7 @@ export async function uploadAnnotationImage(file: File): Promise<{ filename: str
   const token = localStorage.getItem("auth_token");
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch("/api/annotations/upload", {
+  const res = await fetch(`${API_BASE}/api/annotations/upload`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
