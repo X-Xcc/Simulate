@@ -37,15 +37,16 @@ public class VideoStreamController {
     @Value("${app.video.frame-ttl-ms:30000}")
     private long frameTtlMs;
 
+    private static final long TEST_FRAME_CACHE_MS = 5000L; // 5s cache, avoid flicker
+
+    // Test frame cache per camera
+    private final Map<String, BufferedImage> cachedTestFrames = new ConcurrentHashMap<>();
+    private final Map<String, Long> cachedTestFrameAtMs = new ConcurrentHashMap<>();
+
     // ConcurrentHashMap<camId, jpegBytes>，每个摄像头独立存储最新帧
     /** Multi-camera frame storage: camId -> latest frame bytes (JPEG) */
     private final Map<String, byte[]> latestFrameBytes = new ConcurrentHashMap<>();
     private final Map<String, Long> lastFrameIds = new ConcurrentHashMap<>();
-
-    /** Test frame cache per camera */
-    private final Map<String, BufferedImage> cachedTestFrames = new ConcurrentHashMap<>();
-    private final Map<String, Long> cachedTestFrameAtMs = new ConcurrentHashMap<>();
-    private static final long TEST_FRAME_CACHE_MS = 750L;
 
     /** Default camera ID */
     private static final String DEFAULT_CAM = "0";

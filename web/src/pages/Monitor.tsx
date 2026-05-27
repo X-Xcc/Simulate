@@ -164,14 +164,6 @@ function AlarmFullscreenDialog({
 }) {
   const cfg = ALARM_CONFIGS[alarmType];
   const c = cfg.hex;
-  const [now, setNow] = useState("");
-
-  useEffect(() => {
-    const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
 
   const alarmCamera = cameras.find(c => c.id === "cam-11") ?? cameras[1] ?? cameras[0]; // 报警时弹出摄像头2
   const alarmCameraGo2rtcId = alarmCamera?.go2rtcId || (alarmCamera ? `cam_${alarmCamera.id}` : undefined);
@@ -189,7 +181,6 @@ function AlarmFullscreenDialog({
         <AlertTriangle size={22} className="text-white animate-pulse" />
         <h2 className="text-white font-bold text-xl tracking-wide">{cfg.label}</h2>
         <Volume2 size={20} className="text-white animate-pulse" />
-        <span className="ml-4 text-white/80 font-mono tabular-nums">{now}</span>
       </div>
 
       {/* 摄像头视频内容 */}
@@ -527,34 +518,67 @@ export default function Monitor() {
 function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
   index: number; isFirstEmpty: boolean; activeAlarms: Set<AlarmType>; onAck: (type: AlarmType) => void;
 }) {
-  if (isFirstEmpty) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (!isFirstEmpty) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let running = true;
+
+    const startStream = () => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.decoding = "async";
+      imgRef.current = img;
+      img.onload = () => {
+        if (!running || !canvas) return;
+        canvas.width = img.naturalWidth || 640;
+        canvas.height = img.naturalHeight || 480;
+        ctx.drawImage(img, 0, 0);
+        img.src = `/video_feed?cam=0&_=${Date.now()}`;
+      };
+      img.onerror = () => {
+        if (!running) return;
+        setTimeout(() => { if (running) startStream(); }, 5000);
+      };
+      img.src = `/video_feed?cam=0&_=${Date.now()}`;
+    };
+
+    startStream();
+    return () => { running = false; };
+  }, [isFirstEmpty]);
+
+  if (!isFirstEmpty) {
     return (
-      <div id="cam-slot-empty" className="relative bg-zinc-900/80 rounded-lg border border-white/[0.04] overflow-hidden group hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
-        <img
-          src="/video_feed?cam=0"
-          alt="检测流"
-          className="absolute inset-0 w-full h-full object-cover"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
-        <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-success-green animate-pulse" />
-          <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
-            检测流
-          </span>
+      <div className="bg-zinc-900/80 rounded-lg border border-white/[0.04] flex items-center justify-center">
+        <div className="text-center">
+          <VideoOff size={40} className="mx-auto text-white/20 mb-3" />
+          <p className="text-white/40 text-lg font-semibold">无摄像头连接</p>
+          <p className="text-white/20 text-body-sm mt-1">视频{index + 1}</p>
         </div>
-        {activeAlarms.size > 0 && (
-          <AlarmOverlay alarms={[...activeAlarms]} onAck={onAck} />
-        )}
       </div>
     );
   }
+
   return (
-    <div className="bg-zinc-900/80 rounded-lg border border-white/[0.04] flex items-center justify-center">
-      <div className="text-center">
-        <VideoOff size={40} className="mx-auto text-white/20 mb-3" />
-        <p className="text-white/40 text-lg font-semibold">无摄像头连接</p>
-        <p className="text-white/20 text-body-sm mt-1">视频{index + 1}</p>
+    <div id="cam-slot-empty" className="relative bg-zinc-900/80 rounded-lg border border-white/[0.04] overflow-hidden group hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full object-cover"
+      />
+      <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-success-green animate-pulse" />
+        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
+          检测流
+        </span>
       </div>
+      {activeAlarms.size > 0 && (
+        <AlarmOverlay alarms={[...activeAlarms]} onAck={onAck} />
+      )}
     </div>
   );
 }
@@ -562,35 +586,72 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
 // ── AI 检测画面 ──
 
 function AIDetectionSlot({ cameraId, name }: { cameraId: string; name: string }) {
-  const [now, setNow] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const feedUrl = `/video_feed?cam=${cameraId}`;
 
+  // Canvas 绘制隐藏 img 的帧 → 避免浏览器解码阻塞
   useEffect(() => {
-    const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let running = true;
+
+    const startStream = () => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.decoding = "async";
+      imgRef.current = img;
+
+      img.onload = () => {
+        if (!running || !canvas) return;
+        canvas.width = img.naturalWidth || 640;
+        canvas.height = img.naturalHeight || 480;
+        ctx.drawImage(img, 0, 0);
+        setLoadFailed(false);
+        img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
+      };
+      img.onerror = () => {
+        if (!running) return;
+        setLoadFailed(true);
+        // 5s 后重连
+        setTimeout(() => {
+          if (running) startStream();
+        }, 5000);
+      };
+
+      img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
+    };
+
+    startStream();
+    return () => {
+      running = false;
+      abortRef.current?.abort();
+    };
+  }, [cameraId]);
 
   return (
     <div id={`cam-slot-ai-${cameraId}`} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-red-500/50 hover:shadow-[0_0_20px_rgba(220,38,38,0.18)] transition-all duration-300">
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
         style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
-      {!loadFailed ? (
-        <img
-          src={feedUrl}
-          alt={name}
-          className="absolute inset-0 w-full h-full object-cover"
-          onLoad={() => setLoadFailed(false)}
-          onError={() => setLoadFailed(true)}
-        />
-      ) : (
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{ imageRendering: "auto" }}
+      />
+      {loadFailed && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="text-center px-4">
             <VideoOff size={34} className="mx-auto text-red-400/70 mb-2" />
             <p className="text-white/60 text-body-sm font-semibold">AI检测画面未连接</p>
-            <p className="text-white/30 text-caption mt-1">请先启动后端和 Python 检测服务</p>
+            <p className="text-white/30 text-caption mt-1">5秒后自动重连...</p>
           </div>
         </div>
       )}
@@ -598,11 +659,6 @@ function AIDetectionSlot({ cameraId, name }: { cameraId: string; name: string })
         <span className={cn("w-2 h-2 rounded-full", loadFailed ? "bg-red-400" : "bg-red-600 animate-pulse")} />
         <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
           {name}
-        </span>
-      </div>
-      <div className="absolute top-2 right-2 z-10">
-        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/60 text-caption font-mono tabular-nums">
-          {now}
         </span>
       </div>
     </div>
@@ -617,7 +673,6 @@ function LiveCameraSlot({ name, activeAlarms, onAck, slotId = "cam-slot-0" }: {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState("");
 
   const startCamera = useCallback(async () => {
     try {
@@ -650,13 +705,6 @@ function LiveCameraSlot({ name, activeAlarms, onAck, slotId = "cam-slot-0" }: {
     };
   }, []);
 
-  useEffect(() => {
-    const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
   return (
     <div id={slotId} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
@@ -683,11 +731,6 @@ function LiveCameraSlot({ name, activeAlarms, onAck, slotId = "cam-slot-0" }: {
           {name}
         </span>
       </div>
-      <div className="absolute top-2 right-2 z-10">
-        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/60 text-caption font-mono tabular-nums">
-          {now}
-        </span>
-      </div>
       {activeAlarms.size > 0 && (
         <AlarmOverlay alarms={[...activeAlarms]} onAck={onAck} />
       )}
@@ -706,30 +749,60 @@ function CameraSlot({
   go2rtcId?: string;
   cameraId: string;
 }) {
-  const [now, setNow] = useState("");
-  const [loadFailed, setLoadFailed] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const hasGo2rtc = !!go2rtcId;
   const go2rtcStreamId = go2rtcId || "cam_" + cameraId;
   const go2rtcUrl = `http://${window.location.hostname}:1984/stream.html?src=${go2rtcStreamId}`;
-  const fallbackUrl = `/video_feed?cam=${cameraId}`;
 
+  // Canvas 渲染 MJPEG，避免 <img> 解码阻塞
   useEffect(() => {
-    const tick = () => setNow(new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
+    if (hasGo2rtc) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  useEffect(() => {
-    if (!hasGo2rtc) return;
-    loadTimerRef.current = setTimeout(() => {
-      setLoadFailed(true);
-    }, 3000);
-    return () => {
-      if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    let running = true;
+
+    const startStream = () => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.decoding = "async";
+      imgRef.current = img;
+
+      img.onload = () => {
+        if (!running || !canvas) return;
+        canvas.width = img.naturalWidth || 640;
+        canvas.height = img.naturalHeight || 480;
+        ctx.drawImage(img, 0, 0);
+        setLoadFailed(false);
+        img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
+      };
+      img.onerror = () => {
+        if (!running) return;
+        setLoadFailed(true);
+        setTimeout(() => {
+          if (running) startStream();
+        }, 5000);
+      };
+
+      img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
     };
-  }, [hasGo2rtc]);
+
+    startStream();
+    return () => {
+      running = false;
+      abortRef.current?.abort();
+    };
+  }, [cameraId, hasGo2rtc]);
 
   const handleIframeLoad = () => {
     if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
@@ -748,22 +821,16 @@ function CameraSlot({
           onLoad={handleIframeLoad}
         />
       ) : (
-        <img
-          src={fallbackUrl}
-          alt={name}
+        <canvas
+          ref={canvasRef}
           className="absolute inset-0 w-full h-full object-cover"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          style={{ imageRendering: "auto" }}
         />
       )}
       <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
         <span className={cn("w-2 h-2 rounded-full", isOnline ? "bg-success-green animate-pulse" : "bg-outline")} />
         <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
           {name}
-        </span>
-      </div>
-      <div className="absolute top-2 right-2 z-10">
-        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/60 text-caption font-mono tabular-nums">
-          {now}
         </span>
       </div>
     </div>
