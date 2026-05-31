@@ -76,3 +76,7 @@ server/bin/
 # Agents
 .agents/
 skills-lock.json
+
+# Camera config (contains passwords)
+detection/cameras.json
+server/detection/cameras.json

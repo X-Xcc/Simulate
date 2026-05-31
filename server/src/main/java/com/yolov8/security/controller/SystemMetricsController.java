@@ -89,10 +89,10 @@ public class SystemMetricsController {
 
         // Detection stats
         try {
-            Map<String, Object> sysInfo = detectionService.getSystemInfo();
-            m.put("dataDirSizeMb", sysInfo.get("dataDirSizeMb"));
-            m.put("detectionCount", sysInfo.get("detectionCount"));
-            m.put("imageCount", sysInfo.get("imageCount"));
+            var sysInfo = detectionService.getSystemInfo();
+            m.put("dataDirSizeMb", sysInfo.dataDirSizeMb());
+            m.put("detectionCount", sysInfo.detectionCount());
+            m.put("imageCount", sysInfo.imageCount());
         } catch (Exception e) {
             m.put("dataDirSizeMb", 0);
             m.put("detectionCount", 0);

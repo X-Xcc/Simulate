@@ -40,6 +40,7 @@ public class CameraRepository {
         c.setUsername(rs.getString("username"));
         c.setPassword(rs.getString("password"));
         c.setGo2rtcId(rs.getString("go2rtc_id"));
+        c.setHttpMjpegUrl(rs.getString("http_mjpeg_url"));
         return c;
     };
 
@@ -54,27 +55,28 @@ public class CameraRepository {
 
     public void insert(Camera c, String go2rtcId) {
         jdbc.update(
-            "INSERT INTO cameras (id, name, type, brand, model, ip, port, rtsp_url, http_url, username, password, channel, status, enabled, go2rtc_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO cameras (id, name, type, brand, model, ip, port, rtsp_url, http_url, username, password, channel, status, enabled, go2rtc_id, http_mjpeg_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             c.getId(), c.getName(), c.getType(), c.getBrand(), c.getModel(),
             "usb".equals(c.getType()) ? (c.getAddress() != null ? String.valueOf(c.getAddress()) : "0") : c.getIp(),
             c.getPort() > 0 ? c.getPort() : 554,
-            "rtsp".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
+            "http_snapshot".equals(c.getType()) ? null : String.valueOf(c.getAddress()),
             "http_snapshot".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
             c.getUsername(), c.getPassword(),
-            c.getChannel(), c.getStatus(), c.isEnabled(), go2rtcId
+            c.getChannel(), c.getStatus(), c.isEnabled(), go2rtcId,
+            c.getHttpMjpegUrl()
         );
     }
 
     public void update(Camera c) {
         jdbc.update(
-            "UPDATE cameras SET name=?, type=?, brand=?, model=?, ip=?, port=?, rtsp_url=?, http_url=?, username=?, password=?, channel=?, status=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            "UPDATE cameras SET name=?, type=?, brand=?, model=?, ip=?, port=?, rtsp_url=?, http_url=?, username=?, password=?, channel=?, status=?, enabled=?, go2rtc_id=?, http_mjpeg_url=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             c.getName(), c.getType(), c.getBrand(), c.getModel(),
             "usb".equals(c.getType()) ? (c.getAddress() != null ? String.valueOf(c.getAddress()) : "0") : c.getIp(),
             c.getPort() > 0 ? c.getPort() : 554,
-            "rtsp".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
+            "http_snapshot".equals(c.getType()) ? null : String.valueOf(c.getAddress()),
             "http_snapshot".equals(c.getType()) ? String.valueOf(c.getAddress()) : null,
             c.getUsername(), c.getPassword(),
-            c.getChannel(), c.getStatus(), c.isEnabled(), c.getId()
+            c.getChannel(), c.getStatus(), c.isEnabled(), c.getGo2rtcId(), c.getHttpMjpegUrl(), c.getId()
         );
     }
 
@@ -84,6 +86,10 @@ public class CameraRepository {
 
     public void updateStatus(String id, String status) {
         jdbc.update("UPDATE cameras SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", status, id);
+    }
+
+    public void deleteAll() {
+        jdbc.update("DELETE FROM cameras");
     }
 
     public boolean existsById(String id) {

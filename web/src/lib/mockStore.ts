@@ -53,7 +53,7 @@ function randomDelta() {
 }
 
 function countAlertsByType(alerts: Alert[]): Record<string, number> {
-  const counts: Record<string, number> = { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
+  const counts: Record<string, number> = { "打架": 0, "跌倒": 0, "离岗": 0, "人员聚集": 0 };
   for (const alert of alerts) {
     if (counts[alert.type] !== undefined) {
       counts[alert.type]++;
@@ -72,14 +72,14 @@ const DAY_LABELS_24 = Array.from({ length: 24 }, (_, i) => `${i.toString().padSt
 const WEEK_LABELS = ["1日","2日","3日","4日","5日","6日","7日"];
 
 export const useMockStore = create<MockStore>((set, get) => {
-  const emptyCounts = { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
+  const emptyCounts = { "打架": 0, "跌倒": 0, "离岗": 0, "人员聚集": 0 };
 
   // 5000 端口：填充真实假数据
   const mockTrend = mock.generateTrendData("month");
   const statsCompare = mock.generateStatsCompare();
   const statsSummary = mock.generateStatsSummary();
   // 让 statsSummary 的 behaviorCounts 与 trendData 月度求和一致
-  const monthSums = { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
+  const monthSums = { "打架": 0, "跌倒": 0, "离岗": 0, "人员聚集": 0 };
   for (const key of Object.keys(mockTrend.data)) {
     monthSums[key as keyof typeof monthSums] =
       (mockTrend.data[key] as number[]).reduce((s, v) => s + v, 0);

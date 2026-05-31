@@ -2,8 +2,7 @@ package com.yolov8.security.controller;
 
 import com.yolov8.security.model.LoginRequest;
 import com.yolov8.security.model.LoginResponse;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
+import com.yolov8.security.service.JwtService;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,10 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Date;
 import java.util.Map;
 
 @RestController
@@ -29,21 +26,30 @@ public class AuthController {
     @Value("${app.admin.password:admin123}")
     private String adminPassword;
 
-    @PostConstruct
-    public void init() {
-        if ("admin123".equals(adminPassword)) {
-            log.warn("⚠ 检测到默认密码 'admin123'，请在 .env 文件中设置 APP_ADMIN_PASSWORD 以提高安全性");
-        }
-        if ("admin".equals(adminUsername)) {
-            log.warn("⚠ 检测到默认用户名 'admin'，建议在 .env 文件中修改 APP_ADMIN_USERNAME");
-        }
-    }
-
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    @Value("${app.jwt.expiration:86400000}")
-    private long jwtExpiration;
+    private final JwtService jwtService;
+
+    public AuthController(JwtService jwtService) {
+        this.jwtService = jwtService;
+    }
+
+    @PostConstruct
+    public void init() {
+        if ("123".equals(adminPassword) || "admin123".equals(adminPassword)) {
+            log.warn("========== SECURITY WARNING ==========");
+            log.warn("Admin password is using a weak default value '{}'!", adminPassword);
+            log.warn("Set a strong password via: ADMIN_PASSWORD (env var)");
+            log.warn("=======================================");
+        }
+        if (jwtSecret != null && jwtSecret.contains("change-this")) {
+            log.warn("========== SECURITY WARNING ==========");
+            log.warn("JWT_SECRET is using a default placeholder value!");
+            log.warn("Set a random 32+ char string via: JWT_SECRET (env var)");
+            log.warn("=======================================");
+        }
+    }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
@@ -54,16 +60,13 @@ public class AuthController {
 
         if (constantTimeEquals(adminUsername, request.getUsername()) &&
             constantTimeEquals(adminPassword, request.getPassword())) {
-            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-            long now = System.currentTimeMillis();
-            String token = Jwts.builder()
-                    .subject(request.getUsername())
-                    .issuedAt(new Date(now))
-                    .expiration(new Date(now + jwtExpiration))
-                    .signWith(key)
-                    .compact();
 
-            return ResponseEntity.ok(new LoginResponse(token, jwtExpiration / 1000));
+            if ("123".equals(adminPassword) || "admin123".equals(adminPassword)) {
+                log.warn("SECURITY: Login succeeded with default admin password! Change ADMIN_PASSWORD env var immediately.");
+            }
+
+            String token = jwtService.generateToken(request.getUsername());
+            return ResponseEntity.ok(new LoginResponse(token, jwtService.getExpirationSeconds()));
         }
 
         return ResponseEntity.status(401).body(Map.of("error", "用户名或密码错误"));
@@ -80,9 +83,7 @@ public class AuthController {
         }
         try {
             String token = authHeader.substring(7);
-            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-            String username = Jwts.parser().verifyWith(key).build()
-                    .parseSignedClaims(token).getPayload().getSubject();
+            String username = jwtService.getUsername(token);
             return ResponseEntity.ok(Map.of(
                 "username", username,
                 "name", username,

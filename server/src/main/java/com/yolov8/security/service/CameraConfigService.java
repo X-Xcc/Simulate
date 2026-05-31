@@ -18,6 +18,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// 缓存相关
+import java.util.concurrent.CopyOnWriteArrayList;
+
+// 环境变量占位符替换
+import org.springframework.core.env.Environment;
+
 // 摄像头配置服务 — CRUD + go2rtc 联动，添加/删除摄像头时自动同步go2rtc的流配置
 @Service
 public class CameraConfigService {
@@ -28,13 +34,32 @@ public class CameraConfigService {
     private final Go2rtcService go2rtcService;
     private final Path camerasJsonPath;
     private final AtomicBoolean migrated = new AtomicBoolean(false);
+    private final Environment environment;
+
+    // getAllCameras() 内存缓存，TTL 30 秒
+    private volatile List<Camera> camerasCache;
+    private volatile long camerasCacheTimeMs;
+    private static final long CAMERAS_CACHE_TTL_MS = 30_000L;
 
     public CameraConfigService(CameraRepository repository, ObjectMapper objectMapper,
-                               Go2rtcService go2rtcService, AppConfig appConfig) {
+                               Go2rtcService go2rtcService, AppConfig appConfig, Environment environment) {
         this.repository = repository;
         this.objectMapper = objectMapper;
         this.go2rtcService = go2rtcService;
         this.camerasJsonPath = Paths.get(appConfig.getPython().getScriptPath()).getParent().resolve("cameras.json");
+        this.environment = environment;
+    }
+
+    /**
+     * 替换字符串中的 ${CAM_PASSWORD} 等环境变量占位符
+     */
+    private String resolveEnvPlaceholders(String value) {
+        if (value == null || !value.contains("${")) return value;
+        String camPassword = environment.getProperty("CAM_PASSWORD", "");
+        if (camPassword.isEmpty()) {
+            log.warn("环境变量 CAM_PASSWORD 未设置，摄像头密码为空");
+        }
+        return value.replace("${CAM_PASSWORD}", camPassword);
     }
 
     @PostConstruct
@@ -47,7 +72,44 @@ public class CameraConfigService {
     }
 
     public List<Camera> getAllCameras() {
-        return repository.findAll();
+        long now = System.currentTimeMillis();
+        if (camerasCache != null && (now - camerasCacheTimeMs) < CAMERAS_CACHE_TTL_MS) {
+            return camerasCache;
+        }
+
+        List<Camera> cameras = repository.findAll();
+        // 从 cameras.json 读取 httpMjpegUrl 并合并（使用 JsonNode 树模型，绕开 Camera 反序列化问题）
+        try {
+            if (Files.exists(camerasJsonPath)) {
+                com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(camerasJsonPath.toFile());
+                com.fasterxml.jackson.databind.JsonNode arr = root.get("cameras");
+                if (arr != null && arr.isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode node : arr) {
+                        String id = node.has("id") ? node.get("id").asText() : null;
+                        String url = node.has("httpMjpegUrl") ? node.get("httpMjpegUrl").asText() : null;
+                        if (id != null && url != null) {
+                            String resolvedUrl = resolveEnvPlaceholders(url);
+                            cameras.stream()
+                                .filter(c -> id.equals(c.getId()))
+                                .findFirst()
+                                .ifPresent(c -> c.setHttpMjpegUrl(resolvedUrl));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("合并 httpMjpegUrl 失败: {}", e.getMessage());
+        }
+
+        camerasCache = cameras;
+        camerasCacheTimeMs = now;
+        return cameras;
+    }
+
+    /** 缓存失效 — 添加/更新/删除摄像头后调用 */
+    private void invalidateCamerasCache() {
+        camerasCache = null;
+        camerasCacheTimeMs = 0L;
     }
 
     public Camera getCameraById(String id) {
@@ -65,10 +127,11 @@ public class CameraConfigService {
         if (repository.existsById(camera.getId())) {
             throw new IllegalArgumentException("摄像头ID已存在: " + camera.getId());
         }
-        String go2rtcId = "cam_" + camera.getId();
+        String go2rtcId = "rtsp".equals(camera.getType()) ? "cam_" + camera.getId() : null;
         repository.insert(camera, go2rtcId);
+        invalidateCamerasCache();
         // 联动 go2rtc: rtsp 类型摄像头自动添加流
-        if ("rtsp".equals(camera.getType()) && go2rtcService.isApiAvailable()) {
+        if (go2rtcId != null && go2rtcService.isApiAvailable()) {
             try {
                 go2rtcService.addStream(go2rtcId, String.valueOf(camera.getAddress()));
             } catch (Exception e) {
@@ -88,6 +151,7 @@ public class CameraConfigService {
         }
         camera.setId(id);
         repository.update(camera);
+        invalidateCamerasCache();
         // 同步 go2rtc 流
         if ("rtsp".equals(camera.getType()) && go2rtcService.isApiAvailable()) {
             String go2rtcId = repository.findGo2rtcIdById(id);
@@ -103,12 +167,18 @@ public class CameraConfigService {
         return camera;
     }
 
+    public void deleteAllCameras() {
+        repository.deleteAll();
+        invalidateCamerasCache();
+    }
+
     public boolean deleteCamera(String id) {
         boolean exists = repository.existsById(id);
         if (exists) {
             // 删除前先获取 go2rtcId 用于清理流
             String go2rtcId = repository.findGo2rtcIdById(id);
             repository.deleteById(id);
+            invalidateCamerasCache();
             // 联动 go2rtc 删除流
             if (go2rtcId != null && go2rtcService.isApiAvailable()) {
                 try {
@@ -124,49 +194,49 @@ public class CameraConfigService {
     private void migrateFromJson() {
         if (!migrated.compareAndSet(false, true)) return;
         if (!Files.exists(camerasJsonPath)) return;
-        if (!repository.findAll().isEmpty()) return;
         try {
             CamerasWrapper wrapper = objectMapper.readValue(camerasJsonPath.toFile(), CamerasWrapper.class);
             for (Camera c : wrapper.getCameras()) {
                 try {
-                    addCamera(c);
+                    // 解析环境变量占位符
+                    if (c.getAddress() instanceof String) {
+                        c.setAddress(resolveEnvPlaceholders((String) c.getAddress()));
+                    }
+                    c.setHttpMjpegUrl(resolveEnvPlaceholders(c.getHttpMjpegUrl()));
+
+                    if (repository.existsById(c.getId())) {
+                        // 更新已有摄像头（同步 cameras.json 中变化的字段）
+                        Camera existing = repository.findById(c.getId());
+                        if (c.getHttpMjpegUrl() != null) existing.setHttpMjpegUrl(c.getHttpMjpegUrl());
+                        if (c.getName() != null) existing.setName(c.getName());
+                        if (c.getType() != null) existing.setType(c.getType());
+                        if (c.getAddress() != null) existing.setAddress(c.getAddress());
+                        // 非 RTSP 摄像头清除 go2rtcId
+                        if (!"rtsp".equals(existing.getType())) existing.setGo2rtcId(null);
+                        repository.update(existing);
+                    } else {
+                        addCamera(c);
+                    }
                 } catch (Exception e) {
-                    log.warn("迁移摄像头失败: {}", c.getId(), e);
+                    log.warn("迁移/更新摄像头失败: {}", c.getId(), e);
                 }
             }
-            log.info("从 cameras.json 迁移了 {} 个摄像头", wrapper.getCameras().size());
+            log.info("从 cameras.json 同步了 {} 个摄像头", wrapper.getCameras().size());
         } catch (IOException e) {
             log.error("迁移 cameras.json 失败", e);
         }
     }
 
     private String validateCamera(Camera camera, boolean isUpdate) {
+        // 校验已禁用 — 任意输入均可添加
         if (camera.getType() == null || camera.getType().isEmpty()) {
-            return "摄像头类型不能为空";
-        }
-        if (!camera.getType().equals("usb") && !camera.getType().equals("rtsp") && !camera.getType().equals("http_snapshot")) {
-            return "摄像头类型必须是 usb、rtsp 或 http_snapshot";
-        }
-        if (camera.getAddress() == null) {
-            return "摄像头地址不能为空";
-        }
-        if (camera.getType().equals("usb")) {
-            if (camera.getAddress() instanceof String) {
-                try {
-                    Integer.parseInt((String) camera.getAddress());
-                } catch (NumberFormatException e) {
-                    return "USB摄像头地址必须是整数";
-                }
-            } else if (!(camera.getAddress() instanceof Integer)) {
-                return "USB摄像头地址必须是整数";
-            }
-        } else {
-            if (!(camera.getAddress() instanceof String) || ((String) camera.getAddress()).isEmpty()) {
-                return "RTSP/HTTP摄像头地址必须是非空字符串";
-            }
+            camera.setType("rtsp");
         }
         if (camera.getName() == null || camera.getName().isEmpty()) {
-            return "摄像头名称不能为空";
+            camera.setName("未命名设备");
+        }
+        if (camera.getAddress() == null) {
+            camera.setAddress("");
         }
         return null;
     }
@@ -197,6 +267,7 @@ public class CameraConfigService {
         private String status = "offline";
         private boolean enabled = true;
         private String go2rtcId;
+        private String httpMjpegUrl;
 
         public Camera() {}
 
@@ -228,5 +299,7 @@ public class CameraConfigService {
         public void setUsername(String username) { this.username = username; }
         public String getGo2rtcId() { return go2rtcId; }
         public void setGo2rtcId(String go2rtcId) { this.go2rtcId = go2rtcId; }
+        public String getHttpMjpegUrl() { return httpMjpegUrl; }
+        public void setHttpMjpegUrl(String httpMjpegUrl) { this.httpMjpegUrl = httpMjpegUrl; }
     }
 }

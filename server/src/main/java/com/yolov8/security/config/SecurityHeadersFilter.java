@@ -9,26 +9,27 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-/**
- * 安全响应头过滤器
- * 为所有 HTTP 响应添加安全相关的 HTTP 头
- */
 @Component
 public class SecurityHeadersFilter extends OncePerRequestFilter {
 
-    private static final String CSP =
-        "default-src 'self'; " +
-        "script-src 'self' https://cdn.jsdelivr.net; " +
-        "style-src 'self' https://fonts.googleapis.com; " +
-        "img-src 'self' data: blob: http://localhost:1984 http://127.0.0.1:1984; " +
-        "connect-src 'self' http://localhost:1984 http://127.0.0.1:1984 ws://localhost:1984 ws://127.0.0.1:1984; " +
-        "frame-src 'self' http://localhost:1984 http://127.0.0.1:1984; " +
-        "font-src 'self' https://fonts.gstatic.com;";
+    private final String go2rtcHost;
+
+    public SecurityHeadersFilter(AppConfig appConfig) {
+        this.go2rtcHost = appConfig.getGo2rtc().getApiHost();
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        response.setHeader("Content-Security-Policy", CSP);
+        String host = request.getServerName();
+        String csp = "default-src 'self'; " +
+            "script-src 'self' https://cdn.jsdelivr.net; " +
+            "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; " +
+            "img-src 'self' data: blob: " + go2rtcHost + " http://192.168.1.10 http://192.168.1.11; " +
+            "connect-src 'self' " + go2rtcHost + " ws://" + host + ":1984 http://" + host + ":5000 http://" + host + ":5001; " +
+            "frame-src 'self' " + go2rtcHost + " http://" + host + ":1984 http://" + host + ":5000 http://" + host + ":5001; " +
+            "font-src 'self' https://fonts.gstatic.com;";
+        response.setHeader("Content-Security-Policy", csp);
         response.setHeader("X-Content-Type-Options", "nosniff");
         chain.doFilter(request, response);
     }

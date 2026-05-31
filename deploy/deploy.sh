@@ -173,7 +173,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=yolov8
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
 ExecStart=${JAVA_BIN} -Xms256m -Xmx1024m -jar ${WAR_FILE} --server.port=5000
@@ -203,7 +203,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=yolov8
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
 Environment=DATA_DIR=./data-empty

@@ -1,163 +1,10 @@
-import { useState, useRef, useEffect, useMemo, type FormEvent } from "react";
+import { useState, Suspense, lazy, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Canvas, useFrame } from "@react-three/fiber";
 import { motion } from "motion/react";
-import * as THREE from "three";
 import { Shield, Eye, EyeOff, ChevronDown } from "lucide-react";
+import { login as apiLogin } from "../services/dataService";
 
-/* ═══════════════════════════════════════════
-   星云粒子背景 — 复用 Home 效果
-   ═══════════════════════════════════════════ */
-function ParticleBackground() {
-  const pointsRef = useRef<THREE.Points>(null!);
-  const mouseRef = useRef({ x: 0, y: 0 });
-  const mouseWorldRef = useRef(new THREE.Vector3());
-  const targetRotRef = useRef({ x: 0, y: 0 });
-  const rotRef = useRef({ x: 0, y: 0 });
-  const timeRef = useRef(0);
-
-  const PARTICLE_COUNT = 3000;
-
-  const vertexShader = `
-    attribute float size;
-    attribute vec3 customColor;
-    varying vec3 vColor;
-    void main() {
-      vColor = customColor;
-      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = size * (200.0 / -mvPosition.z);
-      gl_Position = projectionMatrix * mvPosition;
-    }
-  `;
-
-  const fragmentShader = `
-    varying vec3 vColor;
-    void main() {
-      vec2 center = gl_PointCoord - vec2(0.5);
-      float dist = length(center);
-      if (dist > 0.5) discard;
-      float alpha = 1.0 - smoothstep(0.2, 0.5, dist);
-      gl_FragColor = vec4(vColor, alpha);
-    }
-  `;
-
-  const particleSizes = useMemo(() => {
-    const sizes = new Float32Array(PARTICLE_COUNT);
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      sizes[i] = 1.5 + Math.random() * 3.5;
-    }
-    return sizes;
-  }, []);
-
-  const particleColors = useMemo(() => {
-    const colors = new Float32Array(PARTICLE_COUNT * 3);
-    const colorPalette = [
-      [0.7, 0.85, 1.0],
-      [0.75, 0.8, 0.95],
-      [0.8, 0.75, 0.9],
-      [0.75, 0.85, 0.9],
-      [0.85, 0.8, 0.9],
-    ];
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
-      const brightness = 0.7 + Math.random() * 0.3;
-      colors[i * 3] = color[0] * brightness;
-      colors[i * 3 + 1] = color[1] * brightness;
-      colors[i * 3 + 2] = color[2] * brightness;
-    }
-    return colors;
-  }, []);
-
-  useEffect(() => {
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const velocities = new Float32Array(PARTICLE_COUNT * 3);
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const i3 = i * 3;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const r = 35 + Math.random() * 65;
-      positions[i3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i3 + 2] = r * Math.cos(phi);
-      velocities[i3] = (Math.random() - 0.5) * 0.008;
-      velocities[i3 + 1] = (Math.random() - 0.5) * 0.008;
-      velocities[i3 + 2] = (Math.random() - 0.5) * 0.008;
-    }
-    (pointsRef.current as any)._positions = positions;
-    (pointsRef.current as any)._velocities = velocities;
-    const geo = pointsRef.current.geometry;
-    (geo.attributes.position.array as Float32Array).set(positions);
-    geo.attributes.position.needsUpdate = true;
-  }, []);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const x = (e.clientX / window.innerWidth) * 2 - 1;
-      const y = -(e.clientY / window.innerHeight) * 2 + 1;
-      mouseRef.current = { x, y };
-      mouseWorldRef.current.set(x * 60, y * 50, 0);
-      targetRotRef.current = { x: y * 0.3, y: x * 0.3 };
-    };
-    window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
-  }, []);
-
-  useFrame((_, delta) => {
-    if (!pointsRef.current || !(pointsRef.current as any)._positions) return;
-    timeRef.current += delta;
-    const positions = (pointsRef.current as any)._positions as Float32Array;
-    const velocities = (pointsRef.current as any)._velocities as Float32Array;
-
-    rotRef.current.x += (targetRotRef.current.x - rotRef.current.x) * 0.01;
-    rotRef.current.y += (targetRotRef.current.y - rotRef.current.y) * 0.01;
-    pointsRef.current.rotation.x = rotRef.current.x + timeRef.current * 0.015;
-    pointsRef.current.rotation.y = rotRef.current.y + timeRef.current * 0.01;
-
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const i3 = i * 3;
-      positions[i3] += velocities[i3];
-      positions[i3 + 1] += velocities[i3 + 1];
-      positions[i3 + 2] += velocities[i3 + 2];
-
-      const dx = positions[i3] - mouseWorldRef.current.x;
-      const dy = positions[i3 + 1] - mouseWorldRef.current.y;
-      const dz = positions[i3 + 2] - mouseWorldRef.current.z;
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-      if (dist < 20 && dist > 0) {
-        const force = (20 - dist) / 20 * 0.4;
-        positions[i3] += (dx / dist) * force;
-        positions[i3 + 1] += (dy / dist) * force;
-        positions[i3 + 2] += (dz / dist) * force;
-      }
-
-      if (Math.abs(positions[i3]) > 100) velocities[i3] *= -1;
-      if (Math.abs(positions[i3 + 1]) > 80) velocities[i3 + 1] *= -1;
-      if (Math.abs(positions[i3 + 2]) > 80) velocities[i3 + 2] *= -1;
-    }
-
-    const geo = pointsRef.current.geometry;
-    (geo.attributes.position.array as Float32Array).set(positions);
-    geo.attributes.position.needsUpdate = true;
-  });
-
-  return (
-    <points ref={pointsRef}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[new Float32Array(PARTICLE_COUNT * 3), 3]} />
-        <bufferAttribute attach="attributes-size" args={[particleSizes, 1]} />
-        <bufferAttribute attach="attributes-customColor" args={[particleColors, 3]} />
-      </bufferGeometry>
-      <shaderMaterial
-        vertexShader={vertexShader}
-        fragmentShader={fragmentShader}
-        transparent
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-      />
-    </points>
-  );
-}
+const LazyParticleCanvas = lazy(() => import("../components/ParticleCanvas"));
 
 /* ═══════════════════════════════════════════
    登录页
@@ -173,11 +20,20 @@ export default function Login({ onLogin }: LoginProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = (e: FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setTimeout(() => { setLoading(false); onLogin(); }, 1200);
+    try {
+      await apiLogin(username, password);
+      onLogin();
+    } catch (err: any) {
+      setError(err.message || "登录失败");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -196,9 +52,9 @@ export default function Login({ onLogin }: LoginProps) {
       <div className="relative min-h-screen overflow-hidden select-none" style={{ background: "#f8f8fa" }}>
         {/* 全屏粒子背景 */}
         <div className="fixed inset-0 z-0">
-          <Canvas camera={{ position: [0, 0, 50], fov: 75 }} dpr={[1, 2]} gl={{ antialias: true }}>
-            <ParticleBackground />
-          </Canvas>
+          <Suspense fallback={null}>
+            <LazyParticleCanvas particleCount={3000} />
+          </Suspense>
         </div>
 
         {/* 左侧导航 */}
@@ -332,6 +188,13 @@ export default function Login({ onLogin }: LoginProps) {
                   </button>
                 </div>
               </div>
+
+              {/* 错误提示 */}
+              {error && (
+                <div className="pt-4 text-[13px] text-red-500" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  {error}
+                </div>
+              )}
 
               {/* 记住 & 登录 */}
               <div className="pt-6 border-t border-gray-200">

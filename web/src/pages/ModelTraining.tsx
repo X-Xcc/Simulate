@@ -29,7 +29,7 @@ const LOG_POOL: Array<{ level: TrainingLog["level"]; msg: string }> = [
   { level: "WARN", msg: "学习率调整: lr 衰减至 0.00081, 接近末期" },
   { level: "SYNC", msg: "GPU: RTX 5060, CUDA 12.8, 显存占用 4812MB / 8192MB" },
   { level: "SYNC", msg: "GPU 温度 67°C, 推理速度 34ms/step" },
-  { level: "DATA", msg: "标签统计: 跌倒 89 例, 打架 56 例, 自杀 102 例, 聚集 79 例" },
+  { level: "DATA", msg: "标签统计: 跌倒 89 例, 打架 56 例, 离岗 102 例, 聚集 79 例" },
 ];
 
 // 模拟训练指标的数学模型（演示用）

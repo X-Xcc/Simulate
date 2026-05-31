@@ -3,6 +3,7 @@ package com.yolov8.security.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.util.CsvEscaper;
 import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.AuditLog;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -153,15 +154,17 @@ public class AuditLogService extends AbstractJsonFileService<AuditLog> {
         StringBuilder sb = new StringBuilder();
         sb.append("\uFEFF\u65F6\u95F4\u6233,\u64CD\u4F5C\u5458ID,\u64CD\u4F5C\u5458,\u7C7B\u522B,\u64CD\u4F5C,\u98CE\u9669\u7EA7\u522B,\u72B6\u6001,\u6D88\u606F\n");
         for (AuditLog l : logs) {
-            sb.append(String.format("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%b,\"%s\"\n",
-                esc(l.getTimestamp()), esc(l.getOperatorId()), esc(l.getOperatorName()),
-                esc(l.getCategory()), esc(l.getAction()), esc(l.getRiskLevel()),
-                l.getStatus(), esc(l.getMessage())));
+            sb.append(CsvEscaper.field(l.getTimestamp())).append(',')
+              .append(CsvEscaper.field(l.getOperatorId())).append(',')
+              .append(CsvEscaper.field(l.getOperatorName())).append(',')
+              .append(CsvEscaper.field(l.getCategory())).append(',')
+              .append(CsvEscaper.field(l.getAction())).append(',')
+              .append(CsvEscaper.field(l.getRiskLevel())).append(',')
+              .append(l.getStatus()).append(',')
+              .append(CsvEscaper.field(l.getMessage())).append('\n');
         }
         return sb.toString();
     }
 
-    private static String esc(String v) {
-        return v == null ? "" : v.replace("\"", "\"\"");
-    }
+    // esc() removed — use CsvEscaper.field() instead
 }

@@ -3,6 +3,7 @@ package com.yolov8.security.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.util.CsvEscaper;
 import com.yolov8.security.model.Alert;
 import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.DetectionData;
@@ -117,16 +118,19 @@ public class AlertService extends AbstractJsonFileService<Alert> {
         StringBuilder sb = new StringBuilder();
         sb.append("\uFEFFID,\u7C7B\u578B,\u7EA7\u522B,\u65F6\u95F4,\u5730\u70B9,\u72B6\u6001,\u7F6E\u4FE1\u5EA6,\u6D88\u606F\n");
         for (Alert a : alerts) {
-            sb.append(String.format("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",%.1f,\"%s\"\n",
-                esc(a.getId()), esc(a.getType()), esc(a.getLevel()), esc(a.getTime()),
-                esc(a.getCameraName()), esc(a.getStatus()), a.getConfidence(), esc(a.getMessage())));
+            sb.append(CsvEscaper.field(a.getId())).append(',')
+              .append(CsvEscaper.field(a.getType())).append(',')
+              .append(CsvEscaper.field(a.getLevel())).append(',')
+              .append(CsvEscaper.field(a.getTime())).append(',')
+              .append(CsvEscaper.field(a.getCameraName())).append(',')
+              .append(CsvEscaper.field(a.getStatus())).append(',')
+              .append(String.format("%.1f", a.getConfidence())).append(',')
+              .append(CsvEscaper.field(a.getMessage())).append('\n');
         }
         return sb.toString();
     }
 
-    private static String esc(String v) {
-        return v == null ? "" : v.replace("\"", "\"\"");
-    }
+    // esc() removed — use CsvEscaper.field() instead
 
     private static final DateTimeFormatter DET_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 

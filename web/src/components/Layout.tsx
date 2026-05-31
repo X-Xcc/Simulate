@@ -10,6 +10,7 @@ import { useAuth } from "../lib/auth";
 import { cn } from "../lib/utils";
 import { fetchCameras } from "../services/dataService";
 import type { Camera } from "../types";
+import Clock from "./Clock";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "控制面板", path: "/dashboard" },
@@ -29,14 +30,8 @@ export default function Layout() {
   const { theme, toggle } = useTheme();
   const { logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [monitorOpen, setMonitorOpen] = useState(location.pathname === "/monitor");
-
-  useEffect(() => {
-    const iv = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(iv);
-  }, []);
 
   // 加载摄像头列表
   useEffect(() => {
@@ -53,7 +48,7 @@ export default function Layout() {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-on-surface select-none">
       {/* 顶栏 */}
-      <header className="h-[52px] bg-white/95 backdrop-blur-sm border-b border-outline-variant flex items-center justify-between px-5 z-50 shadow-sm/50 shrink-0">
+      <header role="banner" className="h-[52px] bg-white/95 backdrop-blur-sm border-b border-outline-variant flex items-center justify-between px-5 z-50 shadow-sm/50 shrink-0">
         <div className="flex items-center gap-5">
           {/* Logo */}
           <button onClick={() => navigate("/")} className="flex items-center gap-2.5 cursor-pointer group">
@@ -66,7 +61,7 @@ export default function Layout() {
           {/* 搜索 */}
           <div className="relative group">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline group-focus-within:text-primary transition-colors" size={14} />
-            <input type="text" placeholder="搜索..."
+            <input type="text" placeholder="搜索..." aria-label="搜索"
               value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
               className="bg-surface-container-low border border-transparent hover:border-outline-variant/50 focus:border-primary/30 rounded-lg h-8 pl-8.5 pr-3 text-[13px] w-56 focus:w-72 transition-all outline-none placeholder:text-outline/60" />
           </div>
@@ -74,22 +69,18 @@ export default function Layout() {
 
         <div className="flex items-center gap-2">
           {/* 时间 */}
-          <div className="px-3 py-1.5 bg-surface-container-low rounded-lg">
-            <span className="text-[12px] font-mono text-on-surface-variant tabular-nums font-medium">
-              {currentTime.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-            </span>
-          </div>
+          <Clock />
           <div className="h-5 w-px bg-outline-variant/50" />
 
           {/* 通知 */}
-          <button onClick={() => navigate("/alerts")}
+          <button onClick={() => navigate("/alerts")} aria-label="通知"
             className="p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-primary rounded-lg transition-all relative">
             <Bell size={17} />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger-red rounded-full" />
           </button>
 
           {/* 主题切换 */}
-          <button onClick={toggle}
+          <button onClick={toggle} aria-label={theme === "light" ? "切换到暗色主题" : "切换到亮色主题"}
             className="p-2 text-on-surface-variant hover:bg-surface-container-high hover:text-primary rounded-lg transition-all">
             {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
           </button>
@@ -111,7 +102,7 @@ export default function Layout() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* 侧边栏 */}
-        <aside className="w-[220px] flex flex-col bg-white border-r border-outline-variant/50 shrink-0 py-3">
+        <aside role="navigation" aria-label="主导航" className="w-[220px] flex flex-col bg-white border-r border-outline-variant/50 shrink-0 py-3">
           <nav className="flex-1 px-2.5 space-y-0.5 overflow-y-auto custom-scrollbar">
             {menuItems.map((item) => (
               <div key={item.path}>
@@ -175,7 +166,7 @@ export default function Layout() {
             <Pencil size={15} />
           </button>
 
-          <button onClick={() => { logout(); navigate("/login"); }}
+          <button onClick={() => { logout(); navigate("/login"); }} aria-label="退出系统"
             className="w-8 h-8 flex items-center justify-center rounded text-on-surface-variant hover:text-danger-red hover:bg-surface-container-high transition-all"
             title="退出系统"
           >
@@ -185,7 +176,7 @@ export default function Layout() {
         </aside>
 
         {/* 主内容 */}
-        <main className="flex-1 overflow-auto bg-[#f4f6fb] p-5 custom-scrollbar relative">
+        <main role="main" className="flex-1 overflow-auto bg-[#f4f6fb] p-5 custom-scrollbar relative">
           <Outlet />
         </main>
       </div>

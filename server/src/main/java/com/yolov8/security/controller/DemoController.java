@@ -1,6 +1,7 @@
 package com.yolov8.security.controller;
 
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.util.AlertUtils;
 import com.yolov8.security.model.Alert;
 import com.yolov8.security.model.AuditLog;
 import com.yolov8.security.service.*;
@@ -56,7 +57,7 @@ public class DemoController {
         // Create alert
         Alert alert = new Alert();
         alert.setType(behavior);
-        alert.setLevel(mapSeverity(behavior));
+        alert.setLevel(AlertUtils.mapSeverity(behavior));
         alert.setTime(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(java.time.LocalDateTime.now()));
         alert.setSnapshotUrl("/api/images/frame_" + System.currentTimeMillis() + "_" + cameraId + ".jpg");
         alert.setStatus("pending");
@@ -72,7 +73,7 @@ public class DemoController {
         auditLog.setOperatorName("系统");
         auditLog.setCategory("行为检测");
         auditLog.setAction("触发Demo检测：" + behavior);
-        auditLog.setRiskLevel(mapSeverity(behavior));
+        auditLog.setRiskLevel(AlertUtils.mapSeverity(behavior));
         auditLog.setStatus(true);
         auditLog.setMessage("Demo模式触发检测事件，摄像头：" + cameraName);
         auditLogService.addLog(auditLog);
@@ -94,12 +95,4 @@ public class DemoController {
         return ResponseEntity.ok(response);
     }
 
-    private String mapSeverity(String action) {
-        return switch (action) {
-            case "跌倒", "打架" -> "critical";
-            case "离岗" -> "high";
-            case "人员聚集" -> "low";
-            default -> "medium";
-        };
-    }
 }

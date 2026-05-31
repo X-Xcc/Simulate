@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
-import { fetchCameras, addCamera, updateCamera, deleteCamera, testCamera, discoverCameras, batchAddCameras } from "../services/dataService";
+import { fetchCameras, addCamera, updateCamera, deleteCamera, deleteAllCameras, testCamera, discoverCameras, batchAddCameras } from "../services/dataService";
 
 const TYPE_LABELS: Record<string, string> = {
   usb: "USB 摄像头",
@@ -72,7 +72,6 @@ export default function Devices() {
   const onlineCount = cameras.filter(c => c.status === CameraStatus.ONLINE).length;
 
   const handleAdd = async () => {
-    if (!form.name || !form.address) { toast.show("请填写名称和地址", "error"); return; }
     try {
       await addCamera({ name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
       setSuccessMsg("设备已添加");
@@ -84,7 +83,7 @@ export default function Devices() {
   };
 
   const handleEdit = async () => {
-    if (!editId || !form.name || !form.address) { toast.show("请填写名称和地址", "error"); return; }
+    if (!editId) return;
     try {
       await updateCamera(editId, { name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
       setSuccessMsg("设备已更新");
@@ -102,6 +101,16 @@ export default function Devices() {
       await loadCameras();
     } catch (e: any) {
       toast.show("删除失败: " + e.message, "error");
+    }
+  };
+
+  const handleClearAll = async () => {
+    try {
+      await deleteAllCameras();
+      toast.show("所有设备已清空");
+      await loadCameras();
+    } catch (e: any) {
+      toast.show("清空失败: " + e.message, "error");
     }
   };
 
@@ -175,6 +184,13 @@ export default function Devices() {
             className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
           >
             <Plus size={16} /> 添加摄像头
+          </button>
+          <button
+            onClick={handleClearAll}
+            disabled={cameras.length === 0}
+            className="px-3 py-2 rounded-lg text-body font-semibold text-danger-red border border-danger-red/30 hover:bg-danger-red/10 transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={14} className="inline mr-1" /> 清空所有
           </button>
           <button
             onClick={handleScan}

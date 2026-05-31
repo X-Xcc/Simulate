@@ -7,9 +7,10 @@ import { fetchEvidenceList, EvidenceItem } from "../services/dataService";
 import { useMockStore } from "../lib/mockStore";
 import { getToken, API_BASE } from "../lib/api";
 import Lightbox from "../components/Lightbox";
+import { useImageRetry } from "../hooks/useImageRetry";
 
 const PAGE_SIZE = 12;
-const TABS = ["全部", "打架", "跌倒", "自杀", "人员聚集"];
+const TABS = ["全部", "打架", "跌倒", "离岗", "人员聚集"];
 
 export default function Evidence() {
   const toast = useToast();
@@ -21,6 +22,7 @@ export default function Evidence() {
   const [loading, setLoading] = useState(false);
   // lightboxSrc 保证传给 Lightbox 的永远是有效 URL
   const [lightbox, setLightbox] = useState<{ src: string; item: EvidenceItem } | null>(null);
+  const { onError: onImgError } = useImageRetry(3, 500);
 
   // 订阅全局 store 的 evidenceBump，手动触发报警时自动刷新
   const evidenceBump = useMockStore((s) => s.evidenceBump);
@@ -124,11 +126,7 @@ export default function Evidence() {
             {/* 截图 */}
             {imgUrl ? (
               <img src={imgUrl} alt={item.actions?.[0] || "证据"} className="w-full h-full object-cover"
-                   onError={e => {
-                     const el = e.target as HTMLImageElement;
-                     const left = (el as any)._retryLeft ?? 3;
-                     if (left > 0) { (el as any)._retryLeft = left - 1; setTimeout(() => { el.src = el.src; }, 500); }
-                   }} />
+                   onError={onImgError} />
             ) : null}
             {/* 图片加载失败 fallback */}
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 absolute inset-0 -z-10">

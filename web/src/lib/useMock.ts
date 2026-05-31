@@ -5,7 +5,8 @@
 
 import { useMockStore } from "./mockStore";
 
-const USE_MOCK = true;
+// 开发模式默认启用 mock；生产环境设置 VITE_USE_MOCK=false 禁用
+const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
 
 export function useMockCameras() {
   return useMockStore((s) => s.cameras);

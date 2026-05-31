@@ -1,5 +1,6 @@
-export const API_BASE = `${window.location.protocol}//${window.location.hostname}:5000`;
-export const isZeroPort = typeof window !== "undefined" && window.location.port === "5001";
+const currentPort = typeof window !== "undefined" ? window.location.port : "5000";
+export const API_BASE = `${window.location.protocol}//${window.location.hostname}:${currentPort || "5000"}`;
+export const isZeroPort = currentPort === "5001";
 
 // JWT Token management
 export function getToken(): string | null {
@@ -191,12 +192,15 @@ const sseSubscribers = new Map<string, Set<SseCallback>>();
 let sseEventSource: EventSource | null = null;
 let sseSubscriberCount = 0;
 let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let sseReconnectDelay = 3000; // 指数退避初始值 3s
+const SSE_MAX_RECONNECT_DELAY = 60000; // 最大 60s
 
 // ┌──────────────────────────────────────────────────────────────┐
 // │  ensureSseConnection — 创建单例 EventSource 连接              │
 // │  演讲提示: "创建 EventSource 连接到 /api/sse/stream，          │
 // │            5 种事件类型各绑定一个 addEventListener 监听器，    │
-// │            断线后 3 秒自动重连(仅当仍有活跃订阅者时)"           │
+// │            断线后指数退避自动重连(3s→6s→12s→24s→48s→60s max)  │
+// │            成功连接后重置计时器"                               │
 // └──────────────────────────────────────────────────────────────┘
 function ensureSseConnection(): void {
   if (sseEventSource && sseEventSource.readyState !== EventSource.CLOSED) return;
@@ -210,12 +214,18 @@ function ensureSseConnection(): void {
   es.addEventListener("audit_logs", (e: MessageEvent) => handleSseEvent("audit_logs", e));
   es.addEventListener("camera_stats", (e: MessageEvent) => handleSseEvent("camera_stats", e));
 
+  es.onopen = () => {
+    // 连接成功，重置退避计时器
+    sseReconnectDelay = 3000;
+  };
+
   es.onerror = () => {
     es.close();
     sseEventSource = null;
-    // Auto-reconnect if subscribers still active
+    // Auto-reconnect if subscribers still active (指数退避)
     if (sseSubscriberCount > 0) {
-      sseReconnectTimer = setTimeout(() => ensureSseConnection(), 3000);
+      sseReconnectTimer = setTimeout(() => ensureSseConnection(), sseReconnectDelay);
+      sseReconnectDelay = Math.min(sseReconnectDelay * 2, SSE_MAX_RECONNECT_DELAY);
     }
   };
 

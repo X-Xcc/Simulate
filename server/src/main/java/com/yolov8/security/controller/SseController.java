@@ -7,6 +7,7 @@ import com.yolov8.security.service.AuditLogService;
 import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.DetectionService;
 import com.yolov8.security.service.KanbanEventBus;
+import jakarta.annotation.PreDestroy;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,6 +37,7 @@ public class SseController {
     private final DetectionService detectionService;
     private final VideoStreamController videoStreamController;
     private final AppConfig appConfig;
+    private final ScheduledExecutorService scheduler;
 
     public SseController(ObjectMapper objectMapper, CameraConfigService cameraConfigService,
                          AlertService alertService, AuditLogService auditLogService,
@@ -55,7 +57,7 @@ public class SseController {
         KanbanEventBus.subscribe((eventType, data) -> broadcast(eventType, data));
 
         // Periodic system_metrics + camera_stats push (2s)
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "sse-metrics-pusher");
             t.setDaemon(true);
             return t;
@@ -67,6 +69,13 @@ public class SseController {
                 broadcast("camera_stats", videoStreamController.getCameraStats());
             } catch (Exception ignored) {}
         }, 2, 2, TimeUnit.SECONDS);
+    }
+
+    @PreDestroy
+    public void destroy() {
+        if (scheduler != null && !scheduler.isShutdown()) {
+            scheduler.shutdown();
+        }
     }
 
     @GetMapping(value = "/api/sse/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -138,10 +147,10 @@ public class SseController {
             m.put("uptime", days + "d " + hours + "h " + minutes + "m");
 
             try {
-                Map<String, Object> sysInfo = detectionService.getSystemInfo();
-                m.put("dataDirSizeMb", sysInfo.get("dataDirSizeMb"));
-                m.put("detectionCount", sysInfo.get("detectionCount"));
-                m.put("imageCount", sysInfo.get("imageCount"));
+                var sysInfo = detectionService.getSystemInfo();
+                m.put("dataDirSizeMb", sysInfo.dataDirSizeMb());
+                m.put("detectionCount", sysInfo.detectionCount());
+                m.put("imageCount", sysInfo.imageCount());
             } catch (Exception e) {
                 m.put("dataDirSizeMb", 0);
                 m.put("detectionCount", 0);
@@ -202,10 +211,10 @@ public class SseController {
 
         // Detection stats
         try {
-            Map<String, Object> sysInfo = detectionService.getSystemInfo();
-            m.put("dataDirSizeMb", sysInfo.get("dataDirSizeMb"));
-            m.put("detectionCount", sysInfo.get("detectionCount"));
-            m.put("imageCount", sysInfo.get("imageCount"));
+            var sysInfo = detectionService.getSystemInfo();
+            m.put("dataDirSizeMb", sysInfo.dataDirSizeMb());
+            m.put("detectionCount", sysInfo.detectionCount());
+            m.put("imageCount", sysInfo.imageCount());
         } catch (Exception e) {
             m.put("dataDirSizeMb", 0);
             m.put("detectionCount", 0);

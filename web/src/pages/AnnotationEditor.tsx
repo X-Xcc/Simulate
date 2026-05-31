@@ -31,7 +31,7 @@ const LABELS = [
   { name: "打架", color: "#ef4444" },
   { name: "跌倒", color: "#f97316" },
   { name: "聚集", color: "#3b82f6" },
-  { name: "自杀", color: "#22c55e" },
+  { name: "离岗", color: "#22c55e" },
 ];
 
 let _id = 0;
@@ -268,28 +268,28 @@ export default function AnnotationEditor() {
   };
 
   // --- Submit & next ---
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!curImage) return;
     // Save current rects to images array
     syncRectsToImage(curIdx, rects);
 
-    // Try server save (non-blocking)
-    try {
-      await saveAnnotation(curImage.name, {
-        imageFilename: curImage.name,
-        imageWidth: imgSize.w,
-        imageHeight: imgSize.h,
-        annotator: "admin",
-        annotatedAt: new Date().toISOString(),
-        status: "reviewed",
-        labels: [...new Set(rects.map(r => r.label))],
-        bboxes: rects.map(r => ({
-          id: r.id, x: r.x, y: r.y, width: r.w, height: r.h,
-          labels: [r.label], confidence: 1, source: "manual",
-        })),
-      });
-      toast.show("标注已提交");
-    } catch {}
+    // Show toast + navigate immediately (non-blocking)
+    toast.show("标注已提交");
+
+    // Fire-and-forget: save to server in background
+    saveAnnotation(curImage.name, {
+      imageFilename: curImage.name,
+      imageWidth: imgSize.w,
+      imageHeight: imgSize.h,
+      annotator: "admin",
+      annotatedAt: new Date().toISOString(),
+      status: "reviewed",
+      labels: [...new Set(rects.map(r => r.label))],
+      bboxes: rects.map(r => ({
+        id: r.id, x: r.x, y: r.y, width: r.w, height: r.h,
+        labels: [r.label], confidence: 1, source: "manual",
+      })),
+    }).catch(() => {});
 
     // Go to next image
     if (curIdx < images.length - 1) {

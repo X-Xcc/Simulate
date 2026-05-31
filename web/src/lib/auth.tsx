@@ -14,29 +14,19 @@ const AuthContext = createContext<AuthCtx>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [authenticated, setAuthenticated] = useState(() => {
-    // Mock 模式：检查 localStorage
-    if (localStorage.getItem("mock_auth") === "true") return true;
-    return !!getToken();
-  });
+  const [authenticated, setAuthenticated] = useState(() => !!getToken());
 
   const login = useCallback(() => {
-    localStorage.setItem("mock_auth", "true");
     setAuthenticated(true);
   }, []);
 
   const logout = useCallback(() => {
     clearToken();
-    localStorage.removeItem("mock_auth");
     setAuthenticated(false);
   }, []);
 
   useEffect(() => {
-    const handler = () => {
-      // Mock 模式下不踢回登录页 — 无 JWT 所以 API 必然 401
-      if (localStorage.getItem("mock_auth") === "true") return;
-      setAuthenticated(false);
-    };
+    const handler = () => setAuthenticated(false);
     window.addEventListener("rtk:token-invalid", handler);
     return () => window.removeEventListener("rtk:token-invalid", handler);
   }, []);

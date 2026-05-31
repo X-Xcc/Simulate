@@ -69,7 +69,7 @@ export default function Analysis() {
   const radarData = [
     { subject: "打架", A: zero(behaviorCounts["打架"] ?? 0), fullMark: maxVal },
     { subject: "跌倒", A: zero(behaviorCounts["跌倒"] ?? 0), fullMark: maxVal },
-    { subject: "自杀", A: zero(behaviorCounts["自杀"] ?? 0), fullMark: maxVal },
+    { subject: "离岗", A: zero(behaviorCounts["离岗"] ?? 0), fullMark: maxVal },
     { subject: "聚集", A: zero(behaviorCounts["人员聚集"] ?? 0), fullMark: maxVal },
   ];
 

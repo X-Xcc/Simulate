@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useRealAlerts } from "../lib/useRealAlerts";
+import { useImageRetry } from "../hooks/useImageRetry";
 
 export default function Alerts() {
   const toast = useToast();
@@ -27,6 +28,7 @@ export default function Alerts() {
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const pageSize = 15;
+  const { onError: onImgError } = useImageRetry(3, 500, (el) => { el.style.display = "none"; });
 
   // ┌──────────────────────────────────────────────────────┐
   // │  筛选逻辑 — 按类型(打架/跌倒) + 状态(待处理/已确认/已忽略) │
@@ -213,12 +215,7 @@ export default function Alerts() {
                       src={selectedAlert.snapshotUrl}
                       alt={`${selectedAlert.type} 快照`}
                       className="w-full h-full object-cover"
-                      onError={e => {
-                        const el = e.target as HTMLImageElement;
-                        const left = (el as any)._retryLeft ?? 3;
-                        if (left > 0) { (el as any)._retryLeft = left - 1; setTimeout(() => { el.src = el.src; }, 500); }
-                        else { el.style.display = "none"; }
-                      }}
+                      onError={onImgError}
                     />
                 ) : null}
                 <div className="text-center absolute inset-0 flex flex-col items-center justify-center pointer-events-none">

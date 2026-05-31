@@ -49,14 +49,14 @@ const C = {
 const TREND_COLORS: Record<string, string> = {
   "打架": "#e54d4d",
   "跌倒": "#e5952e",
-  "自杀": "#ef4444",
+  "离岗": "#ef4444",
   "人员聚集": "#8b5cf6",
 };
 
 const TREND_FILLS: Record<string, string> = {
   "打架": "url(#gradFight)",
   "跌倒": "url(#gradFall)",
-  "自杀": "url(#gradAbsent)",
+  "离岗": "url(#gradAbsent)",
   "人员聚集": "url(#gradCrowd)",
 };
 
@@ -146,7 +146,7 @@ export default function Dashboard() {
 
   // 从月度趋势数据求和，派生卡片计数（与趋势图/饼图同源）
   const monthlyCounts = useMemo(() => {
-    if (!monthDataRaw?.data) return { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
+    if (!monthDataRaw?.data) return { "打架": 0, "跌倒": 0, "离岗": 0, "人员聚集": 0 };
     const counts: Record<string, number> = {};
     for (const [key, vals] of Object.entries(monthDataRaw.data)) {
       counts[key] = (vals as number[]).reduce((s, v) => s + v, 0);
@@ -157,7 +157,7 @@ export default function Dashboard() {
   const enrichedBehaviorCounts = useMemo(() => {
     const base = { ...monthlyCounts };
     const typeToKey: Record<string, string> = {
-      "打架": "打架", "跌倒": "跌倒", "自杀": "自杀", "人员聚集": "人员聚集",
+      "打架": "打架", "跌倒": "跌倒", "离岗": "离岗", "人员聚集": "人员聚集",
     };
     for (const a of manualAlerts) {
       const key = typeToKey[a.type] ?? a.type;
@@ -169,7 +169,7 @@ export default function Dashboard() {
   const cards = useMemo(() => [
     { key: "fight",  icon: <ShieldAlert size={22}/>,  label: "打架事件", count: enrichedBehaviorCounts["打架"] ?? 0, style: C.fight },
     { key: "fall",   icon: <Accessibility size={22}/>, label: "人员跌倒", count: enrichedBehaviorCounts["跌倒"] ?? 0, style: C.fall },
-    { key: "absent", icon: <UserMinus size={22}/>,    label: "自杀行为", count: enrichedBehaviorCounts["自杀"] ?? 0, style: C.absent },
+    { key: "absent", icon: <UserMinus size={22}/>,    label: "离岗行为", count: enrichedBehaviorCounts["离岗"] ?? 0, style: C.absent },
     { key: "crowd",  icon: <Users size={22}/>,        label: "人员聚集", count: enrichedBehaviorCounts["人员聚集"] ?? 0, style: C.crowd },
   ], [enrichedBehaviorCounts]);
 
@@ -183,7 +183,7 @@ export default function Dashboard() {
     return [
       { name: "跌倒",     value: totals["跌倒"] ?? 0,     color: C.fall.line },
       { name: "打架",     value: totals["打架"] ?? 0,     color: C.fight.line },
-      { name: "自杀",     value: totals["自杀"] ?? 0,     color: C.absent.line },
+      { name: "离岗",     value: totals["离岗"] ?? 0,     color: C.absent.line },
       { name: "人员聚集", value: totals["人员聚集"] ?? 0, color: C.crowd.line },
     ];
   }, [trendData, trendKeys]);

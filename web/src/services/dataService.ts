@@ -22,6 +22,7 @@ export async function fetchCameras(signal?: AbortSignal): Promise<Camera[]> {
     brand: c.brand,
     model: c.model,
     go2rtcId: c.go2rtcId,
+    httpMjpegUrl: c.httpMjpegUrl,
     ip: c.ip,
     port: c.port,
     status: activeIds.has(c.id || "") ? CameraStatus.ONLINE : CameraStatus.OFFLINE,
@@ -156,6 +157,10 @@ export async function updateCamera(cameraId: string, camera: any) {
 
 export async function deleteCamera(cameraId: string) {
   await apiDelete(`/api/camera_config/${cameraId}`);
+}
+
+export async function deleteAllCameras() {
+  await apiDelete("/api/camera_config");
 }
 
 export async function testCamera(camera: { type: string; address: string | number; user?: string; password?: string }): Promise<{ reachable: boolean; message: string }> {
@@ -380,7 +385,7 @@ export function exportAnnotation(format: "yolo" | "coco" = "yolo"): void {
 }
 
 export async function uploadAnnotationImage(file: File): Promise<{ filename: string }> {
-  const token = localStorage.getItem("auth_token");
+  const token = localStorage.getItem("jwt_token");
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${API_BASE}/api/annotations/upload`, {

@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.StringUtils;
+
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -63,6 +63,7 @@ public class ApiController {
                         .body(ApiResponse.error("空帧数据"));
             }
             videoStreamController.updateFrame(frameBytes, camId);
+            SystemMetricsController.notifyFrameReceived();
             log.debug("Frame updated successfully: cam={}, personCount={}, bytes={}",
                     camId, personCount, frameBytes.length);
             return ResponseEntity.ok(ApiResponse.success(Map.of(
@@ -75,44 +76,6 @@ public class ApiController {
             log.error("Error updating frame", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("更新帧失败: " + e.getMessage()));
-        }
-    }
-
-    @PostMapping(value = "/upload_training_resource", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<Map<String, Object>>> uploadTrainingResource(
-            @RequestParam("file") MultipartFile file) {
-        try {
-            if (file.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(ApiResponse.error("文件为空"));
-            }
-
-            String originalName = StringUtils.cleanPath(file.getOriginalFilename() == null ? "" : file.getOriginalFilename());
-            if (originalName.isBlank()) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(ApiResponse.error("文件名无效"));
-            }
-
-            Files.createDirectories(uploadDir);
-            String storedName = System.currentTimeMillis() + "-" + originalName;
-            Path target = uploadDir.resolve(storedName).normalize();
-            if (!target.startsWith(uploadDir)) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(ApiResponse.error("非法文件名"));
-            }
-
-            file.transferTo(target);
-            return ResponseEntity.ok(ApiResponse.success(Map.of(
-                    "status", "ok",
-                    "filename", originalName,
-                    "stored_name", storedName,
-                    "size", file.getSize(),
-                    "content_type", file.getContentType()
-            )));
-        } catch (IOException e) {
-            log.error("Error uploading training resource", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error("上传失败: " + e.getMessage()));
         }
     }
 

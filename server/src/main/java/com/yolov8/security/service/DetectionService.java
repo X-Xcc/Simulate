@@ -2,11 +2,14 @@ package com.yolov8.security.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.util.AlertUtils;
 import com.yolov8.security.model.Alert;
 import com.yolov8.security.model.DetectionData;
 import com.yolov8.security.model.StatsResponse;
+import com.yolov8.security.model.SystemInfoDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -49,7 +52,7 @@ public class DetectionService {
     private volatile boolean snapshotUrlsResolved = false;
 
     // Separate cache for system info (expensive totalSize computation)
-    private volatile Map<String, Object> systemInfoCache;
+    private volatile SystemInfoDTO systemInfoCache;
     private volatile long systemInfoCacheTimeMs;
     private static final long SYSTEM_INFO_CACHE_TTL_MS = 60000L;
 
@@ -191,8 +194,26 @@ public class DetectionService {
                     .limit(50)
                     .collect(Collectors.toList()));
 
-            // Auto-create alerts for detections with actions
-            for (DetectionData det : allDetections) {
+            if (!allDetections.isEmpty()) {
+                stats.setPersonCount(allDetections.get(0).getPersonCount());
+            }
+
+            return stats;
+        } catch (Exception e) {
+            log.error("Error getting stats", e);
+            return new StatsResponse();
+        }
+    }
+
+    /**
+     * 从检测数据中自动创建 Alert（幂等：已处理过的 imageFilename 不会重复创建）。
+     * 由定时任务调度，也可手动调用。
+     */
+    @Scheduled(fixedDelayString = "${app.alert.auto-create-interval-ms:15000}", initialDelay = 5000)
+    public void autoCreateAlerts() {
+        try {
+            DirScan scan = getOrScanUploadDir();
+            for (DetectionData det : scan.detections()) {
                 if (det.getActions() != null && !det.getActions().isEmpty()
                         && det.getImageFilename() != null
                         && alertedImageFilenames.add(det.getImageFilename())) {
@@ -200,7 +221,7 @@ public class DetectionService {
                         try {
                             Alert alert = new Alert();
                             alert.setType(action);
-                            alert.setLevel(mapSeverity(action));
+                            alert.setLevel(AlertUtils.mapSeverity(action));
                             alert.setTime(det.getTimestamp());
                             alert.setSnapshotUrl("/api/images/" + det.getImageFilename());
                             alert.setStatus("pending");
@@ -215,15 +236,8 @@ public class DetectionService {
                     }
                 }
             }
-
-            if (!allDetections.isEmpty()) {
-                stats.setPersonCount(allDetections.get(0).getPersonCount());
-            }
-
-            return stats;
         } catch (Exception e) {
-            log.error("Error getting stats", e);
-            return new StatsResponse();
+            log.error("Error in autoCreateAlerts", e);
         }
     }
 
@@ -454,14 +468,14 @@ public class DetectionService {
         }
     }
 
-    public Map<String, Object> getSystemInfo() {
+    public SystemInfoDTO getSystemInfo() {
         // Return cached result within TTL to avoid walking 278k files
         long now = System.currentTimeMillis();
         if (systemInfoCache != null && (now - systemInfoCacheTimeMs) < SYSTEM_INFO_CACHE_TTL_MS) {
             return systemInfoCache;
         }
 
-        Map<String, Object> info = new HashMap<>();
+        SystemInfoDTO result;
         try {
             DirScan scan = getOrScanUploadDir();
             int jsonCount = scan.totalDetectionCount();
@@ -485,21 +499,17 @@ public class DetectionService {
             long usedMemory = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
             long maxMemory = rt.maxMemory() / (1024 * 1024);
 
-            info.put("status", "success");
-            info.put("dataDirSizeMb", Math.round(totalSize / 1024.0 / 1024.0 * 100.0) / 100.0);
-            info.put("detectionCount", jsonCount);
-            info.put("imageCount", jpgCount);
-            info.put("jvmUsedMb", usedMemory);
-            info.put("jvmMaxMb", maxMemory);
+            result = SystemInfoDTO.success(
+                    Math.round(totalSize / 1024.0 / 1024.0 * 100.0) / 100.0,
+                    jsonCount, jpgCount, usedMemory, maxMemory);
         } catch (Exception e) {
             log.error("Error getting system info", e);
-            info.put("status", "error");
-            info.put("message", e.getMessage());
+            result = SystemInfoDTO.error(e.getMessage());
         }
 
-        systemInfoCache = info;
+        systemInfoCache = result;
         systemInfoCacheTimeMs = now;
-        return info;
+        return result;
     }
 
     public Map<String, Object> getCompareData() {
@@ -546,12 +556,4 @@ public class DetectionService {
         }
     }
 
-    private String mapSeverity(String action) {
-        return switch (action) {
-            case "跌倒", "打架" -> "critical";
-            case "离岗" -> "high";
-            case "人员聚集" -> "low";
-            default -> "medium";
-        };
-    }
 }

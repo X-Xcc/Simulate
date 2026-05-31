@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  VideoOff, Loader2, CameraOff,
+  VideoOff, Loader2,
   AlertTriangle, Volume2, CheckCircle2,
   ChevronDown,
 } from "lucide-react";
@@ -27,7 +27,7 @@ const ALARM_CONFIGS: Record<AlarmType, {
     msg: "区域 B 检测到跌倒事件 — 人员姿态异常，身体重心急剧下降",
   },
   suicide: {
-    hex: "#dc2626", label: "自杀报警",
+    hex: "#dc2626", label: "离岗报警",
     msg: "区域 C 检测到自残风险 — 异常姿态动作，疑似自我伤害行为",
   },
   gathering: {
@@ -244,7 +244,14 @@ export default function Monitor() {
     async function load() {
       try {
         const data = await fetchCameras();
-        if (!cancelled) { setCameras(data); setLoading(false); }
+        if (!cancelled) {
+          // 深度比较避免相同数据触发重渲染导致视频流重置
+          setCameras(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+            return data;
+          });
+          setLoading(false);
+        }
       } catch {
         if (!cancelled) setLoading(false);
       }
@@ -363,14 +370,9 @@ export default function Monitor() {
   const gridCols: Record<GridMode, string> = { 2: "grid-cols-2", 4: "grid-cols-2", 8: "grid-cols-4", 16: "grid-cols-4" };
   const gridRows: Record<GridMode, string> = { 2: "grid-rows-1", 4: "grid-rows-2", 8: "grid-rows-2", 16: "grid-rows-4" };
 
-  const visibleCameras = cameras.slice(0, gridMode);
-  const slots = Array.from({ length: gridMode }, (_, i) => visibleCameras[i] ?? null);
-  const primaryCamera = cameras[0] ?? null;
-
-  const getDisplayName = (cam: Camera) => {
-    const idx = cameras.findIndex(c => c.id === cam.id);
-    return `视频${idx + 1}`;
-  };
+  // 固定摄像头槽位顺序: USB → 大华 → 海康
+  const SLOT_ORDER = ['cam-12', 'cam-10', 'cam-11'];
+  const slotCameras = SLOT_ORDER.map(id => cameras.find(c => c.id === id));
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-3 animate-fade-in-up">
@@ -421,79 +423,22 @@ export default function Monitor() {
         ) : (
           <div className="flex flex-col h-full min-h-0 gap-1.5">
             <div className={cn("grid gap-1.5 flex-1 min-h-0", gridCols[gridMode], gridRows[gridMode])}>
-              {slots.map((cam, i) => {
-                if (gridMode === 2) {
-                  if (i === 0) {
-                    return (
-                      <LiveCameraSlot
-                        key="local-front-camera-main"
-                        slotId="cam-slot-local-front"
-                        name="视频1 - 本地前置摄像头"
-                        activeAlarms={activeAlarms}
-                        onAck={handleAlarmAcknowledge}
-                      />
-                    );
-                  }
-                  if (i === 1 && primaryCamera) {
-                    return (
-                      <CameraSlot
-                        key={primaryCamera.id}
-                        name="视频2 - 摄像头1"
-                        streamUrl={primaryCamera.streamUrl}
-                        isOnline={primaryCamera.status === "online"}
-                        go2rtcId={primaryCamera.go2rtcId}
-                        cameraId={primaryCamera.id}
-                      />
-                    );
-                  }
-                }
-                if (i === 2) {
-                  return (
-                    <LiveCameraSlot
-                      key="local-front-camera"
-                      slotId="cam-slot-local-front-grid"
-                      name="视频3 - 本地前置摄像头"
-                      activeAlarms={activeAlarms}
-                      onAck={handleAlarmAcknowledge}
-                    />
-                  );
-                }
-                if (i === 3) {
-                  return (
-                    <AIDetectionSlot
-                      key="ai-detection-cam11"
-                      cameraId="cam-11"
-                      name="视频4 - AI检测画面 摄像头2"
-                    />
-                  );
-                }
-                if (i === 0 && cam) {
-                  return (
-                    <CameraSlot
-                      key={cam.id}
-                      name={getDisplayName(cam)}
-                      streamUrl={cam.streamUrl}
-                      isOnline={cam.status === "online"}
-                      go2rtcId={cam.go2rtcId}
-                      cameraId={cam.id}
-                    />
-                  );
-                }
-                if (i === 0 && !cam) {
-                  return <LiveCameraSlot key="live" name="视频1 (本地)" activeAlarms={activeAlarms} onAck={handleAlarmAcknowledge} />;
-                }
-                return cam ? (
+              {Array.from({ length: gridMode }, (_, i) => {
+                const cam = slotCameras[i] ?? null;
+                if (!cam) return (
+                  <EmptySlot key={`e-${i}`} index={i} isFirstEmpty={i === slotCameras.filter(Boolean).length}
+                    activeAlarms={activeAlarms} onAck={handleAlarmAcknowledge} />
+                );
+                return (
                   <CameraSlot
                     key={cam.id}
-                    name={getDisplayName(cam)}
+                    name={cam.name}
                     streamUrl={cam.streamUrl}
                     isOnline={cam.status === "online"}
                     go2rtcId={cam.go2rtcId}
+                    httpMjpegUrl={cam.httpMjpegUrl}
                     cameraId={cam.id}
                   />
-                ) : (
-                  <EmptySlot key={`e-${i}`} index={i} isFirstEmpty={i === visibleCameras.length}
-                    activeAlarms={activeAlarms} onAck={handleAlarmAcknowledge} />
                 );
               })}
             </div>
@@ -518,40 +463,6 @@ export default function Monitor() {
 function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
   index: number; isFirstEmpty: boolean; activeAlarms: Set<AlarmType>; onAck: (type: AlarmType) => void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-
-  useEffect(() => {
-    if (!isFirstEmpty) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    let running = true;
-
-    const startStream = () => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.decoding = "async";
-      imgRef.current = img;
-      img.onload = () => {
-        if (!running || !canvas) return;
-        canvas.width = img.naturalWidth || 640;
-        canvas.height = img.naturalHeight || 480;
-        ctx.drawImage(img, 0, 0);
-        img.src = `/video_feed?cam=0&_=${Date.now()}`;
-      };
-      img.onerror = () => {
-        if (!running) return;
-        setTimeout(() => { if (running) startStream(); }, 5000);
-      };
-      img.src = `/video_feed?cam=0&_=${Date.now()}`;
-    };
-
-    startStream();
-    return () => { running = false; };
-  }, [isFirstEmpty]);
-
   if (!isFirstEmpty) {
     return (
       <div className="bg-zinc-900/80 rounded-lg border border-white/[0.04] flex items-center justify-center">
@@ -566,9 +477,10 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
 
   return (
     <div id="cam-slot-empty" className="relative bg-zinc-900/80 rounded-lg border border-white/[0.04] overflow-hidden group hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 w-full h-full object-cover"
+      <img
+        src="/video_feed?cam=0"
+        className="absolute inset-0 w-full h-full object-contain"
+        alt="Detection stream"
       />
       <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
         <span className="w-2 h-2 rounded-full bg-success-green animate-pulse" />
@@ -583,248 +495,72 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
   );
 }
 
-// ── AI 检测画面 ──
-
-function AIDetectionSlot({ cameraId, name }: { cameraId: string; name: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-
-  // Canvas 绘制隐藏 img 的帧 → 避免浏览器解码阻塞
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let running = true;
-
-    const startStream = () => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.decoding = "async";
-      imgRef.current = img;
-
-      img.onload = () => {
-        if (!running || !canvas) return;
-        canvas.width = img.naturalWidth || 640;
-        canvas.height = img.naturalHeight || 480;
-        ctx.drawImage(img, 0, 0);
-        setLoadFailed(false);
-        img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
-      };
-      img.onerror = () => {
-        if (!running) return;
-        setLoadFailed(true);
-        // 5s 后重连
-        setTimeout(() => {
-          if (running) startStream();
-        }, 5000);
-      };
-
-      img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
-    };
-
-    startStream();
-    return () => {
-      running = false;
-      abortRef.current?.abort();
-    };
-  }, [cameraId]);
-
-  return (
-    <div id={`cam-slot-ai-${cameraId}`} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-red-500/50 hover:shadow-[0_0_20px_rgba(220,38,38,0.18)] transition-all duration-300">
-      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
-        style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
-      <canvas
-        ref={canvasRef}
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ imageRendering: "auto" }}
-      />
-      {loadFailed && (
-        <div className="absolute inset-0 flex items-center justify-center z-10">
-          <div className="text-center px-4">
-            <VideoOff size={34} className="mx-auto text-red-400/70 mb-2" />
-            <p className="text-white/60 text-body-sm font-semibold">AI检测画面未连接</p>
-            <p className="text-white/30 text-caption mt-1">5秒后自动重连...</p>
-          </div>
-        </div>
-      )}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
-        <span className={cn("w-2 h-2 rounded-full", loadFailed ? "bg-red-400" : "bg-red-600 animate-pulse")} />
-        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
-          {name}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ── 本地实时摄像头 ──
-
-function LiveCameraSlot({ name, activeAlarms, onAck, slotId = "cam-slot-0" }: {
-  name: string; activeAlarms: Set<AlarmType>; onAck: (type: AlarmType) => void; slotId?: string;
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const startCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setError(null);
-    } catch (e: any) {
-      const name = e?.name ?? "";
-      if (name === "NotAllowedError") {
-        setError("摄像头权限被拒绝，请在浏览器设置中允许访问");
-      } else if (name === "NotFoundError") {
-        setError("未检测到摄像头设备");
-      } else {
-        setError(`摄像头错误: ${e?.message ?? "未知错误"}`);
-      }
-    }
-  }, []);
-
-  useEffect(() => { startCamera(); }, [startCamera]);
-
-  useEffect(() => {
-    return () => {
-      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
-    };
-  }, []);
-
-  return (
-    <div id={slotId} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
-      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
-        style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
-      {error ? (
-        <div className="absolute inset-0 flex items-center justify-center z-10">
-          <div className="text-center px-4">
-            <CameraOff size={32} className="mx-auto text-red-400/60 mb-2" />
-            <p className="text-white/50 text-body-sm">{error}</p>
-          </div>
-        </div>
-      ) : (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-      )}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
-        <span className={cn("w-2 h-2 rounded-full", error ? "bg-red-400" : "bg-success-green animate-pulse")} />
-        <span className="px-2 py-0.5 bg-black/60 backdrop-blur-sm rounded text-white/80 text-caption font-mono font-semibold">
-          {name}
-        </span>
-      </div>
-      {activeAlarms.size > 0 && (
-        <AlarmOverlay alarms={[...activeAlarms]} onAck={onAck} />
-      )}
-    </div>
-  );
-}
-
 // ── 摄像头卡片 ──
 
 function CameraSlot({
-  name, streamUrl, isOnline, go2rtcId, cameraId,
+  name, streamUrl, isOnline, go2rtcId, httpMjpegUrl, cameraId,
 }: {
   name: string;
   streamUrl: string;
   isOnline: boolean;
   go2rtcId?: string;
+  httpMjpegUrl?: string;
   cameraId: string;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const go2rtcPermFailed = useRef(false);
+  const [useFallback, setUseFallback] = useState(false);
   const hasGo2rtc = !!go2rtcId;
+  const hasHttpMjpeg = !!httpMjpegUrl;
   const go2rtcStreamId = go2rtcId || "cam_" + cameraId;
   const go2rtcUrl = `http://${window.location.hostname}:1984/stream.html?src=${go2rtcStreamId}`;
 
-  // Canvas 渲染 MJPEG，避免 <img> 解码阻塞
+  // go2rtc iframe 超时回退 — 8秒没加载完永久切换到 <img> MJPEG
   useEffect(() => {
-    if (hasGo2rtc) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!hasGo2rtc) return;
+    if (go2rtcPermFailed.current) {
+      if (!useFallback) setUseFallback(true);
+      return;
+    }
+    const timer = setTimeout(() => {
+      go2rtcPermFailed.current = true;
+      setUseFallback(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [cameraId, hasGo2rtc, useFallback]);
 
-    let running = true;
-
-    const startStream = () => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.decoding = "async";
-      imgRef.current = img;
-
-      img.onload = () => {
-        if (!running || !canvas) return;
-        canvas.width = img.naturalWidth || 640;
-        canvas.height = img.naturalHeight || 480;
-        ctx.drawImage(img, 0, 0);
-        setLoadFailed(false);
-        img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
-      };
-      img.onerror = () => {
-        if (!running) return;
-        setLoadFailed(true);
-        setTimeout(() => {
-          if (running) startStream();
-        }, 5000);
-      };
-
-      img.src = `/video_feed?cam=${cameraId}&_=${Date.now()}`;
-    };
-
-    startStream();
-    return () => {
-      running = false;
-      abortRef.current?.abort();
-    };
-  }, [cameraId, hasGo2rtc]);
+  // 没有 go2rtc 的摄像头直接用 <img> 标签（浏览器原生支持 MJPEG multipart）
+  useEffect(() => {
+    if (!hasGo2rtc && !useFallback) setUseFallback(true);
+  }, [hasGo2rtc, useFallback]);
 
   const handleIframeLoad = () => {
     if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+  };
+
+  const handleIframeError = () => {
+    go2rtcPermFailed.current = true;
+    setUseFallback(true);
   };
 
   return (
     <div id={`cam-slot-${cameraId}`} className="relative bg-zinc-900 rounded-lg overflow-hidden group border border-white/[0.04] hover:border-primary/40 hover:shadow-[0_0_20px_rgba(26,86,219,0.15)] transition-all duration-300">
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-900"
         style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.015) 10px, rgba(255,255,255,0.015) 20px)" }} />
-      {hasGo2rtc && !loadFailed ? (
+      {hasGo2rtc && !useFallback ? (
         <iframe
           src={go2rtcUrl}
           className="absolute inset-0 w-full h-full border-0"
           sandbox="allow-scripts allow-same-origin"
           allow="autoplay"
           onLoad={handleIframeLoad}
+          onError={handleIframeError}
         />
       ) : (
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ imageRendering: "auto" }}
+        <img
+          src={`/video_feed?cam=${cameraId}`}
+          className="absolute inset-0 w-full h-full object-contain"
+          alt={`Camera ${cameraId}`}
         />
       )}
       <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">

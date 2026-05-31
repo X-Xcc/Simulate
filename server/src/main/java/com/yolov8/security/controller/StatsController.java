@@ -4,6 +4,7 @@ import com.yolov8.security.model.Alert;
 import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.DetectionData;
 import com.yolov8.security.model.StatsResponse;
+import com.yolov8.security.model.SystemInfoDTO;
 import com.yolov8.security.config.AppConfig;
 import com.yolov8.security.config.DataCleanupTask;
 import com.yolov8.security.service.AlertService;
@@ -14,30 +15,21 @@ import com.yolov8.security.service.ModelInfoService;
 import com.yolov8.security.service.PythonScriptService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.web.multipart.MultipartFile;
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Base64;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.stream.Collectors;
 
+/**
+ * 统计、监控状态、检测控制、截图
+ */
 @RestController
 @RequestMapping("/api")
 public class StatsController {
@@ -74,6 +66,8 @@ public class StatsController {
         this.pythonScriptService = pythonScriptService;
     }
 
+    // ─── 统计 ───
+
     @GetMapping("/stats/summary")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getStatsSummary() {
         try {
@@ -82,7 +76,6 @@ public class StatsController {
             String yesterday = java.time.LocalDate.now().minusDays(1).toString();
             String[] behaviors = {"打架", "跌倒", "离岗", "人员聚集"};
 
-            // Count today & yesterday per behavior
             Map<String, Integer> todayCounts = new LinkedHashMap<>();
             Map<String, Integer> yesterdayCounts = new LinkedHashMap<>();
             for (String b : behaviors) {
@@ -101,7 +94,6 @@ public class StatsController {
                 }
             }
 
-            // behaviorCounts = today's counts
             Map<String, Integer> behaviorCounts = new LinkedHashMap<>();
             int total = 0;
             for (String b : behaviors) {
@@ -110,7 +102,6 @@ public class StatsController {
                 total += count;
             }
 
-            // compare = today vs yesterday with change %
             Map<String, Object> compare = new LinkedHashMap<>();
             for (String b : behaviors) {
                 int t = todayCounts.getOrDefault(b, 0);
@@ -146,258 +137,6 @@ public class StatsController {
         }
     }
 
-    @GetMapping("/detections")
-    public ResponseEntity<List<DetectionData>> getDetections() {
-        try {
-            List<DetectionData> detections = detectionService.getDetections();
-            return ResponseEntity.ok(detections);
-        } catch (Exception e) {
-            log.error("Error getting detections", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @GetMapping("/recent_frames")
-    public ResponseEntity<List<String>> getRecentFrames() {
-        try {
-            List<String> frames = detectionService.getRecentFrames();
-            return ResponseEntity.ok(frames);
-        } catch (Exception e) {
-            log.error("Error getting recent frames", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @GetMapping("/all_frames")
-    public ResponseEntity<List<String>> getAllFrames() {
-        try {
-            List<String> frames = detectionService.getAllFrames();
-            return ResponseEntity.ok(frames);
-        } catch (Exception e) {
-            log.error("Error getting all frames", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @GetMapping("/images")
-    public ResponseEntity<Map<String, Object>> getAllImages() {
-        try {
-            Map<String, Object> result = detectionService.getAllImages();
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("Error getting all images", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @GetMapping("/images/{filename}")
-    public ResponseEntity<Resource> getImage(@PathVariable String filename) {
-        try {
-            Path base = Paths.get(appConfig.getFile().getUploadDir()).toAbsolutePath().normalize();
-            Path imagePath = base.resolve(filename).normalize();
-            if (!imagePath.startsWith(base)) {
-                return ResponseEntity.notFound().build();
-            }
-            if (!Files.exists(imagePath) || !Files.isRegularFile(imagePath)) {
-                return ResponseEntity.notFound().build();
-            }
-
-            Resource resource = new FileSystemResource(imagePath);
-            String lower = filename.toLowerCase();
-            MediaType mediaType = lower.endsWith(".png")
-                    ? MediaType.IMAGE_PNG
-                    : MediaType.IMAGE_JPEG;
-
-            return ResponseEntity.ok()
-                    .contentType(mediaType)
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "inline; filename=\"" + filename + "\"")
-                    .body(resource);
-        } catch (Exception e) {
-            log.error("Error getting image: {}", filename, e);
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/images/{folder}/{filename}")
-    public ResponseEntity<Resource> getImageInFolder(@PathVariable String folder,
-                                                      @PathVariable String filename) {
-        try {
-            Path base = Paths.get(appConfig.getFile().getUploadDir()).toAbsolutePath().normalize();
-            String fullPath = folder + "/" + filename;
-            Path imagePath = base.resolve(fullPath).normalize();
-            if (!imagePath.startsWith(base)) {
-                return ResponseEntity.notFound().build();
-            }
-            if (!Files.exists(imagePath) || !Files.isRegularFile(imagePath)) {
-                return ResponseEntity.notFound().build();
-            }
-
-            Resource resource = new FileSystemResource(imagePath);
-            String lower = filename.toLowerCase();
-            MediaType mediaType = lower.endsWith(".png")
-                    ? MediaType.IMAGE_PNG
-                    : MediaType.IMAGE_JPEG;
-
-            return ResponseEntity.ok()
-                    .contentType(mediaType)
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "inline; filename=\"" + filename + "\"")
-                    .body(resource);
-        } catch (Exception e) {
-            log.error("Error getting image: {}/{}", folder, filename, e);
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/monitor_status")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getMonitorStatus() {
-        try {
-            Map<String, Object> status = detectionService.getMonitorStatus();
-            return ResponseEntity.ok(ApiResponse.success(status));
-        } catch (Exception e) {
-            log.error("Error getting monitor status", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @DeleteMapping("/delete_all_images")
-    public ResponseEntity<Map<String, Object>> deleteAllImages() {
-        try {
-            Map<String, Object> result = detectionService.deleteAllImages();
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("Error deleting images", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @PostMapping("/cleanup")
-    public ResponseEntity<Map<String, Object>> cleanupOldFiles() {
-        try {
-            dataCleanupTask.cleanOldFiles();
-            return ResponseEntity.ok(Map.of("status", "success", "message", "Cleanup triggered"));
-        } catch (Exception e) {
-            log.error("Manual cleanup failed", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status", "error", "message", e.getMessage()));
-        }
-    }
-
-    @PostMapping("/open_folder")
-    public ResponseEntity<Map<String, Object>> openFolder(@RequestBody Map<String, String> request) {
-        try {
-            String folderType = request.get("folder_type");
-            Map<String, Object> result = detectionService.openFolder(folderType);
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("Error opening folder", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    // 帧接收端点 — Python检测完一帧后POST JPEG到这里
-    // 演讲提示: "这是Python→Java的桥梁，Python检测完画好框，
-    //           把JPEG图片+摄像头ID+人数发过来"
-    @PostMapping("/update_frame")
-    public ResponseEntity<Map<String, Object>> updateFrame(
-            @RequestParam("frame") MultipartFile frame,
-            @RequestParam(value = "cam", required = false, defaultValue = "0") String cam,
-            @RequestParam(value = "person_count", required = false, defaultValue = "0") int personCount) {
-        try {
-            ByteArrayInputStream bais = new ByteArrayInputStream(frame.getBytes());
-            BufferedImage frameImg = ImageIO.read(bais);
-            videoStreamController.updateFrame(frameImg, cam, personCount);
-            SystemMetricsController.notifyFrameReceived();
-
-            Map<String, Object> result = Map.of(
-                "status", "success",
-                "message", "Frame received"
-            );
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("Error updating frame", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @PostMapping("/gpu_status")
-    public ResponseEntity<Map<String, Object>> updateGpuStatus(@RequestBody Map<String, Object> gpuData) {
-        try {
-            Object gpuPercent = gpuData.get("gpuPercent");
-            if (gpuPercent instanceof Number) {
-                SystemMetricsController.updateGpuPercent(((Number) gpuPercent).doubleValue());
-            }
-            return ResponseEntity.ok(Map.of("status", "success"));
-        } catch (Exception e) {
-            log.error("Error updating GPU status", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @PostMapping("/model_info")
-    public ResponseEntity<Map<String, Object>> updateModelInfo(@RequestBody Map<String, Object> modelInfo) {
-        try {
-            modelInfoService.updateModelInfo(modelInfo);
-            Map<String, Object> result = Map.of(
-                "status", "success",
-                "message", "Model info updated"
-            );
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("Error updating model info", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @GetMapping("/model_info")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getModelInfo() {
-        try {
-            Map<String, Object> modelInfo = modelInfoService.getModelInfo();
-            return ResponseEntity.ok(ApiResponse.success(modelInfo));
-        } catch (Exception e) {
-            log.error("Error getting model info", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @GetMapping("/system_info")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getSystemInfo() {
-        try {
-            Map<String, Object> info = detectionService.getSystemInfo();
-            return ResponseEntity.ok(ApiResponse.success(info));
-        } catch (Exception e) {
-            log.error("Error getting system info", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    @GetMapping("/export/csv")
-    public ResponseEntity<byte[]> exportCsv() {
-        try {
-            List<DetectionData> detections = detectionService.getDetections();
-            StringBuilder csv = new StringBuilder();
-            csv.append("timestamp,person_count,actions,fps,image_filename\n");
-            for (DetectionData det : detections) {
-                csv.append(String.format("\"%s\",%d,\"%s\",%.1f,\"%s\"\n",
-                    det.getTimestamp(),
-                    det.getPersonCount(),
-                    det.getActions() != null ? String.join(";", det.getActions()) : "",
-                    det.getFps(),
-                    det.getImageFilename() != null ? det.getImageFilename() : ""
-                ));
-            }
-            byte[] bytes = csv.toString().getBytes(StandardCharsets.UTF_8);
-            return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=detections.csv")
-                .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
-                .body(bytes);
-        } catch (Exception e) {
-            log.error("导出CSV失败", e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
-
     @GetMapping("/stats/trend")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getTrendStats(@RequestParam(defaultValue = "day") String range) {
         int dataPoints = "week".equals(range) ? 7 : "month".equals(range) ? 30 : 24;
@@ -407,7 +146,6 @@ public class StatsController {
 
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
 
-        // Initialize 4 behavior buckets
         List<String> labels = new ArrayList<>();
         String[] behaviorTypes = {"打架", "跌倒", "离岗", "人员聚集"};
         java.util.Map<String, java.util.Map<String, Integer>> behaviorBuckets = new java.util.LinkedHashMap<>();
@@ -422,7 +160,6 @@ public class StatsController {
         }
         labels.addAll(behaviorBuckets.get(behaviorTypes[0]).keySet());
 
-        // Aggregate from alerts (spread across the day, not just recent detection files)
         try {
             List<Alert> alerts = alertService.getAllAlerts();
             for (Alert alert : alerts) {
@@ -442,7 +179,6 @@ public class StatsController {
             log.warn("Failed to aggregate trend data from alerts", e);
         }
 
-        // Build per-behavior data lists
         java.util.Map<String, List<Integer>> dataByBehavior = new java.util.LinkedHashMap<>();
         for (String type : behaviorTypes) {
             dataByBehavior.put(type, new ArrayList<>(behaviorBuckets.get(type).values()));
@@ -500,6 +236,28 @@ public class StatsController {
         }
     }
 
+    @GetMapping("/system_info")
+    public ResponseEntity<ApiResponse<SystemInfoDTO>> getSystemInfo() {
+        try {
+            SystemInfoDTO info = detectionService.getSystemInfo();
+            return ResponseEntity.ok(ApiResponse.success(info));
+        } catch (Exception e) {
+            log.error("Error getting system info", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/detections")
+    public ResponseEntity<List<DetectionData>> getDetections() {
+        try {
+            List<DetectionData> detections = detectionService.getDetections();
+            return ResponseEntity.ok(detections);
+        } catch (Exception e) {
+            log.error("Error getting detections", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     @GetMapping("/evidence/list")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getEvidenceList(
             @RequestParam(required = false) String date,
@@ -522,12 +280,10 @@ public class StatsController {
             if (type != null && !type.isEmpty()) {
                 stream = stream.filter(d -> d.getActions() != null && d.getActions().contains(type));
             }
-            // When browsing "all clips", only show detections that have images
             if (!"true".equals(actionsOnly)) {
                 stream = stream.filter(d -> d.getImageFilename() != null);
             }
 
-            // Sort newest first
             List<DetectionData> filtered = stream
                 .sorted((a, b) -> {
                     String ta = a.getTimestamp() != null ? a.getTimestamp() : "";
@@ -540,7 +296,6 @@ public class StatsController {
             int to = Math.min(from + size, total);
             List<DetectionData> pageItems = filtered.subList(from, to);
 
-            // Build response with image URLs
             List<Map<String, Object>> items = new ArrayList<>();
             for (DetectionData det : pageItems) {
                 Map<String, Object> item = new LinkedHashMap<>();
@@ -602,6 +357,46 @@ public class StatsController {
         }
     }
 
+    // ─── 模型 & GPU ───
+
+    @PostMapping("/model_info")
+    public ResponseEntity<Map<String, Object>> updateModelInfo(@RequestBody Map<String, Object> modelInfo) {
+        try {
+            modelInfoService.updateModelInfo(modelInfo);
+            return ResponseEntity.ok(Map.of("status", "success", "message", "Model info updated"));
+        } catch (Exception e) {
+            log.error("Error updating model info", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/model_info")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getModelInfo() {
+        try {
+            Map<String, Object> modelInfo = modelInfoService.getModelInfo();
+            return ResponseEntity.ok(ApiResponse.success(modelInfo));
+        } catch (Exception e) {
+            log.error("Error getting model info", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/gpu_status")
+    public ResponseEntity<Map<String, Object>> updateGpuStatus(@RequestBody Map<String, Object> gpuData) {
+        try {
+            Object gpuPercent = gpuData.get("gpuPercent");
+            if (gpuPercent instanceof Number) {
+                SystemMetricsController.updateGpuPercent(((Number) gpuPercent).doubleValue());
+            }
+            return ResponseEntity.ok(Map.of("status", "success"));
+        } catch (Exception e) {
+            log.error("Error updating GPU status", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // ─── 检测控制 ───
+
     @PostMapping("/detection/start")
     public ResponseEntity<ApiResponse<Map<String, Object>>> startDetection() {
         try {
@@ -635,6 +430,34 @@ public class StatsController {
         }
     }
 
+    // ─── 清理 & 打开文件夹 ───
+
+    @PostMapping("/cleanup")
+    public ResponseEntity<Map<String, Object>> cleanupOldFiles() {
+        try {
+            dataCleanupTask.cleanOldFiles();
+            return ResponseEntity.ok(Map.of("status", "success", "message", "Cleanup triggered"));
+        } catch (Exception e) {
+            log.error("Manual cleanup failed", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", "error", "message", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/open_folder")
+    public ResponseEntity<Map<String, Object>> openFolder(@RequestBody Map<String, String> request) {
+        try {
+            String folderType = request.get("folder_type");
+            Map<String, Object> result = detectionService.openFolder(folderType);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            log.error("Error opening folder", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // ─── 截图 ───
+
     @PostMapping("/screenshot")
     public ResponseEntity<ApiResponse<Map<String, Object>>> takeScreenshot(
             @RequestBody Map<String, Object> body) {
@@ -649,7 +472,6 @@ public class StatsController {
                     .body(ApiResponse.error("不支持的报警类型: " + type + "，可选: fight/fall/suicide/gathering"));
             }
 
-            // 获取摄像头列表
             final List<String> filterIds;
             Object rawCameraIds = body.get("cameraIds");
             if (rawCameraIds instanceof List<?> rawList) {
@@ -688,12 +510,10 @@ public class StatsController {
                         continue;
                     }
 
-                    // 存储 detection + frame
                     List<String> actions = List.of(zhType);
                     DetectionData det = detectionService.saveManualDetection(
                         jpeg, cam.getId(), cam.getName(), actions);
 
-                    // 创建 Alert
                     Alert alert = new Alert();
                     alert.setType(zhType);
                     alert.setLevel("suicide".equals(type) ? "high" : "medium");
@@ -718,7 +538,6 @@ public class StatsController {
                     .body(ApiResponse.error("截图服务不可用: " + String.join("; ", failures)));
             }
 
-            // SSE 广播更新的报警列表
             KanbanEventBus.publish("alerts", alertService.getAllAlerts());
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -735,10 +554,6 @@ public class StatsController {
         }
     }
 
-    /**
-     * 上传前端捕获的 base64 截图到服务器，保存到 evidence 目录，并创建 Alert 记录。
-     * 前端 Monitor 页面手动报警时调用。
-     */
     @PostMapping("/screenshot/upload")
     public ResponseEntity<ApiResponse<Map<String, Object>>> uploadScreenshot(
             @RequestBody Map<String, Object> body) {
@@ -752,7 +567,6 @@ public class StatsController {
                 return ResponseEntity.badRequest().body(ApiResponse.error("base64 参数必填"));
             }
 
-            // 去掉 data URL 前缀（如果有）
             if (base64Data.contains(",")) {
                 base64Data = base64Data.split(",")[1];
             }
@@ -762,10 +576,8 @@ public class StatsController {
             String zhType = ALARM_TYPE_MAP.getOrDefault(alarmType, "打架");
             String level = "suicide".equals(alarmType) ? "high" : "medium";
 
-            // 保存到 evidence 目录
             DetectionData det = detectionService.saveManualDetection(jpeg, cameraId, cameraName, List.of(zhType));
 
-            // 创建 Alert
             Alert alert = new Alert();
             alert.setType(zhType);
             alert.setLevel(level);
@@ -778,7 +590,6 @@ public class StatsController {
             alert.setConfidence(100.0);
             alertService.addAlert(alert);
 
-            // SSE 广播更新
             KanbanEventBus.publish("alerts", alertService.getAllAlerts());
 
             Map<String, Object> result = new LinkedHashMap<>();
@@ -797,7 +608,7 @@ public class StatsController {
 
     @PostMapping("/upload_training_resource")
     public ResponseEntity<ApiResponse<Map<String, Object>>> uploadTrainingResource(
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
         try {
             if (file.isEmpty()) {
                 return ResponseEntity.badRequest().body(ApiResponse.error("文件为空"));
@@ -816,10 +627,10 @@ public class StatsController {
             String type = (ext.equals(".mp4") || ext.equals(".avi")) ? "video" : "image";
             String uniqueName = "training_" + System.currentTimeMillis() + ext;
 
-            Path dir = Paths.get(appConfig.getFile().getUploadDir(), "training");
-            Files.createDirectories(dir);
-            Path target = dir.resolve(uniqueName);
-            Files.copy(file.getInputStream(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            java.nio.file.Path dir = java.nio.file.Paths.get(appConfig.getFile().getUploadDir(), "training");
+            java.nio.file.Files.createDirectories(dir);
+            java.nio.file.Path target = dir.resolve(uniqueName);
+            java.nio.file.Files.copy(file.getInputStream(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
             log.info("训练素材已上传: {} -> {}", originalName, target);
 
