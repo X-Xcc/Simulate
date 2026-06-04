@@ -5,9 +5,9 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { fetchCameras, takeScreenshot, uploadScreenshot } from "../services/dataService";
+import { fetchCameras, uploadScreenshot } from "../services/dataService";
+import { apiPost } from "../lib/api";
 import { useAlarmSound } from "../hooks/useAlarmSound";
-import { useMockStore } from "../lib/mockStore";
 import { Camera, Alert, AlertLevel, AlertType } from "../types";
 
 type GridMode = 2 | 4 | 8 | 16;
@@ -165,7 +165,7 @@ function AlarmFullscreenDialog({
   const cfg = ALARM_CONFIGS[alarmType];
   const c = cfg.hex;
 
-  const alarmCamera = cameras.find(c => c.id === "cam-11") ?? cameras[1] ?? cameras[0]; // 报警时弹出摄像头2
+  const alarmCamera = cameras[0]; // 显示第一个可用摄像头
   const alarmCameraGo2rtcId = alarmCamera?.go2rtcId || (alarmCamera ? `cam_${alarmCamera.id}` : undefined);
 
   return (
@@ -191,7 +191,7 @@ function AlarmFullscreenDialog({
             <div className="absolute top-4 left-4 z-30 flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-red-600 animate-pulse" />
               <span className="px-3 py-1 bg-black/70 backdrop-blur-sm rounded text-white text-sm font-mono font-semibold">
-                报警画面 - 摄像头2
+                报警画面 - {alarmCamera.name}
               </span>
             </div>
             <AlarmOverlay alarms={[alarmType]} onAck={(type, isFalse) => onAck(type, !!isFalse)} />
@@ -245,11 +245,7 @@ export default function Monitor() {
       try {
         const data = await fetchCameras();
         if (!cancelled) {
-          // 深度比较避免相同数据触发重渲染导致视频流重置
-          setCameras(prev => {
-            if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
-            return data;
-          });
+          setCameras(data);
           setLoading(false);
         }
       } catch {
@@ -271,7 +267,7 @@ export default function Monitor() {
 
     const alarmCam = cameras[1] ?? cameras[0];
 
-    // 本地截帧（用于 Monitor 页面弹窗即时展示）
+    // 本地截帧
     const captured = captureFrame("cam-slot-" + alarmCam?.id)
       || captureFrame("cam-slot-0")
       || captureFrame("cam-slot-empty")
@@ -280,69 +276,46 @@ export default function Monitor() {
     const { type: alertType, level } = ALARM_TO_ALERT[type];
     const cfg = ALARM_CONFIGS[type];
     const cam = alarmCam;
+    const now = new Date().toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
-    // 先用本地截图显示弹窗
     const alert: Alert = {
       id: `ALT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       cameraId: cam?.id ?? "cam-001",
       cameraName: cam?.name ?? "视频1",
       type: alertType,
       level,
-      time: new Date().toISOString(),
+      time: now,
       snapshotUrl: captured,
       status: "pending",
       confidence: +(85 + Math.random() * 14).toFixed(1),
       duration: "00:00:00",
       message: cfg.msg,
     };
-    useMockStore.getState().addAlert(alert);
 
-    // 上传截图到服务器保存，跨刷新保留
+    // 调用真实 API 创建告警 → SSE 广播到 Dashboard 等所有页面
+    try {
+      await apiPost("/api/alerts", alert);
+    } catch (err) {
+      console.warn("创建告警失败:", err);
+    }
+
+    // 上传截图
     if (captured) {
       try {
-        const result = await uploadScreenshot({
+        await uploadScreenshot({
           base64: captured,
           type,
           cameraId: cam?.id ?? "cam-001",
           cameraName: cam?.name ?? "视频1",
         });
-        // 服务器返回真实 URL，更新到 mockStore
-        if (result?.snapshotUrl) {
-          useMockStore.setState(state => ({
-            alerts: state.alerts.map(a =>
-              a.id === alert.id ? { ...a, snapshotUrl: result.snapshotUrl } : a
-            ),
-          }));
-        }
       } catch (err) {
         console.warn("上传截图失败:", err);
       }
     }
 
-    useMockStore.setState(s => ({ evidenceBump: s.evidenceBump + 1 }));
   }, [cameras]);
 
-  const handleAlarmAcknowledge = useCallback((type: AlarmType, isFalseAlarm: boolean = false) => {
-    // 如果是误报，也记录到 mockStore
-    if (isFalseAlarm) {
-      const cfg = ALARM_CONFIGS[type];
-      const cam = cameras[0];
-      const alert: Alert = {
-        id: `ALT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        cameraId: cam?.id ?? "cam-001",
-        cameraName: cam?.name ?? "视频1",
-        type: ALARM_TO_ALERT[type].type,
-        level: AlertLevel.WARNING,
-        time: new Date().toISOString(),
-        snapshotUrl: "",
-        status: "ignored",
-        confidence: 0,
-        duration: "00:00:00",
-        message: `[误报] ${cfg.msg}`,
-      };
-      useMockStore.getState().addAlert(alert);
-    }
-
+  const handleAlarmAcknowledge = useCallback((type: AlarmType, _isFalseAlarm: boolean = false) => {
     setActiveAlarms(prev => {
       const next = new Set(prev);
       next.delete(type);
@@ -351,17 +324,21 @@ export default function Monitor() {
       }
       return next;
     });
-  }, [cameras]);
+  }, []);
 
-  // Alt+X/C/V/B 快捷键触发报警
+  // Alt+X/C/V/B 快捷键触发报警（带确认防止误触）
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      console.log("[alarm-hotkey]", e.key, "alt=", e.altKey);
       if (!e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       const map: Record<string, AlarmType> = { x: "fight", c: "fall", v: "suicide", d: "gathering" };
       const type = map[e.key.toLowerCase()];
-      if (type) { e.preventDefault(); console.log("[alarm-hotkey] triggered:", type); handleAlarmTrigger(type); }
+      if (type) {
+        e.preventDefault();
+        if (window.confirm(`确认触发 ${ALARM_CONFIGS[type].label}？`)) {
+          handleAlarmTrigger(type);
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
