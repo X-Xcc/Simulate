@@ -30,7 +30,8 @@ class AlertManager:
                 self.last_alert_time = current_time
                 alert_triggered = True
             else:
-                frame = self._draw_alert_banner(frame)
+                # cooldown 中，不画横幅
+                pass
 
         return frame, alert_triggered
 
