@@ -1,5 +1,5 @@
 import { Camera, DiscoveredCamera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse, AnnotationData, ImageItem } from "../types";
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken, API_BASE } from "../lib/api";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, subscribeSse, setToken, clearToken, API_BASE } from "../lib/api";
 
 // --- Camera Config ---
 
@@ -72,49 +72,39 @@ export function subscribeToCameras(callback: (cameras: Camera[]) => void): () =>
   refreshActive();
   const timer = setInterval(refreshActive, 5000);
 
-  const unsub = createSseConnection({
-    onCameras: (data: any) => {
-      if (!Array.isArray(data)) { callback([]); return; }
-      const cameras = data.map((raw: any) => transformCamera(raw, activeCamIds));
-      callback(cameras);
-    },
-    onCameraStats: () => refreshActive(),
+  const unsubCameras = subscribeSse("cameras", (data: any) => {
+    if (!Array.isArray(data)) { callback([]); return; }
+    const cameras = data.map((raw: any) => transformCamera(raw, activeCamIds));
+    callback(cameras);
   });
+  const unsubStats = subscribeSse("camera_stats", () => refreshActive());
 
-  return () => { clearInterval(timer); unsub(); };
+  return () => { clearInterval(timer); unsubCameras(); unsubStats(); };
 }
 
 export function subscribeToAlerts(callback: (alerts: Alert[]) => void): () => void {
-  return createSseConnection({
-    onAlerts: (data: any) => callback(Array.isArray(data) ? data : []),
-  });
+  return subscribeSse("alerts", (data: any) => callback(Array.isArray(data) ? data : []));
 }
 
 export function subscribeToSystemStatus(callback: (status: SystemStatus) => void): () => void {
-  return createSseConnection({
-    onSystemMetrics: (data: any) => callback(transformSystemMetrics(data)),
-  });
+  return subscribeSse("system_metrics", (data: any) => callback(transformSystemMetrics(data)));
 }
 
 export function subscribeToAuditLogs(callback: (logs: AuditLog[]) => void): () => void {
-  return createSseConnection({
-    onAuditLogs: (data: any) => callback(Array.isArray(data) ? data : []),
-  });
+  return subscribeSse("audit_logs", (data: any) => callback(Array.isArray(data) ? data : []));
 }
 
 // --- Camera Stats ---
 
 export function subscribeToCameraStats(callback: (stats: Record<string, number>) => void): () => void {
-  return createSseConnection({
-    onCameraStats: (data: any) => {
-      if (data?.cameras) {
-        const map: Record<string, number> = {};
-        for (const c of data.cameras) {
-          map[c.camId] = c.personCount ?? 0;
-        }
-        callback(map);
+  return subscribeSse("camera_stats", (data: any) => {
+    if (data?.cameras) {
+      const map: Record<string, number> = {};
+      for (const c of data.cameras) {
+        map[c.camId] = c.personCount ?? 0;
       }
-    },
+      callback(map);
+    }
   });
 }
 
