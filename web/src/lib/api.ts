@@ -15,22 +15,11 @@ export function clearToken(): void {
   localStorage.removeItem("jwt_token");
 }
 
-// ┌──────────────────────────────────────────────────────────────┐
-// │  API 缓存层 — 30s 内存缓存 + 并发请求去重                     │
-// │  演讲提示: "10 个组件同时请求同一个 URL，                      │
-// │            实际只发 1 次 HTTP 请求，其余走缓存。               │
-// │            GET 自动走缓存，POST/PUT/DELETE 自动失效对应前缀缓存"│
-// └──────────────────────────────────────────────────────────────┘
-
+// 缓存层
 const cache = new Map<string, { data: any; ts: number }>();
-const CACHE_TTL = 30_000; // 30s
+const CACHE_TTL = 30_000;
 const pending = new Map<string, Promise<any>>();
 
-function cacheKey(path: string): string {
-  return path;
-}
-
-/** Invalidate all cache entries matching a path prefix. Call after mutations. */
 function invalidateCache(prefix: string): void {
   for (const key of cache.keys()) {
     if (key.startsWith(prefix)) cache.delete(key);
@@ -38,27 +27,22 @@ function invalidateCache(prefix: string): void {
 }
 
 async function cachedFetch<T>(path: string, fetchFn: () => Promise<T>): Promise<T> {
-  const key = cacheKey(path);
-
-  // 1. 缓存命中 (30 秒内)
-  const entry = cache.get(key);
+  const entry = cache.get(path);
   if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data as T;
-
-  // 2. 并发去重: 同一 URL 的重复请求复用同一个 Promise
-  if (pending.has(key)) return pending.get(key) as Promise<T>;
-
-  // 3. 首次请求: 发起 HTTP，成功后写入缓存
+  if (pending.has(path)) return pending.get(path) as Promise<T>;
   const promise = fetchFn().then(data => {
-    cache.set(key, { data, ts: Date.now() });
-    pending.delete(key);
+    cache.set(path, { data, ts: Date.now() });
+    pending.delete(path);
     return data;
   }).catch(err => {
-    pending.delete(key);
+    pending.delete(path);
     throw err;
   });
-  pending.set(key, promise);
+  pending.set(path, promise);
   return promise;
 }
+
+// SSE 连接
 
 // --- REST fetch wrapper ---
 
@@ -80,6 +64,13 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
 
 // --- Typed API helpers ---
 
+function unwrapResponse(json: any): any {
+  if (json && typeof json === "object" && "data" in json) {
+    return json.data;
+  }
+  return json;
+}
+
 function handleResponseError(res: Response, body: any): never {
   if (res.status === 401) {
     clearToken();
@@ -98,7 +89,7 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
       handleResponseError(res, err);
     }
     const json = await res.json();
-    return (json.data !== undefined ? json.data : json) as T;
+    return unwrapResponse(json) as T;
   });
 }
 
@@ -110,7 +101,7 @@ export async function apiPost<T>(path: string, body: any, signal?: AbortSignal):
     handleResponseError(res, err);
   }
   const json = await res.json();
-  return json.data !== undefined ? json.data : json;
+  return unwrapResponse(json);
 }
 
 /** Upload a file via multipart/form-data. */
@@ -131,7 +122,7 @@ export async function apiUpload<T>(path: string, file: File, onProgress?: (pct: 
       try {
         const json = JSON.parse(xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(json.data !== undefined ? json.data : json);
+          resolve(unwrapResponse(json));
         } else {
           reject(new Error(json.error || json.message || "上传失败"));
         }
@@ -157,7 +148,7 @@ export async function apiPatch<T>(path: string, body: any, signal?: AbortSignal)
     handleResponseError(res, err);
   }
   const json = await res.json();
-  return json.data !== undefined ? json.data : json;
+  return unwrapResponse(json);
 }
 
 export async function apiPut<T>(path: string, body: any, signal?: AbortSignal): Promise<T> {
@@ -168,7 +159,7 @@ export async function apiPut<T>(path: string, body: any, signal?: AbortSignal): 
     handleResponseError(res, err);
   }
   const json = await res.json();
-  return json.data !== undefined ? json.data : json;
+  return unwrapResponse(json);
 }
 
 export async function apiDelete<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -179,98 +170,52 @@ export async function apiDelete<T>(path: string, signal?: AbortSignal): Promise<
     handleResponseError(res, err);
   }
   const json = await res.json();
-  return json.data !== undefined ? json.data : json;
+  return unwrapResponse(json);
 }
 
-// --- SSE connection — singleton EventSource shared by all subscribers ---
-
-export type SseCallback = (data: any) => void;
+// --- SSE ---
 
 const SSE_EVENT_TYPES = ["cameras", "alerts", "system_metrics", "audit_logs", "camera_stats"] as const;
+type SseEventType = typeof SSE_EVENT_TYPES[number];
+type SseCallback = (data: any) => void;
 
 const sseSubscribers = new Map<string, Set<SseCallback>>();
 let sseEventSource: EventSource | null = null;
-let sseSubscriberCount = 0;
 let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let sseReconnectDelay = 3000; // 指数退避初始值 3s
-const SSE_MAX_RECONNECT_DELAY = 60000; // 最大 60s
 
-// ┌──────────────────────────────────────────────────────────────┐
-// │  ensureSseConnection — 创建单例 EventSource 连接              │
-// │  演讲提示: "创建 EventSource 连接到 /api/sse/stream，          │
-// │            5 种事件类型各绑定一个 addEventListener 监听器，    │
-// │            断线后指数退避自动重连(3s→6s→12s→24s→48s→60s max)  │
-// │            成功连接后重置计时器"                               │
-// └──────────────────────────────────────────────────────────────┘
 function ensureSseConnection(): void {
   if (sseEventSource && sseEventSource.readyState !== EventSource.CLOSED) return;
   if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
 
   const es = new EventSource(`${API_BASE}/api/sse/stream`);
 
-  es.addEventListener("system_metrics", (e: MessageEvent) => handleSseEvent("system_metrics", e));
-  es.addEventListener("cameras", (e: MessageEvent) => handleSseEvent("cameras", e));
-  es.addEventListener("alerts", (e: MessageEvent) => handleSseEvent("alerts", e));
-  es.addEventListener("audit_logs", (e: MessageEvent) => handleSseEvent("audit_logs", e));
-  es.addEventListener("camera_stats", (e: MessageEvent) => handleSseEvent("camera_stats", e));
-
-  es.onopen = () => {
-    // 连接成功，重置退避计时器
-    sseReconnectDelay = 3000;
-  };
+  for (const type of SSE_EVENT_TYPES) {
+    es.addEventListener(type, (e: MessageEvent) => {
+      const subs = sseSubscribers.get(type);
+      if (!subs || subs.size === 0) return;
+      let data: any;
+      try {
+        data = JSON.parse(e.data);
+        if (typeof data === "string") data = JSON.parse(data);
+      } catch { return; }
+      subs.forEach(cb => { try { cb(data); } catch {} });
+    });
+  }
 
   es.onerror = () => {
     es.close();
     sseEventSource = null;
-    // Auto-reconnect if subscribers still active (指数退避)
-    if (sseSubscriberCount > 0) {
-      sseReconnectTimer = setTimeout(() => ensureSseConnection(), sseReconnectDelay);
-      sseReconnectDelay = Math.min(sseReconnectDelay * 2, SSE_MAX_RECONNECT_DELAY);
+    if (sseSubscribers.size > 0) {
+      sseReconnectTimer = setTimeout(ensureSseConnection, 5000);
     }
   };
 
   sseEventSource = es;
 }
 
-// ┌──────────────────────────────────────────────────────────────┐
-// │  handleSseEvent — 解析 SSE 数据并分发到订阅者                │
-// │  演讲提示: "后端 SSE 数据是双重 JSON 编码，                   │
-// │            先 JSON.parse 得到字符串，再 parse 一次得到对象，   │
-// │            解析后遍历该事件类型的所有订阅者回调逐个通知"       │
-// └──────────────────────────────────────────────────────────────┘
-function handleSseEvent(eventType: string, e: MessageEvent) {
-  const subs = sseSubscribers.get(eventType);
-  if (!subs || subs.size === 0) return;
-  let data: any;
-  try {
-    data = JSON.parse(e.data);
-    // Backend double-JSON-encodes SSE data — first parse yields a string
-    if (typeof data === "string") {
-      data = JSON.parse(data);
-    }
-  } catch (err) {
-    console.error("SSE parse error", eventType, err);
-    return;
-  }
-  subs.forEach(cb => { try { cb(data); } catch (err) { console.error("SSE callback error", eventType, err); } });
-}
-
-// ┌──────────────────────────────────────────────────────────────┐
-// │  subscribeSse — 单例 EventSource + 引用计数管理               │
-// │  演讲提示: "第一个订阅者调用时创建 SSE 连接，                 │
-// │            返回的 unsubscribe 函数在组件 unmount 时调用，     │
-// │            引用计数归零则关闭 EventSource 释放资源，           │
-// │            5 种事件类型(cameras/alerts/system_metrics/        │
-// │            audit_logs/camera_stats)共享一条连接"              │
-// └──────────────────────────────────────────────────────────────┘
 export function subscribeSse(eventType: string, callback: SseCallback): () => void {
-  if (!sseSubscribers.has(eventType)) {
-    sseSubscribers.set(eventType, new Set());
-  }
+  if (!sseSubscribers.has(eventType)) sseSubscribers.set(eventType, new Set());
   sseSubscribers.get(eventType)!.add(callback);
-  sseSubscriberCount++;
-
-  // Lazy-start after first subscriber registers
   ensureSseConnection();
 
   return () => {
@@ -279,29 +224,11 @@ export function subscribeSse(eventType: string, callback: SseCallback): () => vo
       subs.delete(callback);
       if (subs.size === 0) sseSubscribers.delete(eventType);
     }
-    sseSubscriberCount--;
-    if (sseSubscriberCount <= 0 && sseEventSource) {
+    if (sseSubscribers.size === 0 && sseEventSource) {
       sseEventSource.close();
       sseEventSource = null;
     }
   };
-}
-
-/** @deprecated — use subscribeSse per event type instead */
-export function createSseConnection(callbacks: {
-  onCameras?: SseCallback;
-  onAlerts?: SseCallback;
-  onSystemMetrics?: SseCallback;
-  onAuditLogs?: SseCallback;
-  onCameraStats?: SseCallback;
-}): () => void {
-  const unsubs: (() => void)[] = [];
-  if (callbacks.onCameras) unsubs.push(subscribeSse("cameras", callbacks.onCameras));
-  if (callbacks.onAlerts) unsubs.push(subscribeSse("alerts", callbacks.onAlerts));
-  if (callbacks.onSystemMetrics) unsubs.push(subscribeSse("system_metrics", callbacks.onSystemMetrics));
-  if (callbacks.onAuditLogs) unsubs.push(subscribeSse("audit_logs", callbacks.onAuditLogs));
-  if (callbacks.onCameraStats) unsubs.push(subscribeSse("camera_stats", callbacks.onCameraStats));
-  return () => unsubs.forEach(fn => fn());
 }
 
 // --- Auth-aware file download ---
