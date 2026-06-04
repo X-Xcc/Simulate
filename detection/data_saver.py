@@ -1,4 +1,3 @@
-# ===================== 数据保存模块 =====================
 import os
 import time
 import json
@@ -15,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class DataSaver:
-    """数据保存模块 - 批量写入优化 + 失败重试"""
 
     ACTION_PRIORITY = ["打架", "跌倒", "离岗", "人员聚集"]
     MAX_RETRY = 3  # 最大重试次数，超过则丢弃

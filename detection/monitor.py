@@ -1,4 +1,3 @@
-# ===================== 主程序 =====================
 import os
 import sys
 import time

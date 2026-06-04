@@ -1,4 +1,3 @@
-# ===================== 摄像头自动检测 + 配置加载 =====================
 import os
 import json
 import logging

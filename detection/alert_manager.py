@@ -1,4 +1,3 @@
-# ===================== 报警模块 =====================
 import time
 import logging
 from typing import List, Tuple
@@ -12,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class AlertManager:
-    """报警管理模块"""
 
     def __init__(self, config: Config):
         self.config = config

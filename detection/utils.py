@@ -1,4 +1,3 @@
-# ===================== 工具函数 + 检测结果封装 =====================
 import os
 import time
 import logging
@@ -14,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class Utils:
-    """工具函数类"""
     _AVAILABLE_FONT_PATH = None
     _FONT_CACHE = {}
     _cache_lock = threading.Lock()

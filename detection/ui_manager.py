@@ -1,4 +1,3 @@
-# ===================== UI 模块 =====================
 import logging
 from typing import List, Tuple
 
@@ -12,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class UIManager:
-    """UI绘制管理模块"""
 
     def __init__(self, config: Config):
         self.config = config

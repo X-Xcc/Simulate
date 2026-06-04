@@ -1,4 +1,3 @@
-# ===================== 配置区 =====================
 import os
 import json
 
@@ -11,7 +10,6 @@ DRAW_OVERLAY = False          # 是否绘制检测框和UI叠加层
 
 
 class Config:
-    """系统配置类，集中管理所有参数"""
     # 路径配置
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
