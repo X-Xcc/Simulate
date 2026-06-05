@@ -7,6 +7,7 @@ import com.yolov8.security.service.AuditLogService;
 import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.DetectionService;
 import com.yolov8.security.service.KanbanEventBus;
+import com.yolov8.security.util.SystemMetricsCollector;
 import jakarta.annotation.PreDestroy;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,8 +15,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -123,11 +122,10 @@ public class SseController {
 
     @SuppressWarnings("all")
     private Map<String, Object> collectSystemMetrics() {
-        Map<String, Object> m = new LinkedHashMap<>();
-
-        // Demo mode: return virtual system metrics
+        // Demo mode: return virtual random metrics
         if (appConfig.isDemoMode()) {
             ThreadLocalRandom tlr = ThreadLocalRandom.current();
+            Map<String, Object> m = SystemMetricsCollector.collectSystemMetrics();
             m.put("cpuPercent", 35 + tlr.nextInt(31));
             m.put("memoryPercent", 45 + tlr.nextInt(26));
             m.put("gpuPercent", 30 + tlr.nextInt(26));
@@ -139,13 +137,11 @@ public class SseController {
             m.put("version", "v2.4.1-stable");
             m.put("engine", "Spring Boot + YOLOv8 (Demo)");
             m.put("coreEngine", "YOLOv8n-Pose");
-
-            long uptimeMs = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
-            long days = uptimeMs / 86400000;
-            long hours = (uptimeMs % 86400000) / 3600000;
-            long minutes = (uptimeMs % 3600000) / 60000;
-            m.put("uptime", days + "d " + hours + "h " + minutes + "m");
-
+            m.put("services", List.of(
+                Map.of("name", "API Server", "status", "Running", "uptime", "-", "health", "正常"),
+                Map.of("name", "YOLOv8 Service", "status", "Running", "uptime", "-", "health", "正常"),
+                Map.of("name", "Stream Gateway", "status", "Running", "uptime", "-", "health", "正常")
+            ));
             try {
                 var sysInfo = detectionService.getSystemInfo();
                 m.put("dataDirSizeMb", sysInfo.dataDirSizeMb());
@@ -156,47 +152,16 @@ public class SseController {
                 m.put("detectionCount", 0);
                 m.put("imageCount", 0);
             }
-
-            List<Map<String, String>> services = new ArrayList<>();
-            services.add(Map.of("name", "API Server", "status", "Running", "uptime", "-", "health", "正常"));
-            services.add(Map.of("name", "YOLOv8 Service", "status", "Running", "uptime", "-", "health", "正常"));
-            services.add(Map.of("name", "Stream Gateway", "status", "Running", "uptime", "-", "health", "正常"));
-            m.put("services", services);
-
             return m;
         }
-        try {
-            com.sun.management.OperatingSystemMXBean osBean =
-                    (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
-            java.io.File root = java.io.File.listRoots().length > 0 ? java.io.File.listRoots()[0] : new java.io.File(".");
 
-            double cpuPercent = Math.round(osBean.getSystemCpuLoad() * 100);
-            long total = osBean.getTotalPhysicalMemorySize();
-            long free = osBean.getFreePhysicalMemorySize();
-            double memoryPercent = Math.round((double)(total - free) / total * 100);
-            double diskPercent = Math.round((double) (root.getTotalSpace() - root.getUsableSpace()) / root.getTotalSpace() * 100);
-
-            m.put("cpuPercent", cpuPercent);
-            m.put("memoryPercent", memoryPercent);
-            m.put("diskPercent", diskPercent);
-        } catch (Exception e) {
-            m.put("cpuPercent", 0);
-            m.put("memoryPercent", 0);
-            m.put("diskPercent", 0);
-        }
+        // Real mode
+        Map<String, Object> m = SystemMetricsCollector.collectSystemMetrics();
         m.put("gpuPercent", SystemMetricsController.getLatestGpuPercent());
         m.put("version", "v2.4.1-stable");
         m.put("engine", "Spring Boot + YOLOv8");
         m.put("coreEngine", "YOLOv8n-Pose");
 
-        // Uptime
-        long uptimeMs = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
-        long days = uptimeMs / 86400000;
-        long hours = (uptimeMs % 86400000) / 3600000;
-        long minutes = (uptimeMs % 3600000) / 60000;
-        m.put("uptime", days + "d " + hours + "h " + minutes + "m");
-
-        // Camera stats
         try {
             var cameras = cameraConfigService.getAllCameras();
             m.put("totalDevices", cameras.size());
@@ -209,7 +174,6 @@ public class SseController {
         m.put("activeModels", 1);
         m.put("totalModels", 1);
 
-        // Detection stats
         try {
             var sysInfo = detectionService.getSystemInfo();
             m.put("dataDirSizeMb", sysInfo.dataDirSizeMb());
@@ -221,14 +185,13 @@ public class SseController {
             m.put("imageCount", 0);
         }
 
-        // Services with uptime and health
         boolean yoloHealthy = (System.currentTimeMillis() - SystemMetricsController.getLastFrameUpdate()) < 30000;
-        List<Map<String, String>> services = new ArrayList<>();
-        services.add(Map.of("name", "API Server", "status", "Running", "uptime", "-", "health", "正常"));
-        services.add(Map.of("name", "YOLOv8 Service", "status", yoloHealthy ? "Running" : "Warning",
-                "uptime", "-", "health", yoloHealthy ? "正常" : "异常"));
-        services.add(Map.of("name", "Stream Gateway", "status", "Running", "uptime", "-", "health", "正常"));
-        m.put("services", services);
+        m.put("services", List.of(
+            Map.of("name", "API Server", "status", "Running", "uptime", "-", "health", "正常"),
+            Map.of("name", "YOLOv8 Service", "status", yoloHealthy ? "Running" : "Warning",
+                    "uptime", "-", "health", yoloHealthy ? "正常" : "异常"),
+            Map.of("name", "Stream Gateway", "status", "Running", "uptime", "-", "health", "正常")
+        ));
 
         return m;
     }

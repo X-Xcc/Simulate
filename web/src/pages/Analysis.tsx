@@ -12,9 +12,12 @@ import { motion } from "motion/react";
 import { cn } from "../lib/utils";
 import { isZeroPort } from "../lib/api";
 import {
-  useMockSystemStatus,
-  useMockTrendData, useMockModelInfo, useMockRegionalStats, useMockFpsStats,
-} from "../lib/useMock";
+  useRealSystemStatus,
+  useRealTrendData,
+  useRealModelInfo,
+  useRealRegionalStats,
+  useRealFpsStats,
+} from "../lib/useRealData";
 import { useRealAlerts } from "../lib/useRealAlerts";
 import { useToast } from "../components/Toast";
 import Prison3D from "../components/Prison3D";
@@ -24,11 +27,11 @@ export default function Analysis() {
   const toast = useToast();
   const [timeRange, setTimeRange] = useState<"week" | "month" | "quarter">("week");
   const { alerts } = useRealAlerts();
-  const status = useMockSystemStatus();
-  const modelInfo = useMockModelInfo();
-  const regionalData = useMockRegionalStats();
-  const fpsStats = useMockFpsStats();
-  const trendDataRaw = useMockTrendData(timeRange);
+  const status = useRealSystemStatus();
+  const modelInfo = useRealModelInfo();
+  const regionalData = useRealRegionalStats();
+  const fpsStats = useRealFpsStats();
+  const trendDataRaw = useRealTrendData(timeRange);
 
   // 从 trendData 派生卡片 + 图表，保证数据同步
   const { trendData, trendTotals } = useMemo(() => {
@@ -93,9 +96,7 @@ export default function Analysis() {
         </div>
       </header>
 
-      {/* ┌──────────────────────────────────────────────────────┐
-      // │  4 张摘要卡片 — 告警总数/AI准确率/平均时延/设备负载     │
-      // └──────────────────────────────────────────────────────┘ */}
+      {/* 摘要卡片 */}
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: "本周告警", value: zeroStr(totalAlerts.toString()), change: isZeroPort ? "—" : "+12.4%", icon: AlertCircle, color: "text-danger-red", bg: "bg-danger-red/10" },
@@ -162,9 +163,7 @@ export default function Analysis() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  RadarChart 雷达图 — AI 识别效能分析                   │
-        // └──────────────────────────────────────────────────────┘ */}
+        {/* 雷达图 */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant/50 bg-surface-container-low/50">
             <h3 className="font-bold text-[14px]">AI 识别效能</h3>
@@ -196,9 +195,7 @@ export default function Analysis() {
           </div>
         </section>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  区域分布条形图 — 各监区告警数量对比                    │
-        // └──────────────────────────────────────────────────────┘ */}
+        {/* 区域分布条形图 */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant/50 bg-surface-container-low/50">
             <h3 className="font-bold text-[14px] flex items-center gap-2"><TrendingUp size={15} className="text-outline" /> 各监区告警分布</h3>

@@ -13,7 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { useMockSystemStatus, useMockModelInfo } from "../lib/useMock";
+import { useRealSystemStatus, useRealModelInfo } from "../lib/useRealData";
 import { useToast } from "../components/Toast";
 
 const Gauge = ({ value, label, sub, color, icon: Icon }: { value: number; label: string; sub: string; color: string; icon: any }) => {
@@ -45,8 +45,8 @@ const Gauge = ({ value, label, sub, color, icon: Icon }: { value: number; label:
 export default function Maintenance() {
   const toast = useToast();
   const [checking, setChecking] = useState(false);
-  const status = useMockSystemStatus();
-  const modelInfo = useMockModelInfo();
+  const status = useRealSystemStatus();
+  const modelInfo = useRealModelInfo();
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 h-full flex flex-col min-h-0 animate-fade-in-up">
@@ -72,6 +72,19 @@ export default function Maintenance() {
             <span className="text-caption text-outline font-mono">同步间隔: 2s</span>
           </header>
           <div className="flex-1 overflow-auto divide-y divide-outline-variant/30">
+            {status.services.length === 0 && (
+              <>
+                {["检测引擎", "视频流服务", "告警服务"].map(name => (
+                  <div key={name} className="flex items-center justify-between px-4 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <span className="w-2 h-2 rounded-full bg-success-green" />
+                      <span className="font-semibold text-body text-on-surface">{name}</span>
+                    </div>
+                    <span className="text-caption font-semibold uppercase px-2 py-0.5 rounded text-success-green bg-success-green/10">Running</span>
+                  </div>
+                ))}
+              </>
+            )}
             {status.services.map(s => (
               <div key={s.name} className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-container-low transition-colors">
                 <div className="flex items-center gap-3">

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
 import com.yolov8.security.util.CsvEscaper;
+import com.yolov8.security.util.JsonFileUtils;
 import com.yolov8.security.model.Alert;
 import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.DetectionData;
@@ -18,27 +19,39 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
-public class AlertService extends AbstractJsonFileService<Alert> {
+public class AlertService {
+
+    private static final TypeReference<List<Alert>> TYPE_REF = new TypeReference<>() {};
+    private static final DateTimeFormatter DET_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    private final Path filePath;
+    private final ObjectMapper objectMapper;
+    private final ReadWriteLock lock = JsonFileUtils.newLock();
 
     @Autowired
     public AlertService(AppConfig appConfig, ObjectMapper objectMapper) {
-        super(Paths.get(appConfig.getFile().getUploadDir()).resolve("alerts.json"), objectMapper);
+        this.filePath = Paths.get(appConfig.getFile().getUploadDir()).resolve("alerts.json");
+        this.objectMapper = objectMapper;
+        JsonFileUtils.cleanupTmp(filePath);
     }
 
-    @Override
-    protected TypeReference<List<Alert>> typeRef() {
-        return new TypeReference<>() {};
+    private List<Alert> read() {
+        return JsonFileUtils.readList(filePath, objectMapper, TYPE_REF);
+    }
+
+    private void write(List<Alert> data) {
+        JsonFileUtils.writeList(filePath, data, objectMapper);
     }
 
     public List<Alert> getAllAlerts() {
         lock.readLock().lock();
         try {
-            List<Alert> alerts = readConfig();
-            return alerts.stream()
+            return read().stream()
                     .sorted(Comparator.comparing(Alert::getTime, Comparator.nullsLast(Comparator.reverseOrder())))
                     .collect(Collectors.toList());
         } finally {
@@ -49,13 +62,13 @@ public class AlertService extends AbstractJsonFileService<Alert> {
     public Alert addAlert(Alert alert) {
         lock.writeLock().lock();
         try {
-            List<Alert> alerts = readConfig();
+            List<Alert> alerts = read();
             alert.setId("ALERT_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 6));
             if (alert.getStatus() == null) {
                 alert.setStatus("pending");
             }
             alerts.add(alert);
-            writeConfig(alerts);
+            write(alerts);
             return alert;
         } finally {
             lock.writeLock().unlock();
@@ -65,13 +78,13 @@ public class AlertService extends AbstractJsonFileService<Alert> {
     public void updateAlertStatus(String id, String status) {
         lock.writeLock().lock();
         try {
-            List<Alert> alerts = readConfig();
+            List<Alert> alerts = read();
             Alert existing = alerts.stream()
                     .filter(a -> a.getId().equals(id))
                     .findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("告警不存在: " + id));
             existing.setStatus(status);
-            writeConfig(alerts);
+            write(alerts);
         } finally {
             lock.writeLock().unlock();
         }
@@ -80,10 +93,10 @@ public class AlertService extends AbstractJsonFileService<Alert> {
     public ApiResponse.PageData<Alert> getAlertsPage(int page, int size, String type, String status, String since) {
         lock.readLock().lock();
         try {
-            List<Alert> all = readConfig();
-            if (all == null) all = java.util.List.of();
+            List<Alert> all = read();
+            if (all == null) all = List.of();
 
-            java.util.stream.Stream<Alert> stream = all.stream();
+            Stream<Alert> stream = all.stream();
 
             if (type != null && !type.isEmpty()) {
                 stream = stream.filter(a -> type.equals(a.getType()));
@@ -102,9 +115,8 @@ public class AlertService extends AbstractJsonFileService<Alert> {
             int total = sorted.size();
             int fromIndex = Math.min(page * size, total);
             int toIndex = Math.min(fromIndex + size, total);
-            List<Alert> pageItems = sorted.subList(fromIndex, toIndex);
 
-            return new ApiResponse.PageData<>(pageItems, total, page, size);
+            return new ApiResponse.PageData<>(sorted.subList(fromIndex, toIndex), total, page, size);
         } finally {
             lock.readLock().unlock();
         }
@@ -130,10 +142,6 @@ public class AlertService extends AbstractJsonFileService<Alert> {
         return sb.toString();
     }
 
-    // esc() removed — use CsvEscaper.field() instead
-
-    private static final DateTimeFormatter DET_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
     /**
      * Resolve null snapshotUrl on alerts by matching with detection JSON files.
      * Match key: cameraId + timestamp within ±3 seconds.
@@ -141,10 +149,8 @@ public class AlertService extends AbstractJsonFileService<Alert> {
     public void resolveSnapshotUrls(String dataDir) {
         lock.writeLock().lock();
         try {
-            List<Alert> alerts = readConfig();
+            List<Alert> alerts = read();
             boolean needsWrite = false;
-
-            // Build detection index: cameraId -> list of (epochMs, imageFilename)
             List<DetectionRef> detRefs = loadDetectionRefs(dataDir);
 
             for (Alert alert : alerts) {
@@ -174,7 +180,7 @@ public class AlertService extends AbstractJsonFileService<Alert> {
             }
 
             if (needsWrite) {
-                writeConfig(alerts);
+                write(alerts);
             }
         } finally {
             lock.writeLock().unlock();

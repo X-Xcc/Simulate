@@ -4,7 +4,7 @@ import { AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
 import { fetchEvidenceList, EvidenceItem } from "../services/dataService";
-import { useMockStore } from "../lib/mockStore";
+import { subscribeSse } from "../lib/api";
 import { getToken, API_BASE } from "../lib/api";
 import Lightbox from "../components/Lightbox";
 import { useImageRetry } from "../hooks/useImageRetry";
@@ -20,12 +20,16 @@ export default function Evidence() {
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [evTotal, setEvTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  // lightboxSrc 保证传给 Lightbox 的永远是有效 URL
+  const [version, setVersion] = useState(0);
   const [lightbox, setLightbox] = useState<{ src: string; item: EvidenceItem } | null>(null);
   const { onError: onImgError } = useImageRetry(3, 500);
 
-  // 订阅全局 store 的 evidenceBump，手动触发报警时自动刷新
-  const evidenceBump = useMockStore((s) => s.evidenceBump);
+  // SSE 新报警进来时触发刷新
+  useEffect(() => {
+    return subscribeSse("alerts", () => {
+      setVersion(v => v + 1);
+    });
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,7 +52,7 @@ export default function Evidence() {
     }
     load();
     return () => controller.abort();
-  }, [selectedDate, activeTab, evPage, evidenceBump]);
+  }, [selectedDate, activeTab, evPage, version]);
 
   // Tab 或日期变化时重置页码
   useEffect(() => { setEvPage(0); }, [selectedDate, activeTab]);
@@ -58,13 +62,15 @@ export default function Evidence() {
   }
 
   async function downloadImage(item: EvidenceItem) {
-    const url = item.snapshotUrl;
-    if (!url) { toast.show("无可用图片"); return; }
+    const rawUrl = item.snapshotUrl;
+    if (!rawUrl) { toast.show("无可用图片"); return; }
     try {
       const headers: Record<string, string> = {};
       const token = getToken();
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE}${url}`, { headers });
+      // 如果已经是完整 URL（如 CDN），直接使用；否则拼接 API_BASE
+      const url = rawUrl.startsWith("http") ? rawUrl : `${API_BASE}${rawUrl}`;
+      const res = await fetch(url, { headers });
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");

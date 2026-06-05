@@ -3,30 +3,44 @@ package com.yolov8.security.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.util.JsonFileUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.locks.ReadWriteLock;
 
 @Service
-public class DeviceService extends AbstractJsonFileService<DeviceService.Device> {
+public class DeviceService {
 
+    private static final TypeReference<List<Device>> TYPE_REF = new TypeReference<>() {};
     private static final Set<String> VALID_TYPES = Set.of("camera", "sensor", "alarm");
 
+    private final Path filePath;
+    private final ObjectMapper objectMapper;
+    private final ReadWriteLock lock = JsonFileUtils.newLock();
+
     public DeviceService(AppConfig appConfig, ObjectMapper objectMapper) {
-        super(Paths.get(appConfig.getFile().getUploadDir()).resolve("devices.json"), objectMapper);
+        this.filePath = Paths.get(appConfig.getFile().getUploadDir()).resolve("devices.json");
+        this.objectMapper = objectMapper;
+        JsonFileUtils.cleanupTmp(filePath);
     }
 
-    @Override
-    protected TypeReference<List<Device>> typeRef() {
-        return new TypeReference<>() {};
+    private List<Device> read() {
+        return JsonFileUtils.readList(filePath, objectMapper, TYPE_REF);
+    }
+
+    private void write(List<Device> data) {
+        JsonFileUtils.writeList(filePath, data, objectMapper);
     }
 
     public List<Device> getAllDevices() {
         lock.readLock().lock();
         try {
-            return readConfig();
+            return read();
         } finally {
             lock.readLock().unlock();
         }
@@ -36,7 +50,7 @@ public class DeviceService extends AbstractJsonFileService<DeviceService.Device>
         lock.writeLock().lock();
         try {
             validate(device);
-            List<Device> devices = readConfig();
+            List<Device> devices = read();
 
             if (device.getId() != null && !device.getId().isEmpty()) {
                 boolean duplicate = devices.stream().anyMatch(d -> d.getId().equals(device.getId()));
@@ -48,7 +62,7 @@ public class DeviceService extends AbstractJsonFileService<DeviceService.Device>
             }
 
             devices.add(device);
-            writeConfig(devices);
+            write(devices);
             return device;
         } finally {
             lock.writeLock().unlock();
@@ -59,7 +73,7 @@ public class DeviceService extends AbstractJsonFileService<DeviceService.Device>
         lock.writeLock().lock();
         try {
             validate(update);
-            List<Device> devices = readConfig();
+            List<Device> devices = read();
 
             int index = -1;
             for (int i = 0; i < devices.size(); i++) {
@@ -74,7 +88,7 @@ public class DeviceService extends AbstractJsonFileService<DeviceService.Device>
 
             update.setId(id);
             devices.set(index, update);
-            writeConfig(devices);
+            write(devices);
             return update;
         } finally {
             lock.writeLock().unlock();
@@ -84,10 +98,10 @@ public class DeviceService extends AbstractJsonFileService<DeviceService.Device>
     public boolean deleteDevice(String id) {
         lock.writeLock().lock();
         try {
-            List<Device> devices = readConfig();
+            List<Device> devices = read();
             boolean removed = devices.removeIf(d -> d.getId().equals(id));
             if (removed) {
-                writeConfig(devices);
+                write(devices);
             }
             return removed;
         } finally {
@@ -115,8 +129,7 @@ public class DeviceService extends AbstractJsonFileService<DeviceService.Device>
                 try {
                     int num = Integer.parseInt(id.substring(3));
                     if (num > maxNum) maxNum = num;
-                } catch (NumberFormatException ignored) {
-                }
+                } catch (NumberFormatException ignored) {}
             }
         }
         return "dev" + (maxNum + 1);

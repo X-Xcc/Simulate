@@ -4,38 +4,49 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
 import com.yolov8.security.util.CsvEscaper;
+import com.yolov8.security.util.JsonFileUtils;
 import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.AuditLog;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.LinkedHashMap;
+import java.util.*;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
-public class AuditLogService extends AbstractJsonFileService<AuditLog> {
+public class AuditLogService {
+
+    private static final TypeReference<List<AuditLog>> TYPE_REF = new TypeReference<>() {};
+
+    private final Path filePath;
+    private final ObjectMapper objectMapper;
+    private final ReadWriteLock lock = JsonFileUtils.newLock();
 
     @Autowired
     public AuditLogService(AppConfig appConfig, ObjectMapper objectMapper) {
-        super(Paths.get(appConfig.getFile().getUploadDir()).resolve("audit_logs.json"), objectMapper);
+        this.filePath = Paths.get(appConfig.getFile().getUploadDir()).resolve("audit_logs.json");
+        this.objectMapper = objectMapper;
+        JsonFileUtils.cleanupTmp(filePath);
     }
 
-    @Override
-    protected TypeReference<List<AuditLog>> typeRef() {
-        return new TypeReference<>() {};
+    private List<AuditLog> read() {
+        return JsonFileUtils.readList(filePath, objectMapper, TYPE_REF);
+    }
+
+    private void write(List<AuditLog> data) {
+        JsonFileUtils.writeList(filePath, data, objectMapper);
     }
 
     public List<AuditLog> getAllLogs() {
         lock.readLock().lock();
         try {
-            List<AuditLog> logs = readConfig();
-            return logs.stream()
+            return read().stream()
                     .sorted(Comparator.comparing(AuditLog::getTimestamp, Comparator.nullsLast(Comparator.reverseOrder())))
                     .collect(Collectors.toList());
         } finally {
@@ -46,23 +57,16 @@ public class AuditLogService extends AbstractJsonFileService<AuditLog> {
     public AuditLog addLog(AuditLog log) {
         lock.writeLock().lock();
         try {
-            List<AuditLog> logs = readConfig();
-
-            // Auto-generate ID
+            List<AuditLog> logs = read();
             log.setId("LOG_" + System.currentTimeMillis() + "_" + ThreadLocalRandom.current().nextInt(1000, 9999));
-
-            // Default timestamp
             if (log.getTimestamp() == null) {
                 log.setTimestamp(Instant.now().toString());
             }
-
-            // Default status
             if (log.getStatus() == null) {
                 log.setStatus(true);
             }
-
             logs.add(log);
-            writeConfig(logs);
+            write(logs);
             return log;
         } finally {
             lock.writeLock().unlock();
@@ -72,10 +76,10 @@ public class AuditLogService extends AbstractJsonFileService<AuditLog> {
     public ApiResponse.PageData<AuditLog> getLogsPage(int page, int size, String search, String category, String riskLevel) {
         lock.readLock().lock();
         try {
-            List<AuditLog> all = readConfig();
-            if (all == null) all = java.util.List.of();
+            List<AuditLog> all = read();
+            if (all == null) all = List.of();
 
-            java.util.stream.Stream<AuditLog> stream = all.stream();
+            Stream<AuditLog> stream = all.stream();
 
             if (search != null && !search.isEmpty()) {
                 String lower = search.toLowerCase();
@@ -108,22 +112,21 @@ public class AuditLogService extends AbstractJsonFileService<AuditLog> {
     public Map<String, Object> getTrendData(String range) {
         lock.readLock().lock();
         try {
-            List<AuditLog> all = readConfig();
-            if (all == null) all = java.util.List.of();
+            List<AuditLog> all = read();
+            if (all == null) all = List.of();
 
             int points = "week".equals(range) ? 7 : 24;
             String labelFormat = "day".equals(range) ? "HH:00" : "MM-dd";
             java.time.format.DateTimeFormatter labelFmt = java.time.format.DateTimeFormatter.ofPattern(labelFormat);
 
             java.time.LocalDateTime now = java.time.LocalDateTime.now();
-            List<String> labels = new java.util.ArrayList<>();
-            java.util.Map<String, Integer> buckets = new LinkedHashMap<>();
+            List<String> labels = new ArrayList<>();
+            Map<String, Integer> buckets = new LinkedHashMap<>();
 
             for (int i = points - 1; i >= 0; i--) {
                 java.time.LocalDateTime point = now.minusHours("day".equals(range) ? i : i * 24L);
-                String label = point.format(labelFmt);
-                labels.add(label);
-                buckets.put(label, 0);
+                labels.add(point.format(labelFmt));
+                buckets.put(point.format(labelFmt), 0);
             }
 
             java.time.LocalDateTime cutoff = now.minusHours("day".equals(range) ? points : points * 24L);
@@ -141,7 +144,7 @@ public class AuditLogService extends AbstractJsonFileService<AuditLog> {
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("labels", labels);
-            result.put("data", new java.util.ArrayList<>(buckets.values()));
+            result.put("data", new ArrayList<>(buckets.values()));
             return result;
         } finally {
             lock.readLock().unlock();
@@ -165,6 +168,4 @@ public class AuditLogService extends AbstractJsonFileService<AuditLog> {
         }
         return sb.toString();
     }
-
-    // esc() removed — use CsvEscaper.field() instead
 }

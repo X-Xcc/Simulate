@@ -13,7 +13,7 @@ import {
   ChevronRight,
   AlertTriangle,
 } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import {
@@ -30,13 +30,12 @@ import {
 } from "recharts";
 import { cn } from "../lib/utils";
 import { exportCsv } from "../services/dataService";
-import { AlertType, Alert as RealAlert } from "../types";
-import { subscribeSse } from "../lib/api";
+import { Alert, AlertType, Alert as RealAlert } from "../types";
+import { useRealAlerts } from "../lib/useRealAlerts";
 import {
-  useMockSystemStatus,
-  useMockTrendData,
-  useMockAlerts,
-} from "../lib/useMock";
+  useRealSystemStatus,
+  useRealTrendData,
+} from "../lib/useRealData";
 
 /* ── palette ── */
 const C = {
@@ -104,31 +103,18 @@ export default function Dashboard() {
   const toast = useToast();
   const navigate = useNavigate();
 
-  // ┌──────────────────────────────────────────────────────┐
-  // │  SSE 订阅手动报警 — 底层是单例 EventSource            │
-  // │  演讲提示: "5种事件(摄像头/告警/系统指标/审计/统计)    │
-  // │            共享一条 SSE 连接，subscribeSse 内部用       │
-  // │            引用计数管理，第一个订阅者创建连接，          │
-  // │            最后一个归零时断开"                          │
-  // └──────────────────────────────────────────────────────┘
-  const [manualAlerts, setManualAlerts] = useState<RealAlert[]>([]);
+  // SSE 订阅 — 真实告警
+  const { alerts: allRealAlerts } = useRealAlerts();
 
-  useEffect(() => {
-    return subscribeSse("alerts", (data: any) => {
-      if (!Array.isArray(data)) return;
-      const manual = data.filter((a: any) => a.snapshotUrl && a.message?.startsWith("手动报警"));
-      setManualAlerts(manual);
-    });
-  }, []);
-  const [mockAlerts] = useMockAlerts();
+  // 告警列表（取前 10 条）
   const mergedAlerts = useMemo(() => {
-    return mockAlerts.slice(0, 10);
-  }, [mockAlerts]);
+    return allRealAlerts.filter(a => a.snapshotUrl).slice(0, 10);
+  }, [allRealAlerts]);
 
-  const status = useMockSystemStatus();
+  const status = useRealSystemStatus();
   const [trendRange, setTrendRange] = useState<"day" | "week" | "month">("week");
-  const trendDataRaw = useMockTrendData(trendRange);
-  const monthDataRaw = useMockTrendData("month");
+  const trendDataRaw = useRealTrendData(trendRange);
+  const monthDataRaw = useRealTrendData("month");
 
   // 趋势数据转换 + 派生分布
   const { trendData, trendKeys } = useMemo(() => {
@@ -144,27 +130,16 @@ export default function Dashboard() {
     };
   }, [trendDataRaw]);
 
-  // 从月度趋势数据求和，派生卡片计数（与趋势图/饼图同源）
-  const monthlyCounts = useMemo(() => {
-    if (!monthDataRaw?.data) return { "打架": 0, "跌倒": 0, "离岗": 0, "人员聚集": 0 };
-    const counts: Record<string, number> = {};
-    for (const [key, vals] of Object.entries(monthDataRaw.data)) {
-      counts[key] = (vals as number[]).reduce((s, v) => s + v, 0);
-    }
-    return counts;
-  }, [monthDataRaw]);
-
+  // 卡片计数：真实告警为主，mock 数据兜底
   const enrichedBehaviorCounts = useMemo(() => {
-    const base = { ...monthlyCounts };
-    const typeToKey: Record<string, string> = {
-      "打架": "打架", "跌倒": "跌倒", "离岗": "离岗", "人员聚集": "人员聚集",
-    };
-    for (const a of manualAlerts) {
-      const key = typeToKey[a.type] ?? a.type;
-      base[key] = (base[key] ?? 0) + 1;
+    const base: Record<string, number> = { "打架": 0, "跌倒": 0, "离岗": 0, "人员聚集": 0 };
+    for (const a of allRealAlerts) {
+      const key: Record<string, string> = { "打架": "打架", "跌倒": "跌倒", "离岗": "离岗", "人员聚集": "人员聚集", "fight": "打架", "fall": "跌倒", "absent": "离岗", "gathering": "人员聚集" };
+      const k = key[a.type] ?? a.type;
+      base[k] = (base[k] ?? 0) + 1;
     }
     return base;
-  }, [monthlyCounts, manualAlerts]);
+  }, [allRealAlerts]);
 
   const cards = useMemo(() => [
     { key: "fight",  icon: <ShieldAlert size={22}/>,  label: "打架事件", count: enrichedBehaviorCounts["打架"] ?? 0, style: C.fight },
@@ -204,9 +179,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ┌──────────────────────────────────────────────────────┐
-      // │  4 张指标卡片 — 打架/跌倒/离岗/聚集                   │
-      // └──────────────────────────────────────────────────────┘ */}
+      {/* 4 张指标卡片 */}
       <div className="grid grid-cols-4 gap-4">
         {cards.map(c => (
           <div key={c.key}
@@ -230,9 +203,7 @@ export default function Dashboard() {
 
       {/* trend + distribution row */}
       <div className="grid grid-cols-3 gap-4">
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  AreaChart 趋势图 — 多系列面积图                      │
-        // └──────────────────────────────────────────────────────┘ */}
+        {/* 趋势图 */}
         <div className="col-span-2 bg-white rounded-xl border border-outline-variant p-5 flex flex-col h-[440px] shadow-sm">
           <div className="flex justify-between items-center mb-5">
             <div className="flex items-center gap-2.5">
@@ -309,9 +280,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  PieChart 饼图 — 行为分布                              │
-        // └──────────────────────────────────────────────────────┘ */}
+        {/* 饼图 */}
         <div className="bg-white rounded-xl border border-outline-variant p-5 flex flex-col h-[440px] shadow-sm">
           <div className="flex items-center gap-2.5 mb-3">
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -383,9 +352,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  实时告警表格 — 最近 10 条                              │
-        // └──────────────────────────────────────────────────────┘ */}
+        {/* 实时告警表格 */}
         <div className="col-span-2 bg-white rounded-xl border border-outline-variant h-[360px] flex flex-col overflow-hidden shadow-sm">
           <div className="px-5 py-3 border-b border-outline-variant/50 flex justify-between items-center">
             <div className="flex items-center gap-2.5">
@@ -410,12 +377,12 @@ export default function Dashboard() {
               <tbody className="divide-y divide-outline-variant/50 text-[13px]">
                 {mergedAlerts.length === 0 ? (
                   <tr><td colSpan={5} className="px-5 py-10 text-center text-outline/60">暂无告警</td></tr>
-                ) : mergedAlerts.map(a => {
+                ) : mergedAlerts.map((a: Alert) => {
                   const s = TYPE_STYLE[a.type] ?? C.crowd;
                   return (
                     <tr key={a.id} className="hover:bg-surface-container-low transition-colors group">
                       <td className="px-5 py-3 font-mono text-[12px] text-on-surface-variant font-medium">
-                        {new Date(a.time).toLocaleTimeString()}
+                        {new Date(a.time).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                       </td>
                       <td className="px-5 py-3">
                         <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-md", s.badge)}>

@@ -14,6 +14,7 @@ import {
   Filter,
   X,
   Eye,
+  Loader2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useRealAlerts } from "../lib/useRealAlerts";
@@ -27,14 +28,22 @@ export default function Alerts() {
   const [filterType, setFilterType] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
+  const [actionLoading, setActionLoading] = useState(false);
   const pageSize = 15;
+
+  const resetFilters = () => {
+    setFilterType("");
+    setFilterStatus("");
+    setCurrentPage(0);
+  };
+
+  const handleFilterChange = (setter: (v: string) => void) => (value: string) => {
+    setter(value);
+    setCurrentPage(0);
+  };
   const { onError: onImgError } = useImageRetry(3, 500, (el) => { el.style.display = "none"; });
 
-  // ┌──────────────────────────────────────────────────────┐
-  // │  筛选逻辑 — 按类型(打架/跌倒) + 状态(待处理/已确认/已忽略) │
-  // │  演讲提示: "两个 select 下拉框联动过滤，                  │
-  // │            改变筛选条件时自动重置到第 1 页"               │
-  // └──────────────────────────────────────────────────────┘
+  // 筛选逻辑
   const filteredAlerts = useMemo(() => {
     return alerts.filter(a => {
       if (filterType && a.type !== filterType) return false;
@@ -48,8 +57,13 @@ export default function Alerts() {
 
   const handleUpdateStatus = (status: "confirmed" | "ignored") => {
     if (!selectedAlert) return;
-    updateAlertStatus(selectedAlert.id, status);
-    setSelectedAlert(prev => prev ? { ...prev, status } : null);
+    setActionLoading(true);
+    updateAlertStatus(selectedAlert.id, status)
+      .catch(() => toast.show("操作失败", "error"))
+      .finally(() => {
+        setActionLoading(false);
+        setSelectedAlert(prev => prev ? { ...prev, status } : null);
+      });
   };
 
   const pendingCount = alerts.filter(a => a.status === "pending").length;
@@ -62,7 +76,7 @@ export default function Alerts() {
         <div className="flex gap-2">
           <select
             value={filterType}
-            onChange={e => { setFilterType(e.target.value); setCurrentPage(0); }}
+            onChange={e => handleFilterChange(setFilterType)(e.target.value)}
             className="bg-white border border-outline-variant rounded-lg h-9 px-3 text-body font-medium focus:ring-1 focus:ring-primary outline-none shadow-sm"
           >
             <option value="">全部类型</option>
@@ -70,7 +84,7 @@ export default function Alerts() {
           </select>
           <select
             value={filterStatus}
-            onChange={e => { setFilterStatus(e.target.value); setCurrentPage(0); }}
+            onChange={e => handleFilterChange(setFilterStatus)(e.target.value)}
             className="bg-white border border-outline-variant rounded-lg h-9 px-3 text-body font-medium focus:ring-1 focus:ring-primary outline-none shadow-sm"
           >
             <option value="">全部状态</option>
@@ -86,12 +100,7 @@ export default function Alerts() {
 
       {/* 主内容区 */}
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  告警表格 — pending 状态带红色脉冲动画                  │
-        // │  演讲提示: "待处理告警左侧有红色小圆点 animate-pulse，  │
-        // │            已确认/已忽略则变灰点静止，                 │
-        // │            点击行可展开右侧详情面板"                   │
-        // └──────────────────────────────────────────────────────┘ */}
+        {/* 告警表格 */}
         {/* 表格 */}
         <div className="flex-1 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm">
           <div className="overflow-auto flex-1">
@@ -137,7 +146,7 @@ export default function Alerts() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-body-sm tabular-nums text-on-surface-variant">
-                      {new Date(alert.time).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(alert.time).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="font-mono text-body-sm font-semibold tabular-nums text-on-surface">
@@ -183,13 +192,7 @@ export default function Alerts() {
           </footer>
         </div>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  详情面板 — 报警快照 + HUD 叠加                       │
-        // │  演讲提示: "左上角是告警截帧照片，                      │
-        // │            底部 HUD 叠加了时间戳和置信度标签，           │
-        // │            这张图可直接作为电子证据使用，               │
-        // │            图片加载失败会自动重试 3 次(500ms 间隔)"     │
-        // └──────────────────────────────────────────────────────┘ */}
+        {/* 详情面板 */}
         {/* 详情面板 */}
         {selectedAlert && (
           <div className="w-[360px] bg-white border border-outline-variant rounded-xl flex flex-col shadow-sm overflow-hidden shrink-0 animate-fade-in-up">
@@ -260,29 +263,23 @@ export default function Alerts() {
               </div>
             </div>
 
-            {/* ┌──────────────────────────────────────────────────────┐
-            // │  状态操作按钮 — 忽略误报 / 确认告警 / 查看录像回放     │
-            // │  演讲提示: "只有 pending 状态的告警才能操作，          │
-            // │            忽略和确认都会调 updateAlertStatus 更新      │
-            // │            JSON 状态，回放按钮跳转到 /monitor 页面      │
-            // │            并携带 camId 和 time 参数"                  │
-            // └──────────────────────────────────────────────────────┘ */}
+            {/* 操作按钮 */}
             {/* 操作按钮 */}
             <div className="p-4 border-t border-outline-variant space-y-2">
               <div className="flex gap-2">
                 <button
                   onClick={() => handleUpdateStatus("ignored")}
-                  disabled={selectedAlert.status !== "pending"}
+                  disabled={selectedAlert.status !== "pending" || actionLoading}
                   className="flex-1 h-10 bg-surface-container border border-outline-variant rounded-lg font-semibold text-body flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors disabled:opacity-40"
                 >
-                  <XCircle size={15} /> 忽略误报
+                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />} {actionLoading ? "处理中…" : "忽略误报"}
                 </button>
                 <button
                   onClick={() => handleUpdateStatus("confirmed")}
-                  disabled={selectedAlert.status !== "pending"}
+                  disabled={selectedAlert.status !== "pending" || actionLoading}
                   className="flex-1 h-10 bg-primary text-white rounded-lg font-semibold text-body flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all disabled:opacity-40"
                 >
-                  <CheckCircle2 size={15} /> 确认告警
+                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} {actionLoading ? "处理中…" : "确认告警"}
                 </button>
               </div>
               <button onClick={() => navigate(`/monitor?cam=${selectedAlert.cameraId}&time=${selectedAlert.time}`)} className="w-full h-9 border border-primary/20 text-primary text-body font-medium rounded-lg flex items-center justify-center gap-1.5 hover:bg-primary/5 transition-colors">

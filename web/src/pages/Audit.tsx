@@ -7,7 +7,11 @@ import {
   ChevronLeft, ChevronRight, Clock, X,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { useMockAuditLogs, useMockAutomationRate, useMockAuditTrend } from "../lib/useMock";
+import {
+  useRealAuditLogs,
+  useRealAutomationRate,
+  useRealAuditTrend,
+} from "../lib/useRealData";
 import { useToast } from "../components/Toast";
 
 const OPERATOR_OPTIONS = ["用户1", "用户2", "用户3", "用户4"];
@@ -31,10 +35,10 @@ const TIME_OPTIONS = [
 
 export default function Audit() {
   const toast = useToast();
-  const [auditLogs] = useMockAuditLogs();
-  const automationRate = useMockAutomationRate();
+  const [auditLogs] = useRealAuditLogs();
+  const automationRate = useRealAutomationRate();
   const [trendRange, setTrendRange] = useState<"day" | "week">("week");
-  const auditTrendRaw = useMockAuditTrend(trendRange);
+  const auditTrendRaw = useRealAuditTrend(trendRange);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterOperator, setFilterOperator] = useState("");
   const [filterCategory, setFilterCategory] = useState("");

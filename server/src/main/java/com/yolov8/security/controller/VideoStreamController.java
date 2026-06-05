@@ -188,11 +188,7 @@ public class VideoStreamController {
         }
     }
 
-    // ┌──────────────────────────────────────────────┐
-    // │  MJPEG流输出 — multipart/x-mixed-replace      │
-    // │  演讲提示: "不是WebSocket不是HLS，就是最朴素的   │
-    // │            MJPEG一帧帧拼接，兼容性最好"         │
-    // └──────────────────────────────────────────────┘
+    // MJPEG流
     /**
      * MJPEG video feed endpoint. Supports ?cam=0, ?cam=1, etc.
      */

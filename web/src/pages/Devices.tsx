@@ -22,6 +22,7 @@ import {
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
 import { fetchCameras, addCamera, updateCamera, deleteCamera, deleteAllCameras, testCamera, discoverCameras, batchAddCameras } from "../services/dataService";
+import { useRealSystemStatus } from "../lib/useRealData";
 
 const TYPE_LABELS: Record<string, string> = {
   usb: "USB 摄像头",
@@ -31,6 +32,18 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default function Devices() {
   const toast = useToast();
+  const storageUsage = useRealSystemStatus().storageUsage ?? 0;
+
+  // 操作兜底：统一 try/catch + toast
+  const withToast = async (action: () => Promise<void>, successMsg: string, onSuccess?: () => void) => {
+    try {
+      await action();
+      toast.show(successMsg);
+      onSuccess?.();
+    } catch (e: any) {
+      toast.show("操作失败: " + e.message, "error");
+    }
+  };
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
   const [testingConn, setTestingConn] = useState(false);
@@ -43,7 +56,6 @@ export default function Devices() {
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", type: "rtsp" as "usb" | "rtsp" | "http_snapshot", address: "", user: "", password: "" });
-  const [successMsg, setSuccessMsg] = useState("");
   const [discovered, setDiscovered] = useState<DiscoveredCamera[]>([]);
   const [scanning, setScanning] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
@@ -62,56 +74,40 @@ export default function Devices() {
 
   useEffect(() => { loadCameras(); }, [loadCameras]);
 
-  // Auto-clear success message
-  useEffect(() => {
-    if (!successMsg) return;
-    const t = setTimeout(() => setSuccessMsg(""), 3000);
-    return () => clearTimeout(t);
-  }, [successMsg]);
-
   const onlineCount = cameras.filter(c => c.status === CameraStatus.ONLINE).length;
 
   const handleAdd = async () => {
-    try {
-      await addCamera({ name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
-      setSuccessMsg("设备已添加");
-      setShowModal(false);
-      await loadCameras();
-    } catch (e: any) {
-      toast.show("添加失败: " + e.message, "error");
-    }
+    if (!form.name || !form.address) { toast.show("请填写名称和地址", "error"); return; }
+    await withToast(
+      () => addCamera({ name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined }).then(() => loadCameras()),
+      "设备已添加",
+      () => setShowModal(false)
+    );
   };
 
   const handleEdit = async () => {
     if (!editId) return;
-    try {
-      await updateCamera(editId, { name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
-      setSuccessMsg("设备已更新");
-      setShowModal(false);
-      await loadCameras();
-    } catch (e: any) {
-      toast.show("更新失败: " + e.message, "error");
-    }
+    await withToast(
+      () => updateCamera(editId, { name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined }).then(() => loadCameras()),
+      "设备已更新"
+    );
+    setShowModal(false);
   };
 
   const handleDelete = async (id: string) => {
-    try {
-      await deleteCamera(id);
-      toast.show("设备已删除");
-      await loadCameras();
-    } catch (e: any) {
-      toast.show("删除失败: " + e.message, "error");
-    }
+    if (!window.confirm("确认删除该设备？")) return;
+    await withToast(
+      () => deleteCamera(id).then(() => loadCameras()),
+      "设备已删除"
+    );
   };
 
   const handleClearAll = async () => {
-    try {
-      await deleteAllCameras();
-      toast.show("所有设备已清空");
-      await loadCameras();
-    } catch (e: any) {
-      toast.show("清空失败: " + e.message, "error");
-    }
+    if (!window.confirm("确认清空所有设备？此操作不可撤销。")) return;
+    await withToast(
+      () => deleteAllCameras().then(() => loadCameras()),
+      "所有设备已清空"
+    );
   };
 
   const handleTest = async () => {
@@ -170,11 +166,6 @@ export default function Devices() {
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-4 animate-fade-in-up">
-      {successMsg && (
-        <div className="bg-success-green/10 text-success-green px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2">
-          <Check size={16} /> {successMsg}
-        </div>
-      )}
 
       {/* 页头 */}
       <header className="flex justify-between items-center">
@@ -343,10 +334,10 @@ export default function Devices() {
             <div>
               <div className="flex justify-between text-body-sm font-semibold text-on-surface-variant mb-1.5">
                 <span>录像存储 (SSD)</span>
-                <span className="font-mono">1.8GB / 40GB</span>
+                <span className="font-mono">{storageUsage}% 已用</span>
               </div>
               <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: "4.5%" }} />
+                <div className="bg-primary h-full rounded-full" style={{ width: `${Math.min(storageUsage, 100)}%` }} />
               </div>
             </div>
             <div className="mt-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">

@@ -213,8 +213,9 @@ export default function Login({ onLogin }: LoginProps) {
                   </label>
                   <button
                     type="button"
-                    className="text-[13px] transition-colors"
-                    style={{ color: "#6366f1", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}
+                    className="text-[13px] transition-colors cursor-not-allowed"
+                    style={{ color: "#9ca3af", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 400 }}
+                    title="请联系管理员重置密码"
                   >
                     忘记密码？
                   </button>

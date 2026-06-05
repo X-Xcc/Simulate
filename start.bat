@@ -96,20 +96,18 @@ if !NODE_OK!==0 (
     echo   [OK]   Node: !NODE_VER!
 )
 
-:: --- Port check ---
+:: --- Port check (single netstat call) ---
 echo.
 echo   Checking ports...
 set PORT_CONFLICT=0
-for %%p in (5000 5001 5173) do (
-    netstat -ano 2>nul | findstr "LISTENING" | findstr ":%%p " >nul 2>&1
+for /f "tokens=*" %%L in ('netstat -ano 2^>nul ^| findstr "LISTENING"') do (
+    echo %%L | findstr ":5000 :5001 :5173" >nul 2>&1
     if !errorlevel!==0 (
-        echo   [WARN] Port %%p is already in use
         set /a PORT_CONFLICT+=1
     )
 )
 if !PORT_CONFLICT! gtr 0 (
-    echo.
-    echo   WARNING: !PORT_CONFLICT! ports in use. Existing processes may interfere.
+    echo   [WARN] !PORT_CONFLICT! ports (5000/5001/5173) already in use
     choice /C YN /M "   Continue anyway?"
     if errorlevel 2 goto :end
 )
@@ -132,9 +130,22 @@ if !SKIP_BUILD!==1 (
     echo   [WARN] --no-build but WAR missing, building anyway...
 )
 
-echo   [BUILD] Maven clean package...
-pushd "%PROJECT_ROOT%server"
-call !MVN_CMD! clean package -DskipTests -q
+:: Clean stale .original file (Windows rename issue)
+if exist "!WAR_FILE!.original" del /f "!WAR_FILE!.original" >nul 2>&1
+
+if exist "!WAR_FILE!" (
+    echo   [BUILD] Maven package (incremental, skip clean)...
+    pushd "%PROJECT_ROOT%server"
+    call !MVN_CMD! package -DskipTests -q
+    if !errorlevel! neq 0 (
+        echo   [WARN] Incremental build failed, retrying with clean...
+        call !MVN_CMD! clean package -DskipTests -q
+    )
+) else (
+    echo   [BUILD] Maven clean package (first build)...
+    pushd "%PROJECT_ROOT%server"
+    call !MVN_CMD! clean package -DskipTests -q
+)
 if !errorlevel! neq 0 (
     popd
     echo   [FAIL] Maven build failed
