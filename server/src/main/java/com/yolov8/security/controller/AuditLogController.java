@@ -36,7 +36,8 @@ public class AuditLogController {
             ApiResponse.PageData<AuditLog> result = auditLogService.getLogsPage(page, size, search, category, riskLevel);
             return ResponseEntity.ok(ApiResponse.success(result));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取审计日志列表失败: " + e.getMessage()));
         }
     }
 
@@ -52,7 +53,9 @@ public class AuditLogController {
                 .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
                 .body(csv.getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.status(500)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(("{\"status\":\"error\",\"message\":\"导出审计日志失败\"}").getBytes(StandardCharsets.UTF_8));
         }
     }
 
@@ -63,7 +66,8 @@ public class AuditLogController {
             Map<String, Object> trend = auditLogService.getTrendData(range);
             return ResponseEntity.ok(ApiResponse.success(trend));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取审计趋势失败: " + e.getMessage()));
         }
     }
 

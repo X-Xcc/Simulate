@@ -1,5 +1,7 @@
 package com.yolov8.security.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -29,8 +31,7 @@ public class AuthFilter extends OncePerRequestFilter {
         "/dashboard", "/monitor", "/alerts", "/devices",
         "/evidence", "/analysis", "/maintenance", "/audit",
         "/monitor/**", "/assets/**",
-        "/api/detection/start", "/api/detection/stop", "/api/detection/status",
-        "/api/upload_training_resource",
+        "/api/detection/status",
         "/api/annotations/**",
         "/api/update_frame", "/api/model_info", "/api/gpu_status",
         "/api/discover",
@@ -51,6 +52,7 @@ public class AuthFilter extends OncePerRequestFilter {
 
     private final AntPathMatcher matcher = new AntPathMatcher();
     private final JwtService jwtService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AuthFilter(JwtService jwtService) {
         this.jwtService = jwtService;
@@ -106,6 +108,6 @@ public class AuthFilter extends OncePerRequestFilter {
 
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"status\":\"error\",\"message\":\"Unauthorized\"}");
+        response.getWriter().write(objectMapper.writeValueAsString(ApiResponse.error("Unauthorized")));
     }
 }

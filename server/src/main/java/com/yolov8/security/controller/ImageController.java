@@ -43,7 +43,8 @@ public class ImageController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error getting all images", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", "error", "message", "获取图片列表失败: " + e.getMessage()));
         }
     }
 
@@ -114,7 +115,8 @@ public class ImageController {
             return ResponseEntity.ok(frames);
         } catch (Exception e) {
             log.error("Error getting recent frames", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(List.of());
         }
     }
 
@@ -125,7 +127,8 @@ public class ImageController {
             return ResponseEntity.ok(frames);
         } catch (Exception e) {
             log.error("Error getting all frames", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(List.of());
         }
     }
 
@@ -136,7 +139,8 @@ public class ImageController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error deleting images", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", "error", "message", "删除图片失败: " + e.getMessage()));
         }
     }
 
@@ -147,7 +151,8 @@ public class ImageController {
             return ResponseEntity.ok(ApiResponse.success(status));
         } catch (Exception e) {
             log.error("Error getting monitor status", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取监控状态失败: " + e.getMessage()));
         }
     }
 }

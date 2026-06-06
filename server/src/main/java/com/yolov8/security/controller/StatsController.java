@@ -122,7 +122,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(summary));
         } catch (Exception e) {
             log.error("Error getting stats summary", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取统计摘要失败: " + e.getMessage()));
         }
     }
 
@@ -133,7 +134,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(stats));
         } catch (Exception e) {
             log.error("Error getting stats", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取统计数据失败: " + e.getMessage()));
         }
     }
 
@@ -210,7 +212,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(result));
         } catch (Exception e) {
             log.error("Error getting regional stats", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取区域统计失败: " + e.getMessage()));
         }
     }
 
@@ -221,7 +224,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(compare));
         } catch (Exception e) {
             log.error("Error getting compare data", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取对比数据失败: " + e.getMessage()));
         }
     }
 
@@ -232,7 +236,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(fps));
         } catch (Exception e) {
             log.error("Error getting FPS stats", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取 FPS 统计失败: " + e.getMessage()));
         }
     }
 
@@ -243,7 +248,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(info));
         } catch (Exception e) {
             log.error("Error getting system info", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取系统信息失败: " + e.getMessage()));
         }
     }
 
@@ -319,7 +325,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(result));
         } catch (Exception e) {
             log.error("Error getting evidence list", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取证据列表失败: " + e.getMessage()));
         }
     }
 
@@ -353,7 +360,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(stats));
         } catch (Exception e) {
             log.error("Error getting evidence stats", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取证据统计失败: " + e.getMessage()));
         }
     }
 
@@ -366,7 +374,8 @@ public class StatsController {
             return ResponseEntity.ok(Map.of("status", "success", "message", "Model info updated"));
         } catch (Exception e) {
             log.error("Error updating model info", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", "error", "message", "更新模型信息失败: " + e.getMessage()));
         }
     }
 
@@ -377,7 +386,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(modelInfo));
         } catch (Exception e) {
             log.error("Error getting model info", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取模型信息失败: " + e.getMessage()));
         }
     }
 
@@ -391,7 +401,8 @@ public class StatsController {
             return ResponseEntity.ok(Map.of("status", "success"));
         } catch (Exception e) {
             log.error("Error updating GPU status", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", "error", "message", "更新 GPU 状态失败: " + e.getMessage()));
         }
     }
 
@@ -404,7 +415,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(result));
         } catch (Exception e) {
             log.error("Error starting detection", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("启动检测失败: " + e.getMessage()));
         }
     }
 
@@ -415,7 +427,8 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(result));
         } catch (Exception e) {
             log.error("Error stopping detection", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("停止检测失败: " + e.getMessage()));
         }
     }
 
@@ -426,21 +439,22 @@ public class StatsController {
             return ResponseEntity.ok(ApiResponse.success(Map.of("running", running)));
         } catch (Exception e) {
             log.error("Error getting detection status", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取检测状态失败: " + e.getMessage()));
         }
     }
 
     // ─── 清理 & 打开文件夹 ───
 
     @PostMapping("/cleanup")
-    public ResponseEntity<Map<String, Object>> cleanupOldFiles() {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> cleanupOldFiles() {
         try {
             dataCleanupTask.cleanOldFiles();
-            return ResponseEntity.ok(Map.of("status", "success", "message", "Cleanup triggered"));
+            return ResponseEntity.ok(ApiResponse.success(Map.of("status", "success", "message", "Cleanup triggered")));
         } catch (Exception e) {
             log.error("Manual cleanup failed", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status", "error", "message", e.getMessage()));
+                    .body(ApiResponse.error(e.getMessage()));
         }
     }
 
@@ -452,7 +466,8 @@ public class StatsController {
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             log.error("Error opening folder", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", "error", "message", "打开文件夹失败: " + e.getMessage()));
         }
     }
 

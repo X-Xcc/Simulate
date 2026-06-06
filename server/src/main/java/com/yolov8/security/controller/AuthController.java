@@ -1,5 +1,6 @@
 package com.yolov8.security.controller;
 
+import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.model.LoginRequest;
 import com.yolov8.security.model.LoginResponse;
 import com.yolov8.security.service.JwtService;
@@ -55,7 +56,7 @@ public class AuthController {
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
         if (request.getUsername() == null || request.getUsername().isBlank() ||
             request.getPassword() == null || request.getPassword().isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "用户名和密码不能为空"));
+            return ResponseEntity.badRequest().body(ApiResponse.error("用户名和密码不能为空"));
         }
 
         if (constantTimeEquals(adminUsername, request.getUsername()) &&
@@ -69,7 +70,7 @@ public class AuthController {
             return ResponseEntity.ok(new LoginResponse(token, jwtService.getExpirationSeconds()));
         }
 
-        return ResponseEntity.status(401).body(Map.of("error", "用户名或密码错误"));
+        return ResponseEntity.status(401).body(ApiResponse.error("用户名或密码错误"));
     }
 
     private static boolean constantTimeEquals(String a, String b) {
@@ -79,7 +80,7 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(@RequestHeader(value = "Authorization", required = false) String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(401).body(Map.of("error", "未登录"));
+            return ResponseEntity.status(401).body(ApiResponse.error("未登录"));
         }
         try {
             String token = authHeader.substring(7);
@@ -90,7 +91,7 @@ public class AuthController {
                 "role", "超级管理员"
             ));
         } catch (Exception e) {
-            return ResponseEntity.status(401).body(Map.of("error", "令牌无效"));
+            return ResponseEntity.status(401).body(ApiResponse.error("令牌无效"));
         }
     }
 }

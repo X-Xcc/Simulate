@@ -53,7 +53,9 @@ public class ExportController {
                 .body(bytes);
         } catch (Exception e) {
             log.error("导出CSV失败", e);
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.status(500)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(("{\"status\":\"error\",\"message\":\"导出 CSV 失败\"}").getBytes(StandardCharsets.UTF_8));
         }
     }
 }
