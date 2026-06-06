@@ -23,8 +23,8 @@ describe('monitor data helpers', () => {
 
     const alert = buildMonitorAlert('fight', cameras, 'data:image/jpeg;base64,abc', now);
 
-    expect(alert.cameraId).toBe('cam-10');
-    expect(alert.cameraName).toBe('大华');
+    expect(alert.cameraId).toBe('cam-12');
+    expect(alert.cameraName).toBe('USB');
     expect(alert.type).toBe(AlertType.FIGHT);
     expect(alert.level).toBe(AlertLevel.CRITICAL);
     expect(alert.snapshotUrl).toBe('data:image/jpeg;base64,abc');

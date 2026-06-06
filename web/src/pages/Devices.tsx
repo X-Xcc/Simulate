@@ -33,7 +33,7 @@ import {
   toggleSelectedDiscovery,
   TYPE_LABELS,
 } from "../services/devices-data";
-import { addDiscoveredDevices, clearDevices, createDevice, loadDevices, removeDevice, saveDevice, scanDevices, validateDeviceConnection } from "../services/devices-service";
+import { addDiscoveredDevices, clearDevices, createDevice, loadDeviceSettings, loadDevices, removeDevice, saveDevice, saveDeviceSettings, scanDevices, validateDeviceConnection } from "../services/devices-service";
 
 export default function Devices() {
   const toast = useToast();
@@ -72,7 +72,29 @@ export default function Devices() {
     }
   }, []);
 
-  useEffect(() => { loadCameras(); }, [loadCameras]);
+  useEffect(() => {
+    loadCameras();
+  }, [loadCameras]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadDeviceSettings()
+      .then((data) => {
+        if (!cancelled) setSettings({
+          ...DEFAULT_DEVICE_SETTINGS,
+          ...data,
+          aiSensitivity: { ...DEFAULT_DEVICE_SETTINGS.aiSensitivity, ...data.aiSensitivity },
+          notifications: { ...DEFAULT_DEVICE_SETTINGS.notifications, ...data.notifications },
+          storage: { ...DEFAULT_DEVICE_SETTINGS.storage, ...data.storage },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSettings(DEFAULT_DEVICE_SETTINGS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onlineCount = getOnlineCameraCount(cameras);
 
@@ -170,6 +192,16 @@ export default function Devices() {
       await loadCameras();
     } catch (e: any) {
       toast.show("批量添加失败: " + e.message, "error");
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      const saved = await saveDeviceSettings(settings);
+      setSettings(saved);
+      toast.show("设备设置已保存", "success");
+    } catch (e: any) {
+      toast.show("设置保存失败: " + e.message, "error");
     }
   };
 
@@ -316,8 +348,8 @@ export default function Devices() {
               >
                 <RotateCcw size={14} /> 恢复默认
               </button>
-              <button onClick={() => toast.show("灵敏度配置已应用")} className="px-5 py-2 bg-primary text-white rounded-lg font-semibold text-body flex items-center gap-1.5 shadow-sm">
-                <Check size={14} /> 应用变更
+              <button onClick={handleSaveSettings} className="px-5 py-2 bg-primary text-white rounded-lg font-semibold text-body flex items-center gap-1.5 shadow-sm">
+                <Check size={14} /> 保存设置
               </button>
             </div>
           </section>

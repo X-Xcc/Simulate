@@ -32,7 +32,7 @@ export function getConfirmedAlertCount(alerts: Array<{ status: string }>) {
 }
 
 export function getAnalysisAccuracy(totalAlerts: number, confirmedAlerts: number) {
-  return totalAlerts > 0 ? ((confirmedAlerts / totalAlerts) * 100).toFixed(1) : '0';
+  return totalAlerts > 0 ? Number(((confirmedAlerts / totalAlerts) * 100).toFixed(1)) : 0;
 }
 
 export function getAverageLatencyLabel(avgFps?: number) {

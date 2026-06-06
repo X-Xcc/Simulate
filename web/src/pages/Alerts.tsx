@@ -60,12 +60,13 @@ export default function Alerts() {
 
   const handleUpdateStatus = (status: "confirmed" | "ignored") => {
     if (!selectedAlert) return;
+    const alertId = selectedAlert.id;
     setActionLoading(true);
-    updateAlertStatus(selectedAlert.id, status)
+    updateAlertStatus(alertId, status)
       .catch(() => toast.show("操作失败", "error"))
       .finally(() => {
         setActionLoading(false);
-        setSelectedAlert(prev => prev ? { ...prev, status } : null);
+        setSelectedAlert(prev => prev && prev.id === alertId ? { ...prev, status } : prev);
       });
   };
 

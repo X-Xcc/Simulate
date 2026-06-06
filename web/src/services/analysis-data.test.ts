@@ -40,7 +40,7 @@ describe('analysis data helpers', () => {
 
   it('computes accuracy, latency and maxima', () => {
     expect(getConfirmedAlertCount([{ status: 'confirmed' }, { status: 'pending' }] as any)).toBe(1);
-    expect(getAnalysisAccuracy(4, 3)).toBe('75.0');
+    expect(getAnalysisAccuracy(4, 3)).toBe(75);
     expect(getAverageLatencyLabel(25)).toBe('40ms');
     expect(getBehaviorMaxValue({ 打架: 5, 跌倒: 2 })).toBe(5);
     expect(getRegionalMaxValue([{ value: 4 }, { value: 9 }] as any)).toBe(9);

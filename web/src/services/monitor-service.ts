@@ -1,6 +1,7 @@
 import { apiPost } from '../lib/api';
 import { fetchCameras, uploadScreenshot } from './dataService';
-import { AlarmType, buildMonitorAlert } from './monitor-data';
+import { AlarmType, buildMonitorAlert, getPrimaryMonitorCamera } from './monitor-data';
+import type { Camera } from '../types';
 
 export async function loadMonitorCameras(signal?: AbortSignal) {
   return fetchCameras(signal);
@@ -12,10 +13,10 @@ export async function createMonitorAlert(type: AlarmType, cameras: Parameters<ty
   return alert;
 }
 
-export async function uploadMonitorCapture(type: AlarmType, cameras: Parameters<typeof buildMonitorAlert>[1], captured: string) {
+export async function uploadMonitorCapture(type: AlarmType, cameras: Camera[], captured: string) {
   if (!captured) return null;
 
-  const camera = cameras[1] ?? cameras[0];
+  const camera = getPrimaryMonitorCamera(cameras);
   return uploadScreenshot({
     base64: captured,
     type,

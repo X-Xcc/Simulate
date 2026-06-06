@@ -62,7 +62,7 @@ export default function Evidence() {
   return (
     <div className="space-y-4 flex flex-col h-full overflow-hidden animate-fade-in-up">
       <section className="flex justify-between items-end shrink-0">
-        <button onClick={() => { exportEvidenceReport(); toast.show("证据报告已导出"); }} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
+          <button onClick={() => { exportEvidenceReport(selectedDate, activeTab); toast.show("已开始导出证据报告"); }} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
           <Download size={15} /> 导出报告
         </button>
       </section>
@@ -140,14 +140,14 @@ export default function Evidence() {
 
       {evTotal > EVIDENCE_PAGE_SIZE && (
         <div className="shrink-0 flex justify-center gap-2">
-          <button onClick={() => setEvPage(getEvidencePrevPage)} disabled={evPage === 0}
+          <button onClick={() => setEvPage(page => getEvidencePrevPage(page))} disabled={evPage === 0}
             className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
             <ChevronLeft size={13} /> 上一页
           </button>
           <span className="px-3 py-1.5 text-body-sm text-outline font-medium">
             第 {evPage + 1} / {getEvidenceTotalPages(evTotal)} 页
           </span>
-          <button onClick={() => setEvPage(getEvidenceNextPage)} disabled={!canGoNextEvidencePage(evPage, evTotal)}
+          <button onClick={() => setEvPage(page => getEvidenceNextPage(page))} disabled={!canGoNextEvidencePage(evPage, evTotal)}
             className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
             下一页 <ChevronRight size={13} />
           </button>

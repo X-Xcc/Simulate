@@ -1,4 +1,4 @@
-import { Camera, Settings } from '../types';
+import { Camera, Settings, CameraStatus } from '../types';
 import type { DiscoveredCamera } from '../types';
 
 export const DEFAULT_DEVICE_FORM = {
@@ -84,7 +84,7 @@ export function buildBatchCameraPayload(discovered: DiscoveredCamera[], selected
 }
 
 export function getOnlineCameraCount(cameras: Camera[]): number {
-  return cameras.filter(camera => camera.status === 'online').length;
+  return cameras.filter(camera => camera.status === CameraStatus.ONLINE).length;
 }
 
 export function getDeviceStorageBarWidth(storageUsage: number) {

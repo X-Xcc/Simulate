@@ -55,7 +55,7 @@ const C = {
 const TREND_COLORS: Record<string, string> = {
   "打架": "#e54d4d",
   "跌倒": "#e5952e",
-  "离岗": "#ef4444",
+  "离岗": "#06b6d4",
   "人员聚集": "#8b5cf6",
 };
 
@@ -128,7 +128,7 @@ export default function Dashboard() {
     <div className="space-y-5 max-w-[1600px] mx-auto pb-8">
       <header className="flex justify-between items-end pt-1">
         <div className="flex gap-2.5">
-          <button onClick={() => { exportDashboardReport(); toast.show("报告已导出成功"); }}
+          <button onClick={() => { exportDashboardReport(); toast.show("已开始导出看板报告"); }}
             className="h-9 px-5 bg-gradient-to-r from-primary to-blue-500 text-white rounded-lg text-[13px] font-semibold flex items-center gap-2 hover:shadow-lg hover:shadow-primary/20 transition-all shadow-md cursor-pointer">
             <Download size={14}/> 导出报告
           </button>

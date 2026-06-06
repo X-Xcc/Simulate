@@ -1,6 +1,6 @@
-import { Camera } from '../types';
+import { Camera, Settings } from '../types';
 import type { DiscoveredCamera } from '../types';
-import { addCamera, batchAddCameras, deleteAllCameras, deleteCamera, discoverCameras, fetchCameras, testCamera, updateCamera } from './dataService';
+import { addCamera, batchAddCameras, deleteAllCameras, deleteCamera, discoverCameras, fetchCameras, fetchSettings, testCamera, updateCamera, updateSettings } from './dataService';
 import { DEFAULT_DEVICE_FORM, toDevicePayload } from './devices-data';
 
 export async function loadDevices(signal?: AbortSignal) {
@@ -33,4 +33,12 @@ export async function scanDevices(): Promise<DiscoveredCamera[]> {
 
 export async function addDiscoveredDevices(cameras: Partial<Camera>[]) {
   return batchAddCameras(cameras);
+}
+
+export async function loadDeviceSettings(signal?: AbortSignal) {
+  return fetchSettings(signal);
+}
+
+export async function saveDeviceSettings(settings: Partial<Settings>) {
+  return updateSettings(settings);
 }

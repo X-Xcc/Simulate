@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useAlarmSound } from "../hooks/useAlarmSound";
-import { Camera } from "../types";
+import { Camera, CameraStatus } from "../types";
 import { createMonitorAlert, loadMonitorCameras, uploadMonitorCapture } from "../services/monitor-service";
 import {
   ALARM_CONFIGS,
@@ -215,6 +215,9 @@ export default function Monitor() {
     return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
+  const slotCameras = getMonitorSlotCameras(cameras);
+  const primaryAlarmCamera = slotCameras.find(camera => camera?.status === CameraStatus.ONLINE) ?? slotCameras.find(Boolean) ?? cameras[0] ?? null;
+
   const handleAlarmTrigger = useCallback(async (type: AlarmType) => {
     setActiveAlarms(prev => {
       const next = new Set(prev);
@@ -223,7 +226,7 @@ export default function Monitor() {
     });
     setAlarmFullscreen(true);
 
-    const alarmCam = cameras[1] ?? cameras[0];
+    const alarmCam = slotCameras.find(camera => camera?.status === CameraStatus.ONLINE) ?? slotCameras.find(Boolean) ?? cameras[0];
     const captured = captureFrame("cam-slot-" + alarmCam?.id)
       || captureFrame("cam-slot-0")
       || captureFrame("cam-slot-empty")
@@ -240,7 +243,7 @@ export default function Monitor() {
     } catch (err) {
       console.warn("上传截图失败:", err);
     }
-  }, [cameras]);
+  }, [cameras, slotCameras]);
 
   const handleAlarmAcknowledge = useCallback((type: AlarmType, _isFalseAlarm: boolean = false) => {
     setActiveAlarms(prev => {
@@ -266,8 +269,6 @@ export default function Monitor() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [handleAlarmTrigger]);
-
-  const slotCameras = getMonitorSlotCameras(cameras);
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-3 animate-fade-in-up">
@@ -338,10 +339,10 @@ export default function Monitor() {
         )}
       </main>
 
-      {alarmFullscreen && activeAlarms.size > 0 && (
+      {alarmFullscreen && activeAlarms.size > 0 && primaryAlarmCamera && (
         <AlarmFullscreenDialog
           alarmType={[...activeAlarms][0]}
-          cameras={cameras}
+          cameras={[primaryAlarmCamera]}
           onAck={handleAlarmAcknowledge}
         />
       )}
@@ -385,7 +386,7 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
 }
 
 function CameraSlot({
-  name, isOnline, go2rtcId, cameraId,
+  name, isOnline, go2rtcId, httpMjpegUrl, streamUrl, cameraId,
 }: {
   name: string;
   streamUrl: string;
@@ -400,6 +401,7 @@ function CameraSlot({
   const hasGo2rtc = !!go2rtcId;
   const go2rtcStreamId = go2rtcId || "cam_" + cameraId;
   const go2rtcUrl = `http://${window.location.hostname}:1984/stream.html?src=${go2rtcStreamId}`;
+  const fallbackStreamUrl = httpMjpegUrl || streamUrl || `/video_feed?cam=${cameraId}`;
 
   useEffect(() => {
     if (!hasGo2rtc) return;
@@ -415,8 +417,10 @@ function CameraSlot({
   }, [cameraId, hasGo2rtc, useFallback]);
 
   useEffect(() => {
-    if (!hasGo2rtc && !useFallback) setUseFallback(true);
-  }, [hasGo2rtc, useFallback]);
+    if (!hasGo2rtc) {
+      setUseFallback(true);
+    }
+  }, [hasGo2rtc]);
 
   const handleIframeLoad = () => {
     if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
@@ -442,7 +446,7 @@ function CameraSlot({
         />
       ) : (
         <img
-          src={`/video_feed?cam=${cameraId}`}
+          src={fallbackStreamUrl}
           className="absolute inset-0 w-full h-full object-contain"
           alt={`Camera ${cameraId}`}
         />

@@ -32,8 +32,8 @@ describe('dashboard data helpers', () => {
     );
 
     expect(distribution).toEqual([
-      { name: '跌倒', value: 2, color: '#2' },
       { name: '打架', value: 4, color: '#1' },
+      { name: '跌倒', value: 2, color: '#2' },
       { name: '离岗', value: 1, color: '#3' },
       { name: '人员聚集', value: 5, color: '#4' },
     ]);

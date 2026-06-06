@@ -1,5 +1,5 @@
 import { subscribeSse } from '../lib/api';
-import { exportCsv, fetchEvidenceList } from './dataService';
+import { exportAlerts, fetchEvidenceList } from './dataService';
 import { EVIDENCE_PAGE_SIZE, getEvidenceType } from './evidence-data';
 
 export function subscribeEvidenceRefresh(onRefresh: () => void): () => void {
@@ -18,6 +18,9 @@ export async function loadEvidencePage(selectedDate: string, activeTab: number, 
   );
 }
 
-export function exportEvidenceReport(): void {
-  exportCsv();
+export function exportEvidenceReport(selectedDate: string, activeTab: number): void {
+  exportAlerts({
+    since: selectedDate || undefined,
+    type: getEvidenceType(activeTab),
+  });
 }

@@ -85,7 +85,7 @@ export default function Analysis() {
               </button>
             ))}
           </div>
-          <button onClick={() => { exportAnalysisReport(); toast.show("分析报告已导出"); }} className="bg-gradient-to-r from-primary to-blue-500 text-white px-4 py-2 rounded-lg font-semibold text-[13px] flex items-center gap-2 shadow-md hover:shadow-lg hover:shadow-primary/20 transition-all">
+          <button onClick={() => { exportAnalysisReport(); toast.show("已开始导出分析报告"); }} className="bg-gradient-to-r from-primary to-blue-500 text-white px-4 py-2 rounded-lg font-semibold text-[13px] flex items-center gap-2 shadow-md hover:shadow-lg hover:shadow-primary/20 transition-all">
             <Download size={14} /> 导出报告
           </button>
         </div>
@@ -94,7 +94,7 @@ export default function Analysis() {
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: "本周告警", value: zeroString(totalAlerts.toString(), isZeroPort), change: isZeroPort ? "—" : "+12.4%", icon: AlertCircle, color: "text-danger-red", bg: "bg-danger-red/10" },
-          { label: "AI 准确率", value: `${zeroString(accuracy, isZeroPort)}%`, change: isZeroPort ? "—" : "+0.8%", icon: ShieldCheck, color: "text-success-green", bg: "bg-success-green/10" },
+          { label: "AI 准确率", value: `${zeroNumber(accuracy, isZeroPort)}%`, change: isZeroPort ? "—" : "+0.8%", icon: ShieldCheck, color: "text-success-green", bg: "bg-success-green/10" },
           { label: "识别时延", value: isZeroPort ? "0ms" : avgLatency, change: isZeroPort ? "—" : "正常", icon: Target, color: "text-info-cyan", bg: "bg-info-cyan/10" },
           { label: "设备负载", value: `${zeroString(status.cpuUsage.toString(), isZeroPort)}%`, change: isZeroPort ? "—" : "运行中", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
         ].map((s, i) => (
@@ -175,7 +175,7 @@ export default function Analysis() {
               </div>
               <div>
                 <p className="text-[11px] text-outline font-semibold uppercase mb-0.5">总告警数</p>
-                <p className="text-[20px] font-mono font-bold text-detect-purple tabular-nums">{zeroNumber(totalAlerts, isZeroPort)}</p>
+                <p className="text-[20px] font-mono font-bold text-detect-purple tabular-nums">{zeroNumber(confirmedAlerts, isZeroPort)}</p>
               </div>
               <div className="pt-3 border-t border-outline-variant/20">
                 <p className="text-[11px] font-semibold text-on-surface-variant">YOLOv8n-pose</p>

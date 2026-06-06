@@ -47,12 +47,12 @@ export function buildDistributionData(trendData: Array<Record<string, string | n
       totals[key] = (totals[key] ?? 0) + Number(point[key] ?? 0);
     }
   }
-  return [
-    { name: '跌倒', value: totals['跌倒'] ?? 0, color: palette['跌倒'] },
-    { name: '打架', value: totals['打架'] ?? 0, color: palette['打架'] },
-    { name: '离岗', value: totals['离岗'] ?? 0, color: palette['离岗'] },
-    { name: '人员聚集', value: totals['人员聚集'] ?? 0, color: palette['人员聚集'] },
-  ];
+  const orderedKeys = trendKeys.length > 0 ? trendKeys : ['跌倒', '打架', '离岗', '人员聚集'];
+  return orderedKeys.map((key) => ({
+    name: key,
+    value: totals[key] ?? 0,
+    color: palette[key],
+  }));
 }
 
 export function sumDistributionValues(distribution: Array<{ value: number }>) {

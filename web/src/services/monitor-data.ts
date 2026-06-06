@@ -1,4 +1,4 @@
-import { Alert, AlertLevel, AlertType, Camera } from '../types';
+import { Alert, AlertLevel, AlertType, Camera, CameraStatus } from '../types';
 
 export type AlarmType = 'fight' | 'fall' | 'suicide' | 'gathering';
 export type GridMode = 2 | 4 | 8 | 16;
@@ -32,7 +32,7 @@ export const ALARM_CONFIGS: Record<AlarmType, { hex: string; label: string; msg:
 export const ALARM_TO_ALERT: Record<AlarmType, { type: AlertType; level: AlertLevel }> = {
   fight: { type: AlertType.FIGHT, level: AlertLevel.CRITICAL },
   fall: { type: AlertType.FALL, level: AlertLevel.WARNING },
-  suicide: { type: AlertType.FIGHT, level: AlertLevel.CRITICAL },
+  suicide: { type: AlertType.ABSENCE, level: AlertLevel.CRITICAL },
   gathering: { type: AlertType.CROWD, level: AlertLevel.MINOR },
 };
 
@@ -51,7 +51,11 @@ export const GRID_ROWS: Record<GridMode, string> = {
 };
 
 export function getMonitorSlotCameras(cameras: Camera[]): Array<Camera | undefined> {
-  return MONITOR_SLOT_ORDER.map(id => cameras.find(camera => camera.id === id));
+  const ordered = MONITOR_SLOT_ORDER
+    .map(id => cameras.find(camera => camera.id === id))
+    .filter((camera): camera is Camera => Boolean(camera));
+  const remaining = cameras.filter(camera => !ordered.some(orderedCamera => orderedCamera.id === camera.id));
+  return [...ordered, ...remaining];
 }
 
 export function normalizeActiveAlarms(activeAlarms: Set<AlarmType>, acknowledged: AlarmType): {
@@ -70,8 +74,15 @@ export function getMonitorRealtimeUrl(streamId: string, hostname = window.locati
   return `http://${hostname}:1984/stream.html?src=${streamId}`;
 }
 
+export function getPrimaryMonitorCamera(cameras: Camera[]) {
+  const slotCameras = getMonitorSlotCameras(cameras);
+  return slotCameras.find(camera => camera?.status === CameraStatus.ONLINE)
+    ?? slotCameras.find(Boolean)
+    ?? cameras[0];
+}
+
 export function buildMonitorAlert(type: AlarmType, cameras: Camera[], captured: string, now = new Date()): Alert {
-  const camera = cameras[1] ?? cameras[0];
+  const camera = getPrimaryMonitorCamera(cameras);
   const alarm = ALARM_TO_ALERT[type];
   const config = ALARM_CONFIGS[type];
 
