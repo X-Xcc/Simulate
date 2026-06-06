@@ -5,87 +5,69 @@ import {
   MoreHorizontal, Minus, ZoomIn, ZoomOut, ArrowLeft, Trash2,
   FolderOpen,
 } from "lucide-react";
-import { saveAnnotation, uploadAnnotationImage } from "../services/dataService";
 import { useToast } from "../components/Toast";
 import "../styles/annotation-editor.css";
+import {
+  ANNOTATION_LABELS,
+  clampAnnotationZoom,
+  cloneAnnotationRects,
+  createAnnotationImageEntries,
+  createDefaultAnnotationRect,
+  deleteAnnotationRect,
+  filterAnnotationImageFiles,
+  getGroupedAnnotationRects,
+  isValidAnnotationRectSize,
+  moveAnnotationRect,
+  resetAnnotationIds,
+  stepAnnotationZoom,
+  syncImageRects,
+  updateAnnotationRect,
+  type AnnotationHistoryEntry,
+  type AnnotationImageEntry,
+  type AnnotationRect,
+} from "../services/annotation-data";
+import { submitAnnotation } from "../services/annotation-service";
 
-// --- Types ---
-interface Rect {
-  id: string;
-  x: number; y: number; w: number; h: number;
-  label: string;
-  occlusion: "partial" | "visible";
-  truncation: boolean;
-}
-
-type HistoryEntry = { rects: Rect[] };
-
-interface ImageEntry {
-  file: File;
-  url: string;
-  name: string;
-  rects: Rect[];
-}
-
-const LABELS = [
-  { name: "打架", color: "#ef4444" },
-  { name: "跌倒", color: "#f97316" },
-  { name: "聚集", color: "#3b82f6" },
-  { name: "离岗", color: "#22c55e" },
-];
-
-let _id = 0;
-const uid = () => `r${++_id}`;
-
-// ===== Component =====
 export default function AnnotationEditor() {
   const toast = useToast();
 
-  // --- Image list ---
-  const [images, setImages] = useState<ImageEntry[]>([]);
+  const [images, setImages] = useState<AnnotationImageEntry[]>([]);
   const [curIdx, setCurIdx] = useState(0);
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const fileRef = useRef<HTMLInputElement>(null);
 
   const curImage = images[curIdx] || null;
 
-  // --- Rect state (mirrors current image's rects) ---
-  const [rects, setRects] = useState<Rect[]>([]);
+  const [rects, setRects] = useState<AnnotationRect[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState({ x: 0, y: 0 });
   const [drawCur, setDrawCur] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState<{ id: string; ox: number; oy: number } | null>(null);
 
-  // --- History ---
-  const [history, setHistory] = useState<HistoryEntry[]>([{ rects: [] }]);
+  const [history, setHistory] = useState<AnnotationHistoryEntry[]>([{ rects: [] }]);
   const [histIdx, setHistIdx] = useState(0);
-  const pushHistory = useCallback((next: Rect[]) => {
+  const pushHistory = useCallback((next: AnnotationRect[]) => {
     setHistory(prev => {
       const h = prev.slice(0, histIdx + 1);
-      h.push({ rects: JSON.parse(JSON.stringify(next)) });
+      h.push({ rects: cloneAnnotationRects(next) });
       return h;
     });
     setHistIdx(prev => prev + 1);
   }, [histIdx]);
 
-  // --- Zoom ---
   const [zoom, setZoom] = useState(100);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // --- Selected rect ---
   const selected = rects.find(r => r.id === selectedId) || null;
 
-  // --- Save rects back to images array ---
-  const syncRectsToImage = useCallback((idx: number, r: Rect[]) => {
-    setImages(prev => prev.map((img, i) => i === idx ? { ...img, rects: r } : img));
+  const syncRectsToImage = useCallback((idx: number, nextRects: AnnotationRect[]) => {
+    setImages(prev => syncImageRects(prev, idx, nextRects));
   }, []);
 
-  // --- Load image at index ---
   const loadImage = useCallback((idx: number) => {
     if (idx < 0 || idx >= images.length) return;
-    // Save current rects
     if (curIdx >= 0 && curIdx < images.length) {
       syncRectsToImage(curIdx, rects);
     }
@@ -100,25 +82,19 @@ export default function AnnotationEditor() {
     img.src = entry.url;
   }, [images, curIdx, rects, syncRectsToImage]);
 
-  // --- Select folder ---
   const handleSelectFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const imageFiles = files.filter(f => /\.(jpg|jpeg|png)$/i.test(f.name));
+    const imageFiles = filterAnnotationImageFiles(files);
     if (imageFiles.length === 0) {
       toast.show("未找到 JPG/PNG 图片", "error");
       return;
     }
-    const entries: ImageEntry[] = imageFiles.map(f => ({
-      file: f,
-      url: URL.createObjectURL(f),
-      name: f.name,
-      rects: [],
-    }));
+    const entries = createAnnotationImageEntries(imageFiles);
     setImages(entries);
     setCurIdx(0);
     setRects([]);
     setSelectedId(null);
-    _id = 0;
+    resetAnnotationIds();
     setHistory([{ rects: [] }]);
     setHistIdx(0);
     const img = new Image();
@@ -127,7 +103,6 @@ export default function AnnotationEditor() {
     toast.show(`已加载 ${entries.length} 张图片`);
   };
 
-  // --- Canvas coord helpers ---
   const toCanvas = useCallback((e: React.MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas || !imgSize.w || !imgSize.h) return { x: 0, y: 0 };
@@ -138,16 +113,15 @@ export default function AnnotationEditor() {
     };
   }, [imgSize]);
 
-  // --- Draw events ---
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (!curImage) return;
     const p = toCanvas(e);
 
     for (let i = rects.length - 1; i >= 0; i--) {
-      const r = rects[i];
-      if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
-        setSelectedId(r.id);
-        setDragOffset({ id: r.id, ox: p.x - r.x, oy: p.y - r.y });
+      const rect = rects[i];
+      if (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h) {
+        setSelectedId(rect.id);
+        setDragOffset({ id: rect.id, ox: p.x - rect.x, oy: p.y - rect.y });
         return;
       }
     }
@@ -164,25 +138,14 @@ export default function AnnotationEditor() {
     if (drawing) {
       setDrawCur(p);
     } else if (dragOffset) {
-      setRects(prev => prev.map(r =>
-        r.id === dragOffset.id
-          ? { ...r, x: p.x - dragOffset.ox, y: p.y - dragOffset.oy }
-          : r
-      ));
+      setRects(prev => moveAnnotationRect(prev, dragOffset, p));
     }
   }, [curImage, drawing, dragOffset, toCanvas]);
 
   const onMouseUp = useCallback(() => {
     if (drawing) {
-      const x = Math.min(drawStart.x, drawCur.x);
-      const y = Math.min(drawStart.y, drawCur.y);
-      const w = Math.abs(drawCur.x - drawStart.x);
-      const h = Math.abs(drawCur.y - drawStart.y);
-      if (w > 5 && h > 5) {
-        const newRect: Rect = {
-          id: uid(), x, y, w, h,
-          label: "打架", occlusion: "visible", truncation: false,
-        };
+      const newRect = createDefaultAnnotationRect(drawStart, drawCur);
+      if (isValidAnnotationRectSize(newRect)) {
         const next = [...rects, newRect];
         setRects(next);
         pushHistory(next);
@@ -196,7 +159,6 @@ export default function AnnotationEditor() {
     }
   }, [drawing, drawStart, drawCur, rects, dragOffset, pushHistory]);
 
-  // --- Canvas rendering ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !curImage) return;
@@ -208,90 +170,66 @@ export default function AnnotationEditor() {
       ctx.clearRect(0, 0, imgSize.w, imgSize.h);
       ctx.drawImage(img, 0, 0);
 
-      for (const r of rects) {
-        const color = LABELS.find(l => l.name === r.label)?.color || "#ef4444";
+      for (const rect of rects) {
+        const color = ANNOTATION_LABELS.find(label => label.name === rect.label)?.color || "#ef4444";
         ctx.strokeStyle = color;
-        ctx.lineWidth = r.id === selectedId ? 3 : 2;
-        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.lineWidth = rect.id === selectedId ? 3 : 2;
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
         ctx.fillStyle = color;
         ctx.font = "14px sans-serif";
-        const tw = ctx.measureText(r.label).width;
-        ctx.fillRect(r.x, r.y - 20, tw + 8, 20);
+        const tw = ctx.measureText(rect.label).width;
+        ctx.fillRect(rect.x, rect.y - 20, tw + 8, 20);
         ctx.fillStyle = "#fff";
-        ctx.fillText(r.label, r.x + 4, r.y - 5);
+        ctx.fillText(rect.label, rect.x + 4, rect.y - 5);
       }
 
       if (drawing) {
-        const x = Math.min(drawStart.x, drawCur.x);
-        const y = Math.min(drawStart.y, drawCur.y);
-        const w = Math.abs(drawCur.x - drawStart.x);
-        const h = Math.abs(drawCur.y - drawStart.y);
+        const preview = createDefaultAnnotationRect(drawStart, drawCur);
         ctx.strokeStyle = "#00f2ff";
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 3]);
-        ctx.strokeRect(x, y, w, h);
+        ctx.strokeRect(preview.x, preview.y, preview.w, preview.h);
         ctx.setLineDash([]);
       }
     };
     img.src = curImage.url;
   }, [curImage, imgSize, rects, selectedId, drawing, drawStart, drawCur]);
 
-  // --- Undo / Redo ---
   const undo = () => {
     if (histIdx <= 0) return;
     const prev = history[histIdx - 1];
-    setRects(JSON.parse(JSON.stringify(prev.rects)));
+    setRects(cloneAnnotationRects(prev.rects));
     setHistIdx(histIdx - 1);
     setSelectedId(null);
   };
+
   const redo = () => {
     if (histIdx >= history.length - 1) return;
     const next = history[histIdx + 1];
-    setRects(JSON.parse(JSON.stringify(next.rects)));
+    setRects(cloneAnnotationRects(next.rects));
     setHistIdx(histIdx + 1);
     setSelectedId(null);
   };
 
-  // --- Delete selected ---
   const deleteSelected = () => {
     if (!selectedId) return;
-    const next = rects.filter(r => r.id !== selectedId);
+    const next = deleteAnnotationRect(rects, selectedId);
     setRects(next);
     pushHistory(next);
     setSelectedId(null);
   };
 
-  // --- Update selected rect property ---
-  const updateSelected = (patch: Partial<Rect>) => {
-    if (!selectedId) return;
-    setRects(prev => prev.map(r => r.id === selectedId ? { ...r, ...patch } : r));
+  const updateSelected = (patch: Partial<AnnotationRect>) => {
+    setRects(prev => updateAnnotationRect(prev, selectedId, patch));
   };
 
-  // --- Submit & next ---
   const handleSubmit = () => {
     if (!curImage) return;
-    // Save current rects to images array
     syncRectsToImage(curIdx, rects);
-
-    // Show toast + navigate immediately (non-blocking)
     toast.show("标注已提交");
 
-    // Fire-and-forget: save to server in background
-    saveAnnotation(curImage.name, {
-      imageFilename: curImage.name,
-      imageWidth: imgSize.w,
-      imageHeight: imgSize.h,
-      annotator: "admin",
-      annotatedAt: new Date().toISOString(),
-      status: "reviewed",
-      labels: [...new Set(rects.map(r => r.label))],
-      bboxes: rects.map(r => ({
-        id: r.id, x: r.x, y: r.y, width: r.w, height: r.h,
-        labels: [r.label], confidence: 1, source: "manual",
-      })),
-    }).catch(() => {});
+    submitAnnotation(curImage.name, imgSize.w, imgSize.h, rects).catch(() => {});
 
-    // Go to next image
     if (curIdx < images.length - 1) {
       loadImage(curIdx + 1);
     } else {
@@ -299,11 +237,9 @@ export default function AnnotationEditor() {
     }
   };
 
-  // --- Navigation ---
   const goPrev = () => { if (curIdx > 0) loadImage(curIdx - 1); };
   const goNext = () => { if (curIdx < images.length - 1) loadImage(curIdx + 1); };
 
-  // --- Keyboard shortcuts ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
@@ -315,18 +251,12 @@ export default function AnnotationEditor() {
     return () => window.removeEventListener("keydown", handler);
   });
 
-  // --- Grouped rects by label ---
-  const grouped = LABELS.map(l => ({
-    ...l,
-    items: rects.filter(r => r.label === l.name),
-  }));
+  const grouped = getGroupedAnnotationRects(rects);
 
-  // ===== RENDER =====
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden select-none"
       style={{ background: "#111111", color: "#d1d5db", fontFamily: "'JetBrains Mono', monospace" }}>
 
-      {/* ===== TOP HEADER ===== */}
       <header className="h-12 flex items-center justify-between px-4 relative overflow-hidden"
         style={{ background: "#1a1a1a", borderBottom: "1px solid #2a2a2a" }}>
         <div className="absolute inset-0 anno-shimmer-bg pointer-events-none" />
@@ -364,7 +294,6 @@ export default function AnnotationEditor() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* ===== LEFT SIDEBAR ===== */}
         <aside className="w-64 flex flex-col anno-slide-left overflow-hidden"
           style={{ background: "#1a1a1a", borderRight: "1px solid #2a2a2a" }}>
           <div className="grid grid-cols-3 text-center" style={{ borderBottom: "1px solid #2a2a2a" }}>
@@ -390,10 +319,10 @@ export default function AnnotationEditor() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto anno-scroll">
-            {grouped.map(g => (
-              <div key={g.name}>
+            {grouped.map(group => (
+              <div key={group.name}>
                 <div className="px-2 py-1 text-xs flex items-center justify-between cursor-pointer hover:bg-[#2a2a2a] transition-colors"
-                  style={g.items.length > 0 ? {
+                  style={group.items.length > 0 ? {
                     color: "#60a5fa", background: "rgba(59,130,246,0.06)",
                     borderLeft: "2px solid #3b82f6",
                   } : { borderLeft: "2px solid transparent" }}>
@@ -401,11 +330,11 @@ export default function AnnotationEditor() {
                     <svg className="w-3 h-3 mr-2" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" />
                     </svg>
-                    <span>{g.name}({g.items.length})</span>
+                    <span>{group.name}({group.items.length})</span>
                   </div>
                   <Eye size={14} className="hover:text-blue-300 cursor-pointer" />
                 </div>
-                {g.items.map(item => (
+                {group.items.map(item => (
                   <div key={item.id}
                     className="px-8 py-1 text-xs flex items-center justify-between cursor-pointer transition-colors"
                     style={item.id === selectedId ? { background: "rgba(59,130,246,0.1)" } : {}}
@@ -413,7 +342,7 @@ export default function AnnotationEditor() {
                     onMouseEnter={e => (e.currentTarget.style.background = "#2a2a2a")}
                     onMouseLeave={e => (e.currentTarget.style.background = item.id === selectedId ? "rgba(59,130,246,0.1)" : "")}>
                     <div className="flex items-center">
-                      <div className="w-3 h-3 mr-2" style={{ border: `1px solid ${g.color}` }} />
+                      <div className="w-3 h-3 mr-2" style={{ border: `1px solid ${group.color}` }} />
                       <span>{item.id.slice(-4)}</span>
                     </div>
                     <div className="flex gap-2 opacity-60">
@@ -430,11 +359,9 @@ export default function AnnotationEditor() {
           </div>
         </aside>
 
-        {/* ===== MAIN CANVAS ===== */}
         <section className="flex-1 relative overflow-hidden"
           style={{ background: "#000" }}>
           {!curImage ? (
-            // Empty state — fill entire canvas area
             <div className="w-full h-full flex items-center justify-center cursor-pointer"
               onClick={() => fileRef.current?.click()}>
               <div className="flex flex-col items-center gap-6">
@@ -459,7 +386,6 @@ export default function AnnotationEditor() {
               </div>
             </div>
           ) : (
-            // Canvas state
             <div ref={canvasWrapRef} className="w-full h-full overflow-auto anno-scroll flex items-center justify-center">
               <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: "center center" }}>
                 <canvas ref={canvasRef}
@@ -478,7 +404,6 @@ export default function AnnotationEditor() {
             accept=".jpg,.jpeg,.png" className="hidden" onChange={handleSelectFiles} />
         </section>
 
-        {/* ===== RIGHT SIDEBAR ===== */}
         <aside className="w-64 flex flex-col anno-slide-right overflow-hidden"
           style={{ background: "#1a1a1a", borderLeft: "1px solid #2a2a2a" }}>
           <div className="p-4" style={{ borderBottom: "1px solid #2a2a2a" }}>
@@ -514,7 +439,7 @@ export default function AnnotationEditor() {
                 disabled={!selected}
                 className="w-full rounded text-xs py-2 px-3 outline-none"
                 style={{ background: "#2a2a2a", border: "1px solid #3a3a3a" }}>
-                {LABELS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+                {ANNOTATION_LABELS.map(label => <option key={label.name} value={label.name}>{label.name}</option>)}
               </select>
             </div>
             <div>
@@ -547,7 +472,6 @@ export default function AnnotationEditor() {
         </aside>
       </div>
 
-      {/* ===== BOTTOM TOOLBAR ===== */}
       <footer className="h-10 flex items-center justify-between px-4"
         style={{ background: "#1a1a1a", borderTop: "1px solid #2a2a2a" }}>
         <div className="flex items-center gap-4">
@@ -601,11 +525,11 @@ export default function AnnotationEditor() {
               <span className="text-xs group-hover:text-blue-400 transition-colors anno-flicker">
                 {zoom}%
               </span>
-              <button onClick={() => setZoom(z => Math.max(25, z - 25))}
+              <button onClick={() => setZoom(current => stepAnnotationZoom(current, -25))}
                 className="p-1 hover:bg-[#2a2a2a] rounded transition-colors">
                 <ZoomOut size={12} />
               </button>
-              <button onClick={() => setZoom(z => Math.min(400, z + 25))}
+              <button onClick={() => setZoom(current => stepAnnotationZoom(current, 25))}
                 className="p-1 hover:bg-[#2a2a2a] rounded transition-colors">
                 <ZoomIn size={12} />
               </button>
@@ -616,8 +540,6 @@ export default function AnnotationEditor() {
     </div>
   );
 }
-
-// --- Sub-components ---
 
 function CoordBox({ label, value }: { label: string; value: number | string }) {
   return (
