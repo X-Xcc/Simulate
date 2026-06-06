@@ -4,14 +4,10 @@ import { useToast } from "../components/Toast";
 import { Alert, AlertLevel, AlertType } from "../types";
 import {
   Download,
-  ShieldAlert,
   CheckCircle2,
   XCircle,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  MapPin,
-  Filter,
   X,
   Eye,
   Loader2,
@@ -19,6 +15,18 @@ import {
 import { cn } from "../lib/utils";
 import { useRealAlerts } from "../lib/useRealAlerts";
 import { useImageRetry } from "../hooks/useImageRetry";
+import {
+  ALERTS_PAGE_SIZE,
+  filterAlerts,
+  getAlertLevelLabel,
+  getAlertStatusLabel,
+  getAlertTotalPages,
+  getAlertTriggerRule,
+  getCriticalAlertCount,
+  getPendingAlertCount,
+  paginateAlerts,
+} from "../services/alerts-data";
+import { exportAlertsReport } from "../services/alerts-service";
 
 export default function Alerts() {
   const toast = useToast();
@@ -29,7 +37,6 @@ export default function Alerts() {
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
-  const pageSize = 15;
 
   const resetFilters = () => {
     setFilterType("");
@@ -43,17 +50,13 @@ export default function Alerts() {
   };
   const { onError: onImgError } = useImageRetry(3, 500, (el) => { el.style.display = "none"; });
 
-  // 筛选逻辑
-  const filteredAlerts = useMemo(() => {
-    return alerts.filter(a => {
-      if (filterType && a.type !== filterType) return false;
-      if (filterStatus && a.status !== filterStatus) return false;
-      return true;
-    });
-  }, [alerts, filterType, filterStatus]);
+  const filteredAlerts = useMemo(
+    () => filterAlerts(alerts, filterType, filterStatus),
+    [alerts, filterType, filterStatus],
+  );
 
-  const totalPages = Math.ceil(filteredAlerts.length / pageSize) || 1;
-  const pagedAlerts = filteredAlerts.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const totalPages = getAlertTotalPages(filteredAlerts.length, ALERTS_PAGE_SIZE);
+  const pagedAlerts = paginateAlerts(filteredAlerts, currentPage, ALERTS_PAGE_SIZE);
 
   const handleUpdateStatus = (status: "confirmed" | "ignored") => {
     if (!selectedAlert) return;
@@ -66,12 +69,11 @@ export default function Alerts() {
       });
   };
 
-  const pendingCount = alerts.filter(a => a.status === "pending").length;
-  const criticalCount = alerts.filter(a => a.level === AlertLevel.CRITICAL).length;
+  const pendingCount = getPendingAlertCount(alerts);
+  const criticalCount = getCriticalAlertCount(alerts);
 
   return (
     <div className="h-full flex flex-col gap-4 overflow-hidden animate-fade-in-up">
-      {/* 页头 */}
       <section className="flex items-center justify-between shrink-0">
         <div className="flex gap-2">
           <select
@@ -92,16 +94,16 @@ export default function Alerts() {
             <option value="confirmed">已确认</option>
             <option value="ignored">已忽略</option>
           </select>
-          <button onClick={() => toast.show("告警数据已导出")} className="bg-primary text-white rounded-lg h-9 px-4 font-semibold flex items-center gap-2 text-body shadow-sm hover:shadow-md transition-all">
+          <button onClick={() => { exportAlertsReport(filterType, filterStatus); toast.show("告警数据已导出"); }} className="bg-primary text-white rounded-lg h-9 px-4 font-semibold flex items-center gap-2 text-body shadow-sm hover:shadow-md transition-all">
             <Download size={15} /> 导出
           </button>
         </div>
+        <div className="text-body-sm text-outline">
+          待处理 {pendingCount} 条 · 严重 {criticalCount} 条
+        </div>
       </section>
 
-      {/* 主内容区 */}
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-        {/* 告警表格 */}
-        {/* 表格 */}
         <div className="flex-1 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm">
           <div className="overflow-auto flex-1">
             <table className="w-full text-left">
@@ -162,7 +164,7 @@ export default function Alerts() {
                           "w-1.5 h-1.5 rounded-full",
                           alert.status === "pending" ? "bg-danger-red animate-pulse" : "bg-outline"
                         )} />
-                        {alert.status === "pending" ? "待处理" : alert.status === "confirmed" ? "已确认" : "已忽略"}
+                        {getAlertStatusLabel(alert.status)}
                       </span>
                     </td>
                   </tr>
@@ -192,8 +194,6 @@ export default function Alerts() {
           </footer>
         </div>
 
-        {/* 详情面板 */}
-        {/* 详情面板 */}
         {selectedAlert && (
           <div className="w-[360px] bg-white border border-outline-variant rounded-xl flex flex-col shadow-sm overflow-hidden shrink-0 animate-fade-in-up">
             <header className="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
@@ -210,16 +210,15 @@ export default function Alerts() {
             </header>
 
             <div className="p-4 flex-1 overflow-y-auto space-y-4">
-              {/* 快照 */}
               <div className="rounded-lg overflow-hidden border border-outline-variant bg-dark-bg relative aspect-video flex items-center justify-center">
                 {selectedAlert.snapshotUrl ? (
-                    <img
-                      key={selectedAlert.id}
-                      src={selectedAlert.snapshotUrl}
-                      alt={`${selectedAlert.type} 快照`}
-                      className="w-full h-full object-cover"
-                      onError={onImgError}
-                    />
+                  <img
+                    key={selectedAlert.id}
+                    src={selectedAlert.snapshotUrl}
+                    alt={`${selectedAlert.type} 快照`}
+                    className="w-full h-full object-cover"
+                    onError={onImgError}
+                  />
                 ) : null}
                 <div className="text-center absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <Eye size={24} className="text-white/20 mb-2" />
@@ -238,33 +237,21 @@ export default function Alerts() {
                 </div>
               </div>
 
-              {/* 元数据 */}
               <div className="grid grid-cols-2 gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">
                 <DataField label="检测类型" value={selectedAlert.type} highlight />
                 <DataField label="发生位置" value={selectedAlert.cameraName} />
                 <DataField label="持续时间" value={selectedAlert.duration ?? "—"} mono />
-                <DataField label="告警级别" value={
-                  selectedAlert.level === AlertLevel.CRITICAL ? "四级严重"
-                  : selectedAlert.level === AlertLevel.WARNING ? "三级较重"
-                  : selectedAlert.level === AlertLevel.MINOR ? "二级一般"
-                  : "一级轻微"
-                } highlight />
+                <DataField label="告警级别" value={getAlertLevelLabel(selectedAlert.level)} highlight />
               </div>
 
-              {/* 触发规则说明 */}
               <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">
                 <p className="text-caption font-semibold text-outline uppercase mb-1">触发规则</p>
                 <p className="text-body text-on-surface">
-                  {selectedAlert.type === AlertType.FIGHT && "检测到两人或以上肢体动作剧烈冲突，持续超过3秒"}
-                  {selectedAlert.type === AlertType.FALL && "检测到人员姿态由站立变为水平，疑似跌倒或晕厥"}
-                  {selectedAlert.type === AlertType.ABSENCE && "检测到指定岗位持续无人值守超过设定阈值"}
-                  {selectedAlert.type === AlertType.CROWD && "检测到局部区域人员密度超过安全阈值"}
+                  {getAlertTriggerRule(selectedAlert.type)}
                 </p>
               </div>
             </div>
 
-            {/* 操作按钮 */}
-            {/* 操作按钮 */}
             <div className="p-4 border-t border-outline-variant space-y-2">
               <div className="flex gap-2">
                 <button

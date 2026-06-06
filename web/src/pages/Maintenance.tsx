@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   ShieldCheck,
   RefreshCcw,
@@ -15,6 +15,15 @@ import {
 import { cn } from "../lib/utils";
 import { useRealSystemStatus, useRealModelInfo } from "../lib/useRealData";
 import { useToast } from "../components/Toast";
+import { buildFallbackServices, buildMaintenanceGauges, buildVersionInfo } from "../services/maintenance-data";
+import { simulateMaintenanceUpdateCheck } from "../services/maintenance-service";
+
+const ICONS = {
+  cpu: Cpu,
+  memory: HardDrive,
+  storage: Server,
+  gpu: Zap,
+} as const;
 
 const Gauge = ({ value, label, sub, color, icon: Icon }: { value: number; label: string; sub: string; color: string; icon: any }) => {
   const dashArray = (value / 100) * 100;
@@ -47,6 +56,9 @@ export default function Maintenance() {
   const [checking, setChecking] = useState(false);
   const status = useRealSystemStatus();
   const modelInfo = useRealModelInfo();
+  const gauges = buildMaintenanceGauges(status);
+  const versionInfo = buildVersionInfo(status, modelInfo);
+  const fallbackServices = buildFallbackServices();
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5 h-full flex flex-col min-h-0 animate-fade-in-up">
@@ -56,16 +68,14 @@ export default function Maintenance() {
         </button>
       </header>
 
-      {/* 仪表盘 */}
       <div className="grid grid-cols-4 gap-3 shrink-0">
-        <Gauge value={status.cpuUsage} label="CPU" sub={status.cpuUsage > 80 ? "负载较高" : "正常"} color={status.cpuUsage > 80 ? "text-danger-red" : "text-primary"} icon={Cpu} />
-        <Gauge value={status.memoryUsage} label="内存" sub={status.memoryUsage > 85 ? "高负载" : "正常"} color={status.memoryUsage > 85 ? "text-danger-red" : status.memoryUsage > 70 ? "text-warning-orange" : "text-success-green"} icon={HardDrive} />
-        <Gauge value={status.storageUsage} label="存储" sub={status.storageUsage > 90 ? "不足" : "充足"} color={status.storageUsage > 90 ? "text-danger-red" : "text-info-cyan"} icon={Server} />
-        <Gauge value={status.gpuUsage} label="GPU" sub={status.gpuUsage > 80 ? "满载" : "空闲"} color="text-success-green" icon={Zap} />
+        {gauges.map(gauge => {
+          const Icon = ICONS[gauge.key];
+          return <Gauge key={gauge.key} value={gauge.value} label={gauge.label} sub={gauge.sub} color={gauge.color} icon={Icon} />;
+        })}
       </div>
 
       <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
-        {/* 服务列表 */}
         <section className="col-span-8 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center">
             <h3 className="font-bold text-body-lg flex items-center gap-2"><Activity size={16} className="text-outline" /> 核心服务节点</h3>
@@ -74,11 +84,11 @@ export default function Maintenance() {
           <div className="flex-1 overflow-auto divide-y divide-outline-variant/30">
             {status.services.length === 0 && (
               <>
-                {["检测引擎", "视频流服务", "告警服务"].map(name => (
-                  <div key={name} className="flex items-center justify-between px-4 py-2.5">
+                {fallbackServices.map(service => (
+                  <div key={service.name} className="flex items-center justify-between px-4 py-2.5">
                     <div className="flex items-center gap-3">
                       <span className="w-2 h-2 rounded-full bg-success-green" />
-                      <span className="font-semibold text-body text-on-surface">{name}</span>
+                      <span className="font-semibold text-body text-on-surface">{service.name}</span>
                     </div>
                     <span className="text-caption font-semibold uppercase px-2 py-0.5 rounded text-success-green bg-success-green/10">Running</span>
                   </div>
@@ -113,26 +123,23 @@ export default function Maintenance() {
           </div>
         </section>
 
-        {/* 系统信息 */}
         <section className="col-span-4 space-y-4">
           <div className="bg-white border border-outline-variant rounded-xl p-4 shadow-sm">
             <h3 className="font-bold text-body-lg mb-3 flex items-center gap-2 text-primary"><ShieldCheck size={16} /> 系统版本</h3>
             <div className="space-y-2.5">
-              {[
-                { label: "当前版本", value: status.version },
-                { label: "核心引擎", value: status.engine ?? "—" },
-                { label: "AI 模型", value: modelInfo?.model_size_mb ? `YOLOv8n (${modelInfo.model_size_mb}MB)` : "—" },
-                { label: "推理设备", value: modelInfo?.device ?? "—" },
-                { label: "精度模式", value: modelInfo?.precision ?? "—" },
-              ].map(i => (
-                <div key={i.label} className="flex justify-between items-center text-body-sm">
-                  <span className="text-outline font-medium">{i.label}</span>
-                  <span className="font-mono font-semibold tabular-nums">{i.value}</span>
+              {versionInfo.map(item => (
+                <div key={item.label} className="flex justify-between items-center text-body-sm">
+                  <span className="text-outline font-medium">{item.label}</span>
+                  <span className="font-mono font-semibold tabular-nums">{item.value}</span>
                 </div>
               ))}
               <button disabled={checking} onClick={() => {
                 setChecking(true);
-                setTimeout(() => { setChecking(false); toast.show("当前已是最新版本 v3.2.1"); }, 2000);
+                simulateMaintenanceUpdateCheck().then((message) => {
+                  toast.show(message);
+                }).finally(() => {
+                  setChecking(false);
+                });
               }} className="w-full mt-3 bg-primary text-white h-9 rounded-lg font-semibold text-body flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
                 {checking ? <Loader2 size={15} className="animate-spin" /> : <CloudDownload size={15} />}
                 {checking ? "检查中..." : "检查系统更新"}

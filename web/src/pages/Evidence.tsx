@@ -3,14 +3,11 @@ import { Download, FileVideo, ChevronLeft, ChevronRight, Image as ImageIcon } fr
 import { AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
-import { fetchEvidenceList, EvidenceItem } from "../services/dataService";
-import { subscribeSse } from "../lib/api";
-import { getToken, API_BASE } from "../lib/api";
+import { EvidenceItem } from "../services/dataService";
 import Lightbox from "../components/Lightbox";
 import { useImageRetry } from "../hooks/useImageRetry";
-
-const PAGE_SIZE = 12;
-const TABS = ["全部", "打架", "跌倒", "离岗", "人员聚集"];
+import { canGoNextEvidencePage, createEvidenceLightbox, downloadEvidenceSnapshot, EVIDENCE_PAGE_SIZE, EVIDENCE_TABS, getEvidenceTotalPages } from "../services/evidence-data";
+import { exportEvidenceReport, loadEvidencePage, subscribeEvidenceRefresh } from "../services/evidence-service";
 
 export default function Evidence() {
   const toast = useToast();
@@ -24,20 +21,14 @@ export default function Evidence() {
   const [lightbox, setLightbox] = useState<{ src: string; item: EvidenceItem } | null>(null);
   const { onError: onImgError } = useImageRetry(3, 500);
 
-  // SSE 新报警进来时触发刷新
-  useEffect(() => {
-    return subscribeSse("alerts", () => {
-      setVersion(v => v + 1);
-    });
-  }, []);
+  useEffect(() => subscribeEvidenceRefresh(() => setVersion(v => v + 1)), []);
 
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
       setLoading(true);
       try {
-        const type = activeTab === 0 ? undefined : TABS[activeTab];
-        const res = await fetchEvidenceList({ date: selectedDate, type, page: evPage, size: PAGE_SIZE }, controller.signal);
+        const res = await loadEvidencePage(selectedDate, activeTab, evPage, controller.signal);
         setEvidenceItems(res.items);
         setEvTotal(res.total);
       } catch {
@@ -52,53 +43,36 @@ export default function Evidence() {
     }
     load();
     return () => controller.abort();
-  }, [selectedDate, activeTab, evPage, version]);
+  }, [selectedDate, activeTab, evPage, version, toast]);
 
-  // Tab 或日期变化时重置页码
   useEffect(() => { setEvPage(0); }, [selectedDate, activeTab]);
 
   function openLightbox(item: EvidenceItem) {
-    setLightbox({ src: item.snapshotUrl || "", item });
+    setLightbox(createEvidenceLightbox(item));
   }
 
   async function downloadImage(item: EvidenceItem) {
-    const rawUrl = item.snapshotUrl;
-    if (!rawUrl) { toast.show("无可用图片"); return; }
     try {
-      const headers: Record<string, string> = {};
-      const token = getToken();
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      // 如果已经是完整 URL（如 CDN），直接使用；否则拼接 API_BASE
-      const url = rawUrl.startsWith("http") ? rawUrl : `${API_BASE}${rawUrl}`;
-      const res = await fetch(url, { headers });
-      const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objUrl;
-      link.download = item.imageFilename || `evidence_${item.id}.jpg`;
-      link.click();
-      URL.revokeObjectURL(objUrl);
-    } catch {
-      toast.show("下载失败");
+      await downloadEvidenceSnapshot(item);
+    } catch (error: any) {
+      toast.show(error?.message || "下载失败");
     }
   }
 
   return (
     <div className="space-y-4 flex flex-col h-full overflow-hidden animate-fade-in-up">
-      {/* 页头 */}
       <section className="flex justify-between items-end shrink-0">
-        <button onClick={() => toast.show("证据报告已导出")} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
+        <button onClick={() => { exportEvidenceReport(); toast.show("证据报告已导出"); }} className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm">
           <Download size={15} /> 导出报告
         </button>
       </section>
 
-      {/* 筛选栏 */}
       <div className="shrink-0 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
             className="bg-white border border-outline-variant rounded-lg px-3 py-1.5 font-mono text-body outline-none" />
           <div className="flex bg-white border border-outline-variant rounded-lg overflow-hidden">
-            {TABS.map((label, i) => (
+            {EVIDENCE_TABS.map((label, i) => (
               <button key={label} onClick={() => setActiveTab(i)}
                 className={cn(
                   "px-3 py-1.5 text-body font-semibold transition-all",
@@ -112,7 +86,6 @@ export default function Evidence() {
         <span className="text-body-sm text-outline">共 {evTotal} 条证据</span>
       </div>
 
-      {/* 证据卡片网格 */}
       <div className="flex-1 overflow-y-auto grid grid-cols-3 gap-3 pr-1 custom-scrollbar">
         {loading ? (
           <div className="col-span-3 flex items-center justify-center py-16 text-outline">
@@ -127,65 +100,60 @@ export default function Evidence() {
         ) : evidenceItems.map(item => {
           const imgUrl = item.snapshotUrl || "";
           return (
-          <div key={item.id} className="group relative bg-dark-bg aspect-video rounded-lg overflow-hidden border border-outline-variant shadow-sm h-fit cursor-pointer"
-               onClick={() => openLightbox(item)}>
-            {/* 截图 */}
-            {imgUrl ? (
-              <img src={imgUrl} alt={item.actions?.[0] || "证据"} className="w-full h-full object-cover"
-                   onError={onImgError} />
-            ) : null}
-            {/* 图片加载失败 fallback */}
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 absolute inset-0 -z-10">
-              <ImageIcon size={28} className="text-white/10" />
-            </div>
-            {/* HUD 叠加层 */}
-            <div className="absolute inset-0 video-hud flex flex-col justify-between p-2">
-              <div className="flex justify-between items-start">
-                <span className={cn(
-                  "px-1.5 py-0.5 rounded text-caption font-semibold",
-                  (item.actions || []).some(a => ["打架", "跌倒"].includes(a))
-                    ? "bg-danger-red text-white" : "bg-warning-orange text-white"
-                )}>
-                  {(item.actions || [])[0] || "异常"}
-                </span>
-                <button onClick={e => { e.stopPropagation(); downloadImage(item); }}
-                  className="bg-black/50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Download size={12} />
-                </button>
+            <div key={item.id} className="group relative bg-dark-bg aspect-video rounded-lg overflow-hidden border border-outline-variant shadow-sm h-fit cursor-pointer"
+              onClick={() => openLightbox(item)}>
+              {imgUrl ? (
+                <img src={imgUrl} alt={item.actions?.[0] || "证据"} className="w-full h-full object-cover"
+                  onError={onImgError} />
+              ) : null}
+              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-zinc-800 to-zinc-900 absolute inset-0 -z-10">
+                <ImageIcon size={28} className="text-white/10" />
               </div>
-              <div className="translate-y-1 group-hover:translate-y-0 transition-transform">
-                <div className="text-white text-body-sm font-semibold truncate">{item.cameraName}</div>
-                <div className="flex justify-between">
-                  <span className="text-white/50 font-mono text-caption tabular-nums">
-                    {new Date(item.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+              <div className="absolute inset-0 video-hud flex flex-col justify-between p-2">
+                <div className="flex justify-between items-start">
+                  <span className={cn(
+                    "px-1.5 py-0.5 rounded text-caption font-semibold",
+                    (item.actions || []).some(a => ["打架", "跌倒"].includes(a))
+                      ? "bg-danger-red text-white" : "bg-warning-orange text-white"
+                  )}>
+                    {(item.actions || [])[0] || "异常"}
                   </span>
-                  <span className="text-white/30 text-caption font-mono">#{item.cameraId.slice(-3)}</span>
+                  <button onClick={e => { e.stopPropagation(); downloadImage(item); }}
+                    className="bg-black/50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Download size={12} />
+                  </button>
+                </div>
+                <div className="translate-y-1 group-hover:translate-y-0 transition-transform">
+                  <div className="text-white text-body-sm font-semibold truncate">{item.cameraName}</div>
+                  <div className="flex justify-between">
+                    <span className="text-white/50 font-mono text-caption tabular-nums">
+                      {new Date(item.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    <span className="text-white/30 text-caption font-mono">#{item.cameraId.slice(-3)}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
           );
         })}
       </div>
 
-      {/* 分页 */}
-      {evTotal > PAGE_SIZE && (
+      {evTotal > EVIDENCE_PAGE_SIZE && (
         <div className="shrink-0 flex justify-center gap-2">
           <button onClick={() => setEvPage(p => Math.max(0, p - 1))} disabled={evPage === 0}
             className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
             <ChevronLeft size={13} /> 上一页
           </button>
           <span className="px-3 py-1.5 text-body-sm text-outline font-medium">
-            第 {evPage + 1} / {Math.ceil(evTotal / PAGE_SIZE)} 页
+            第 {evPage + 1} / {getEvidenceTotalPages(evTotal)} 页
           </span>
-          <button onClick={() => setEvPage(p => p + 1)} disabled={(evPage + 1) * PAGE_SIZE >= evTotal}
+          <button onClick={() => setEvPage(p => p + 1)} disabled={!canGoNextEvidencePage(evPage, evTotal)}
             className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
             下一页 <ChevronRight size={13} />
           </button>
         </div>
       )}
 
-      {/* Lightbox */}
       <AnimatePresence>
         {lightbox && (
           <Lightbox

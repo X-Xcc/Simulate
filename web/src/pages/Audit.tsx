@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import {
   Activity, ShieldAlert, Search, Download, CheckCircle2, AlertTriangle,
-  ChevronLeft, ChevronRight, Clock, X,
+  ChevronLeft, ChevronRight, X,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import {
@@ -13,6 +13,22 @@ import {
   useRealAuditTrend,
 } from "../lib/useRealData";
 import { useToast } from "../components/Toast";
+import {
+  AUDIT_PAGE_SIZE,
+  AUDIT_TIME_OPTIONS,
+  AUDIT_TREND_OPTIONS,
+  AuditTimeFilter,
+  AuditTrendRange,
+  buildAuditCategories,
+  buildAuditTrend,
+  filterAuditLogs,
+  getAuditRiskLabel,
+  getAuditTotalPages,
+  getHighRiskAuditCount,
+  hasActiveAuditFilter,
+  paginateAuditLogs,
+} from "../services/audit-data";
+import { exportAuditReport } from "../services/audit-service";
 
 const OPERATOR_OPTIONS = ["用户1", "用户2", "用户3", "用户4"];
 const CATEGORY_OPTIONS = ["登录管理", "设备配置", "告警处理", "系统设置", "数据导出", "用户管理"];
@@ -26,74 +42,33 @@ const RISK_OPTIONS = [
   { value: "medium", label: "中危" },
   { value: "low", label: "低危" },
 ];
-const TIME_OPTIONS = [
-  { value: "all", label: "全部" },
-  { value: "today", label: "今天" },
-  { value: "week", label: "近7天" },
-  { value: "month", label: "近30天" },
-];
 
 export default function Audit() {
   const toast = useToast();
   const [auditLogs] = useRealAuditLogs();
   const automationRate = useRealAutomationRate();
-  const [trendRange, setTrendRange] = useState<"day" | "week">("week");
+  const [trendRange, setTrendRange] = useState<AuditTrendRange>("week");
   const auditTrendRaw = useRealAuditTrend(trendRange);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterOperator, setFilterOperator] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterAction, setFilterAction] = useState("");
   const [filterRisk, setFilterRisk] = useState("");
-  const [filterTime, setFilterTime] = useState("all");
+  const [filterTime, setFilterTime] = useState<AuditTimeFilter>("all");
   const [currentPage, setCurrentPage] = useState(0);
-  const pageSize = 15;
 
-  const auditTrend = useMemo(() => {
-    if (!auditTrendRaw?.labels) return [];
-    return auditTrendRaw.labels.map((l: string, i: number) => ({ name: l, value: auditTrendRaw.data[i] ?? 0 }));
-  }, [auditTrendRaw]);
+  const auditTrend = useMemo(() => buildAuditTrend(auditTrendRaw), [auditTrendRaw]);
 
-  const filteredLogs = useMemo(() => {
-    let logs = auditLogs;
-    // 文本搜索
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      logs = logs.filter(l =>
-        l.action.toLowerCase().includes(term) ||
-        l.category.toLowerCase().includes(term) ||
-        l.operatorName.toLowerCase().includes(term)
-      );
-    }
-    // 时间筛选
-    if (filterTime !== "all") {
-      const now = Date.now();
-      const cutoff = filterTime === "today"
-        ? now - 24 * 60 * 60 * 1000
-        : filterTime === "week"
-          ? now - 7 * 24 * 60 * 60 * 1000
-          : now - 30 * 24 * 60 * 60 * 1000;
-      logs = logs.filter(l => new Date(l.timestamp).getTime() >= cutoff);
-    }
-    // 操作员筛选
-    if (filterOperator) {
-      logs = logs.filter(l => l.operatorName === filterOperator);
-    }
-    // 类别筛选
-    if (filterCategory) {
-      logs = logs.filter(l => l.category === filterCategory);
-    }
-    // 详细筛选
-    if (filterAction) {
-      logs = logs.filter(l => l.action === filterAction);
-    }
-    // 风险筛选
-    if (filterRisk) {
-      logs = logs.filter(l => l.riskLevel === filterRisk);
-    }
-    return logs;
-  }, [auditLogs, searchTerm, filterTime, filterOperator, filterCategory, filterAction, filterRisk]);
+  const filteredLogs = useMemo(() => filterAuditLogs(auditLogs, {
+    searchTerm,
+    filterTime,
+    filterOperator,
+    filterCategory,
+    filterAction,
+    filterRisk,
+  }), [auditLogs, searchTerm, filterTime, filterOperator, filterCategory, filterAction, filterRisk]);
 
-  const hasActiveFilter = filterOperator || filterCategory || filterAction || filterRisk || filterTime !== "all";
+  const hasActiveFilter = hasActiveAuditFilter({ filterOperator, filterCategory, filterAction, filterRisk, filterTime });
 
   function clearFilters() {
     setFilterOperator("");
@@ -104,20 +79,13 @@ export default function Audit() {
     setCurrentPage(0);
   }
 
-  const totalPages = Math.ceil(filteredLogs.length / pageSize) || 1;
-  const pagedLogs = filteredLogs.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
-  const highRiskCount = filteredLogs.filter(l => l.riskLevel === "high").length;
-
-  // 周报
-  const categories = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredLogs.forEach(l => { map[l.category] = (map[l.category] || 0) + 1; });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 4);
-  }, [filteredLogs]);
+  const totalPages = getAuditTotalPages(filteredLogs.length, AUDIT_PAGE_SIZE);
+  const pagedLogs = paginateAuditLogs(filteredLogs, currentPage, AUDIT_PAGE_SIZE);
+  const highRiskCount = getHighRiskAuditCount(filteredLogs);
+  const categories = useMemo(() => buildAuditCategories(filteredLogs), [filteredLogs]);
 
   return (
     <div className="space-y-4 flex flex-col h-full overflow-hidden animate-fade-in-up">
-      {/* 指标 */}
       <section className="grid grid-cols-3 gap-4 shrink-0">
         {[
           { label: "操作总量", value: filteredLogs.length.toLocaleString(), change: "总计", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
@@ -145,19 +113,19 @@ export default function Audit() {
       </section>
 
       <div className="grid grid-cols-12 gap-4 shrink-0">
-        {/* 趋势图 */}
         <section className="col-span-8 bg-white border border-outline-variant rounded-xl p-4 shadow-sm flex flex-col h-[260px]">
           <header className="flex justify-between items-center mb-3">
             <h3 className="font-bold text-body-lg">管理人员活跃趋势</h3>
             <div className="flex bg-surface-container-high rounded-lg p-0.5">
-              <button onClick={() => setTrendRange("day")}
-                className={cn("px-3 py-1 rounded-md text-caption font-semibold", trendRange === "day" ? "bg-white text-primary shadow-sm" : "text-on-surface-variant")}>
-                按日
-              </button>
-              <button onClick={() => setTrendRange("week")}
-                className={cn("px-3 py-1 rounded-md text-caption font-semibold", trendRange === "week" ? "bg-white text-primary shadow-sm" : "text-on-surface-variant")}>
-                按周
-              </button>
+              {AUDIT_TREND_OPTIONS.map(option => (
+                <button
+                  key={option.value}
+                  onClick={() => setTrendRange(option.value)}
+                  className={cn("px-3 py-1 rounded-md text-caption font-semibold", trendRange === option.value ? "bg-white text-primary shadow-sm" : "text-on-surface-variant")}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
           </header>
           <div className="flex-1 chart-grid rounded-lg">
@@ -178,7 +146,6 @@ export default function Audit() {
           </div>
         </section>
 
-        {/* 周报 */}
         <section className="col-span-4 bg-white border border-outline-variant rounded-xl p-4 shadow-sm flex flex-col h-[260px]">
           <h3 className="font-bold text-body-lg mb-3">类别分布</h3>
           <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
@@ -200,7 +167,6 @@ export default function Audit() {
         </section>
       </div>
 
-      {/* 审计日志表 */}
       <section className="flex-1 bg-white border border-outline-variant rounded-xl shadow-sm overflow-hidden flex flex-col min-h-0">
         <header className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low/50 flex justify-between items-center shrink-0">
           <h3 className="font-bold text-body-lg">操作审计日志</h3>
@@ -210,7 +176,7 @@ export default function Audit() {
               <input type="text" placeholder="搜索日志..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(0); }}
                 className="bg-surface-container-high border border-outline-variant rounded-lg h-8 pl-8 pr-3 text-body w-48 focus:w-56 transition-all outline-none" />
             </div>
-            <button onClick={() => toast.show("审计日志已导出")} className="bg-primary text-white px-3 h-8 rounded-lg font-semibold text-body flex items-center gap-1.5">
+            <button onClick={() => { exportAuditReport({ searchTerm, filterCategory, filterRisk, filterTime }); toast.show("审计日志已导出"); }} className="bg-primary text-white px-3 h-8 rounded-lg font-semibold text-body flex items-center gap-1.5">
               <Download size={14} /> 导出
             </button>
           </div>
@@ -223,9 +189,9 @@ export default function Audit() {
                   {
                     label: "时间",
                     node: (
-                      <select value={filterTime} onChange={e => { setFilterTime(e.target.value); setCurrentPage(0); }}
+                      <select value={filterTime} onChange={e => { setFilterTime(e.target.value as AuditTimeFilter); setCurrentPage(0); }}
                         className="bg-white border border-outline-variant rounded text-caption h-6 px-1 outline-none">
-                        {TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {AUDIT_TIME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     ),
                   },
@@ -303,7 +269,7 @@ export default function Audit() {
                       <span className={cn("w-1.5 h-1.5 rounded-full",
                         log.riskLevel === "high" ? "bg-danger-red" : log.riskLevel === "medium" ? "bg-warning-orange" : "bg-info-cyan"
                       )} />
-                      {log.riskLevel === "high" ? "高危" : log.riskLevel === "medium" ? "中危" : "低危"}
+                      {getAuditRiskLabel(log.riskLevel)}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-right">

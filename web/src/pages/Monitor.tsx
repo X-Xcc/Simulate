@@ -5,46 +5,18 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { fetchCameras, uploadScreenshot } from "../services/dataService";
-import { apiPost } from "../lib/api";
 import { useAlarmSound } from "../hooks/useAlarmSound";
-import { Camera, Alert, AlertLevel, AlertType } from "../types";
-
-type GridMode = 2 | 4 | 8 | 16;
-type AlarmType = "fight" | "fall" | "suicide" | "gathering";
-
-// ── 报警类型配置 ──
-
-const ALARM_CONFIGS: Record<AlarmType, {
-  hex: string; label: string; msg: string;
-}> = {
-  fight: {
-    hex: "#dc2626", label: "打架报警",
-    msg: "区域 A 检测到打架行为 — 连续拳击动作，双方肢体冲突特征明显",
-  },
-  fall: {
-    hex: "#dc2626", label: "跌倒报警",
-    msg: "区域 B 检测到跌倒事件 — 人员姿态异常，身体重心急剧下降",
-  },
-  suicide: {
-    hex: "#dc2626", label: "离岗报警",
-    msg: "区域 C 检测到自残风险 — 异常姿态动作，疑似自我伤害行为",
-  },
-  gathering: {
-    hex: "#dc2626", label: "异常聚集报警",
-    msg: "区域 D 检测到异常聚集 — 同一区域人数超过阈值，持续聚集",
-  },
-};
-
-// AlarmType → (AlertType, AlertLevel) 映射
-const ALARM_TO_ALERT: Record<AlarmType, { type: AlertType; level: AlertLevel }> = {
-  fight:     { type: AlertType.FIGHT,  level: AlertLevel.CRITICAL },
-  fall:      { type: AlertType.FALL,   level: AlertLevel.WARNING },
-  suicide:   { type: AlertType.FIGHT,  level: AlertLevel.CRITICAL },
-  gathering: { type: AlertType.CROWD,  level: AlertLevel.MINOR },
-};
-
-// ── 实时截帧 ──────────────────────────────────────────────────────────────
+import { Camera } from "../types";
+import { createMonitorAlert, loadMonitorCameras, uploadMonitorCapture } from "../services/monitor-service";
+import {
+  ALARM_CONFIGS,
+  GRID_COLS,
+  GRID_ROWS,
+  getMonitorSlotCameras,
+  GridMode,
+  normalizeActiveAlarms,
+  AlarmType,
+} from "../services/monitor-data";
 
 /** 从摄像头槽位捕获当前帧，返回 base64 jpeg data URL；失败返回 null */
 function captureFrame(slotId: string): string | null {
@@ -52,7 +24,6 @@ function captureFrame(slotId: string): string | null {
     const slot = document.getElementById(slotId);
     if (!slot) return null;
 
-    // 优先找 <video>（LiveCameraSlot）
     const video = slot.querySelector("video") as HTMLVideoElement | null;
     if (video && video.readyState >= 2 && video.videoWidth > 0) {
       const canvas = document.createElement("canvas");
@@ -62,7 +33,6 @@ function captureFrame(slotId: string): string | null {
       return canvas.toDataURL("image/jpeg", 0.85);
     }
 
-    // 回退到 <img>（MJPEG 流 / video_feed）
     const img = slot.querySelector("img") as HTMLImageElement | null;
     if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
       const canvas = document.createElement("canvas");
@@ -74,17 +44,14 @@ function captureFrame(slotId: string): string | null {
         ctx.drawImage(img, 0, 0);
         return canvas.toDataURL("image/jpeg", 0.85);
       } catch {
-        // 跨域 <img> 会被 canvas 污染，忽略走 fallback
         return null;
       }
     }
   } catch {
-    // 任何异常都静默回退
+    // ignore capture errors and fall back to empty snapshot
   }
   return null;
 }
-
-// ── 报警覆盖层（单个弹窗） ──
 
 function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: (type: AlarmType, isFalseAlarm?: boolean) => void }) {
   const cfg = ALARM_CONFIGS[alarmType];
@@ -120,8 +87,6 @@ function AlarmCard({ alarmType, onAck }: { alarmType: AlarmType; onAck: (type: A
   );
 }
 
-// ── 报警覆盖层（多个报警叠加） ──
-
 function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: AlarmType, isFalseAlarm?: boolean) => void }) {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[2px]"
@@ -134,8 +99,6 @@ function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: Al
     </div>
   );
 }
-
-// ── 报警摄像头实时播放 ──────────────────────────────────────────────
 
 function AlarmRealtimePlayer({ streamId }: { streamId: string }) {
   const realtimeUrl = `http://${window.location.hostname}:1984/stream.html?src=${streamId}`;
@@ -151,8 +114,6 @@ function AlarmRealtimePlayer({ streamId }: { streamId: string }) {
   );
 }
 
-// ── 报警大屏（第3个窗口弹出） ──────────────────────────────────────────────
-
 function AlarmFullscreenDialog({
   alarmType,
   cameras,
@@ -165,7 +126,7 @@ function AlarmFullscreenDialog({
   const cfg = ALARM_CONFIGS[alarmType];
   const c = cfg.hex;
 
-  const alarmCamera = cameras[0]; // 显示第一个可用摄像头
+  const alarmCamera = cameras[0];
   const alarmCameraGo2rtcId = alarmCamera?.go2rtcId || (alarmCamera ? `cam_${alarmCamera.id}` : undefined);
 
   return (
@@ -173,7 +134,6 @@ function AlarmFullscreenDialog({
       className="fixed inset-0 z-[9999] flex flex-col bg-black animate-fade-in-up"
       onClick={e => e.stopPropagation()}
     >
-      {/* 顶部报警横幅 */}
       <div
         className="flex items-center justify-center gap-3 py-4 shrink-0"
         style={{ backgroundColor: c }}
@@ -183,7 +143,6 @@ function AlarmFullscreenDialog({
         <Volume2 size={20} className="text-white animate-pulse" />
       </div>
 
-      {/* 摄像头视频内容 */}
       <div className="flex-1 min-h-0 relative bg-zinc-900">
         {alarmCamera && alarmCameraGo2rtcId ? (
           <>
@@ -207,7 +166,6 @@ function AlarmFullscreenDialog({
         )}
       </div>
 
-      {/* 底部操作按钮 */}
       <div className="flex items-center justify-center gap-8 py-6 shrink-0" style={{ backgroundColor: `${c}22` }}>
         <button
           onClick={() => onAck(alarmType, false)}
@@ -227,8 +185,6 @@ function AlarmFullscreenDialog({
   );
 }
 
-// ── 主组件 ──
-
 export default function Monitor() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
@@ -243,7 +199,7 @@ export default function Monitor() {
     let cancelled = false;
     async function load() {
       try {
-        const data = await fetchCameras();
+        const data = await loadMonitorCameras();
         if (!cancelled) {
           setCameras(data);
           setLoading(false);
@@ -266,67 +222,32 @@ export default function Monitor() {
     setAlarmFullscreen(true);
 
     const alarmCam = cameras[1] ?? cameras[0];
-
-    // 本地截帧
     const captured = captureFrame("cam-slot-" + alarmCam?.id)
       || captureFrame("cam-slot-0")
       || captureFrame("cam-slot-empty")
       || "";
 
-    const { type: alertType, level } = ALARM_TO_ALERT[type];
-    const cfg = ALARM_CONFIGS[type];
-    const cam = alarmCam;
-    const now = new Date().toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-
-    const alert: Alert = {
-      id: `ALT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      cameraId: cam?.id ?? "cam-001",
-      cameraName: cam?.name ?? "视频1",
-      type: alertType,
-      level,
-      time: now,
-      snapshotUrl: captured,
-      status: "pending",
-      confidence: +(85 + Math.random() * 14).toFixed(1),
-      duration: "00:00:00",
-      message: cfg.msg,
-    };
-
-    // 调用真实 API 创建告警 → SSE 广播到 Dashboard 等所有页面
     try {
-      await apiPost("/api/alerts", alert);
+      await createMonitorAlert(type, cameras, captured);
     } catch (err) {
       console.warn("创建告警失败:", err);
     }
 
-    // 上传截图
-    if (captured) {
-      try {
-        await uploadScreenshot({
-          base64: captured,
-          type,
-          cameraId: cam?.id ?? "cam-001",
-          cameraName: cam?.name ?? "视频1",
-        });
-      } catch (err) {
-        console.warn("上传截图失败:", err);
-      }
+    try {
+      await uploadMonitorCapture(type, cameras, captured);
+    } catch (err) {
+      console.warn("上传截图失败:", err);
     }
-
   }, [cameras]);
 
   const handleAlarmAcknowledge = useCallback((type: AlarmType, _isFalseAlarm: boolean = false) => {
     setActiveAlarms(prev => {
-      const next = new Set(prev);
-      next.delete(type);
-      if (next.size === 0) {
-        setAlarmFullscreen(false);
-      }
-      return next;
+      const normalized = normalizeActiveAlarms(prev, type);
+      setAlarmFullscreen(normalized.alarmFullscreen);
+      return normalized.activeAlarms;
     });
   }, []);
 
-  // Alt+X/C/V/B 快捷键触发报警（带确认防止误触）
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!e.altKey) return;
@@ -344,17 +265,11 @@ export default function Monitor() {
     return () => window.removeEventListener("keydown", handler);
   }, [handleAlarmTrigger]);
 
-  const gridCols: Record<GridMode, string> = { 2: "grid-cols-2", 4: "grid-cols-2", 8: "grid-cols-4", 16: "grid-cols-4" };
-  const gridRows: Record<GridMode, string> = { 2: "grid-rows-1", 4: "grid-rows-2", 8: "grid-rows-2", 16: "grid-rows-4" };
-
-  // 固定摄像头槽位顺序: USB → 大华 → 海康
-  const SLOT_ORDER = ['cam-12', 'cam-10', 'cam-11'];
-  const slotCameras = SLOT_ORDER.map(id => cameras.find(c => c.id === id));
+  const slotCameras = getMonitorSlotCameras(cameras);
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-3 animate-fade-in-up">
       <header className="flex items-center justify-between shrink-0">
-        {/* 窗口数下拉选择器 */}
         <div className="relative">
           <button
             onClick={() => setGridDropdownOpen(!gridDropdownOpen)}
@@ -382,13 +297,11 @@ export default function Monitor() {
             </div>
           )}
         </div>
-        {/* 点击外部关闭下拉 */}
         {gridDropdownOpen && (
           <div className="fixed inset-0 z-40" onClick={() => setGridDropdownOpen(false)} />
         )}
       </header>
 
-      {/* 视频网格 */}
       <main className="flex-1 min-h-0">
         {loading ? (
           <div className="h-full flex items-center justify-center bg-zinc-900/80 rounded-lg border border-white/[0.04]">
@@ -399,7 +312,7 @@ export default function Monitor() {
           </div>
         ) : (
           <div className="flex flex-col h-full min-h-0 gap-1.5">
-            <div className={cn("grid gap-1.5 flex-1 min-h-0", gridCols[gridMode], gridRows[gridMode])}>
+            <div className={cn("grid gap-1.5 flex-1 min-h-0", GRID_COLS[gridMode], GRID_ROWS[gridMode])}>
               {Array.from({ length: gridMode }, (_, i) => {
                 const cam = slotCameras[i] ?? null;
                 if (!cam) return (
@@ -423,7 +336,6 @@ export default function Monitor() {
         )}
       </main>
 
-      {/* 报警大屏弹窗 */}
       {alarmFullscreen && activeAlarms.size > 0 && (
         <AlarmFullscreenDialog
           alarmType={[...activeAlarms][0]}
@@ -434,8 +346,6 @@ export default function Monitor() {
     </div>
   );
 }
-
-// ── 空槽位 ──
 
 function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
   index: number; isFirstEmpty: boolean; activeAlarms: Set<AlarmType>; onAck: (type: AlarmType) => void;
@@ -472,10 +382,8 @@ function EmptySlot({ index, isFirstEmpty, activeAlarms, onAck }: {
   );
 }
 
-// ── 摄像头卡片 ──
-
 function CameraSlot({
-  name, streamUrl, isOnline, go2rtcId, httpMjpegUrl, cameraId,
+  name, isOnline, go2rtcId, cameraId,
 }: {
   name: string;
   streamUrl: string;
@@ -488,11 +396,9 @@ function CameraSlot({
   const go2rtcPermFailed = useRef(false);
   const [useFallback, setUseFallback] = useState(false);
   const hasGo2rtc = !!go2rtcId;
-  const hasHttpMjpeg = !!httpMjpegUrl;
   const go2rtcStreamId = go2rtcId || "cam_" + cameraId;
   const go2rtcUrl = `http://${window.location.hostname}:1984/stream.html?src=${go2rtcStreamId}`;
 
-  // go2rtc iframe 超时回退 — 8秒没加载完永久切换到 <img> MJPEG
   useEffect(() => {
     if (!hasGo2rtc) return;
     if (go2rtcPermFailed.current) {
@@ -506,7 +412,6 @@ function CameraSlot({
     return () => clearTimeout(timer);
   }, [cameraId, hasGo2rtc, useFallback]);
 
-  // 没有 go2rtc 的摄像头直接用 <img> 标签（浏览器原生支持 MJPEG multipart）
   useEffect(() => {
     if (!hasGo2rtc && !useFallback) setUseFallback(true);
   }, [hasGo2rtc, useFallback]);
