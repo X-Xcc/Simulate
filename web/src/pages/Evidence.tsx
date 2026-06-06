@@ -6,7 +6,7 @@ import { useToast } from "../components/Toast";
 import { EvidenceItem } from "../services/dataService";
 import Lightbox from "../components/Lightbox";
 import { useImageRetry } from "../hooks/useImageRetry";
-import { canGoNextEvidencePage, createEvidenceLightbox, downloadEvidenceSnapshot, EVIDENCE_PAGE_SIZE, EVIDENCE_TABS, getEvidenceTotalPages } from "../services/evidence-data";
+import { canGoNextEvidencePage, createEvidenceLightbox, downloadEvidenceSnapshot, EVIDENCE_PAGE_SIZE, EVIDENCE_TABS, getEvidenceNextPage, getEvidencePrevPage, getEvidenceTotalPages } from "../services/evidence-data";
 import { exportEvidenceReport, loadEvidencePage, subscribeEvidenceRefresh } from "../services/evidence-service";
 
 export default function Evidence() {
@@ -140,14 +140,14 @@ export default function Evidence() {
 
       {evTotal > EVIDENCE_PAGE_SIZE && (
         <div className="shrink-0 flex justify-center gap-2">
-          <button onClick={() => setEvPage(p => Math.max(0, p - 1))} disabled={evPage === 0}
+          <button onClick={() => setEvPage(getEvidencePrevPage)} disabled={evPage === 0}
             className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
             <ChevronLeft size={13} /> 上一页
           </button>
           <span className="px-3 py-1.5 text-body-sm text-outline font-medium">
             第 {evPage + 1} / {getEvidenceTotalPages(evTotal)} 页
           </span>
-          <button onClick={() => setEvPage(p => p + 1)} disabled={!canGoNextEvidencePage(evPage, evTotal)}
+          <button onClick={() => setEvPage(getEvidenceNextPage)} disabled={!canGoNextEvidencePage(evPage, evTotal)}
             className="px-3 py-1.5 bg-white border border-outline-variant rounded-lg text-body-sm font-semibold flex items-center gap-1 disabled:opacity-30">
             下一页 <ChevronRight size={13} />
           </button>

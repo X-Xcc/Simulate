@@ -4,6 +4,7 @@ export type AlarmType = 'fight' | 'fall' | 'suicide' | 'gathering';
 export type GridMode = 2 | 4 | 8 | 16;
 
 export const MONITOR_SLOT_ORDER = ['cam-12', 'cam-10', 'cam-11'] as const;
+export const MONITOR_REFRESH_INTERVAL_MS = 10000;
 
 export const ALARM_CONFIGS: Record<AlarmType, { hex: string; label: string; msg: string }> = {
   fight: {
@@ -63,6 +64,10 @@ export function normalizeActiveAlarms(activeAlarms: Set<AlarmType>, acknowledged
     activeAlarms: next,
     alarmFullscreen: next.size > 0,
   };
+}
+
+export function getMonitorRealtimeUrl(streamId: string, hostname = window.location.hostname) {
+  return `http://${hostname}:1984/stream.html?src=${streamId}`;
 }
 
 export function buildMonitorAlert(type: AlarmType, cameras: Camera[], captured: string, now = new Date()): Alert {

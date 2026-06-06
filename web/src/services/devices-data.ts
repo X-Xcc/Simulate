@@ -32,6 +32,12 @@ export const DEFAULT_DEVICE_SETTINGS: Settings = {
   },
 };
 
+export const TYPE_LABELS: Record<string, string> = {
+  usb: 'USB 摄像头',
+  rtsp: 'RTSP 网络摄像机',
+  http_snapshot: 'HTTP 快照',
+};
+
 export function toDevicePayload(form: typeof DEFAULT_DEVICE_FORM) {
   return {
     name: form.name,
@@ -79,4 +85,8 @@ export function buildBatchCameraPayload(discovered: DiscoveredCamera[], selected
 
 export function getOnlineCameraCount(cameras: Camera[]): number {
   return cameras.filter(camera => camera.status === 'online').length;
+}
+
+export function getDeviceStorageBarWidth(storageUsage: number) {
+  return `${Math.min(storageUsage, 100)}%`;
 }

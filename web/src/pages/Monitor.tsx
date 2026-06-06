@@ -12,9 +12,11 @@ import {
   ALARM_CONFIGS,
   GRID_COLS,
   GRID_ROWS,
+  getMonitorRealtimeUrl,
   getMonitorSlotCameras,
   GridMode,
   normalizeActiveAlarms,
+  MONITOR_REFRESH_INTERVAL_MS,
   AlarmType,
 } from "../services/monitor-data";
 
@@ -101,7 +103,7 @@ function AlarmOverlay({ alarms, onAck }: { alarms: AlarmType[]; onAck: (type: Al
 }
 
 function AlarmRealtimePlayer({ streamId }: { streamId: string }) {
-  const realtimeUrl = `http://${window.location.hostname}:1984/stream.html?src=${streamId}`;
+  const realtimeUrl = getMonitorRealtimeUrl(streamId);
 
   return (
     <iframe
@@ -209,7 +211,7 @@ export default function Monitor() {
       }
     }
     load();
-    const iv = setInterval(load, 10000);
+    const iv = setInterval(load, MONITOR_REFRESH_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(iv); };
   }, []);
 

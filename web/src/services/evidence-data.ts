@@ -16,6 +16,14 @@ export function canGoNextEvidencePage(page: number, total: number, pageSize = EV
   return (page + 1) * pageSize < total;
 }
 
+export function getEvidencePrevPage(page: number) {
+  return Math.max(0, page - 1);
+}
+
+export function getEvidenceNextPage(page: number) {
+  return page + 1;
+}
+
 export function createEvidenceLightbox(item: EvidenceItem) {
   return {
     src: item.snapshotUrl || '',

@@ -22,14 +22,18 @@ import {
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
 import { useRealSystemStatus } from "../lib/useRealData";
-import { DEFAULT_DEVICE_FORM, DEFAULT_DEVICE_SETTINGS, buildBatchCameraPayload, createSelectedDiscoverySet, getOnlineCameraCount, toDeviceForm, toggleSelectedDiscovery } from "../services/devices-data";
+import {
+  DEFAULT_DEVICE_FORM,
+  DEFAULT_DEVICE_SETTINGS,
+  buildBatchCameraPayload,
+  createSelectedDiscoverySet,
+  getDeviceStorageBarWidth,
+  getOnlineCameraCount,
+  toDeviceForm,
+  toggleSelectedDiscovery,
+  TYPE_LABELS,
+} from "../services/devices-data";
 import { addDiscoveredDevices, clearDevices, createDevice, loadDevices, removeDevice, saveDevice, scanDevices, validateDeviceConnection } from "../services/devices-service";
-
-const TYPE_LABELS: Record<string, string> = {
-  usb: "USB 摄像头",
-  rtsp: "RTSP 网络摄像机",
-  http_snapshot: "HTTP 快照",
-};
 
 export default function Devices() {
   const toast = useToast();
@@ -331,7 +335,7 @@ export default function Devices() {
                 <span className="font-mono">{storageUsage}% 已用</span>
               </div>
               <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: `${Math.min(storageUsage, 100)}%` }} />
+                <div className="bg-primary h-full rounded-full" style={{ width: getDeviceStorageBarWidth(storageUsage) }} />
               </div>
             </div>
             <div className="mt-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">
