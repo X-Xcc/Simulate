@@ -273,6 +273,9 @@ public class DetectionService {
                 .filter(d -> d.getFps() > 0)
                 .mapToDouble(DetectionData::getFps)
                 .summaryStatistics();
+        if (stats.getCount() == 0) {
+            return Map.of("avg", 0, "min", 0, "max", 0, "count", 0);
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("avg", Math.round(stats.getAverage() * 10.0) / 10.0);
         result.put("min", stats.getMin());

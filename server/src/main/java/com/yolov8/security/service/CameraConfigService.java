@@ -238,6 +238,18 @@ public class CameraConfigService {
         if (camera.getAddress() == null) {
             camera.setAddress("");
         }
+        if (camera.getStatus() == null || camera.getStatus().isEmpty()) {
+            camera.setStatus("offline");
+        }
+        if (camera.getPort() <= 0) {
+            camera.setPort(554);
+        }
+        if (camera.getChannel() <= 0) {
+            camera.setChannel(1);
+        }
+        if (!camera.isEnabled()) {
+            camera.setEnabled(true);
+        }
         return null;
     }
 
