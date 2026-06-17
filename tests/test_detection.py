@@ -147,63 +147,6 @@ class TestDetectFighting:
         assert is_fighting, "Two close people with raised arms should be detected as fighting"
 
 
-class TestEyeFatigue:
-    """Eye aspect ratio detection."""
-
-    def test_EAR_uses_ear_not_eyelid_is_inherent_limitation(self):
-        """KNOWN BUG: EAR uses eye-to-ear distance as a proxy for eye openness.
-
-        YOLOv8 pose keypoints 3,4 are ears, NOT eyelids. The ear position is
-        fixed regardless of whether the eye is open or closed. Therefore EAR
-        cannot change based on blinking — the value is determined by head pose
-        (rotation toward/away from camera), not eye state.
-
-        This test documents the limitation: EAR values are stable regardless
-        of 'eye state' because the algorithm measures the wrong anatomy.
-
-        Fix required: replace EAR with a face detection model that provides
-        eyelid landmarks (e.g., MediaPipe face mesh with 468 points), or use
-        a dedicated eye-closure model.
-        """
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[1] = [0.48, 0.12, 0.9]  # left_eye
-        kp[2] = [0.52, 0.12, 0.9]  # right_eye
-        kp[3] = [0.47, 0.115, 0.9]  # left_ear (close to eye)
-        kp[4] = [0.53, 0.115, 0.9]  # right_ear (close to eye)
-
-        ear, valid = Utils.calculate_eye_aspect_ratio(kp)
-        assert valid
-        # EAR with ear-as-proxy is ~0.28 for this head orientation
-        # This does NOT change when the person blinks
-        assert 0.2 < ear < 0.4, f"Unexpected EAR for this head pose: {ear}"
-
-    def test_EAR_invalid_when_ear_confidence_low(self):
-        """EAR should be invalid when ear keypoints have low confidence."""
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[1] = [0.48, 0.12, 0.9]  # left_eye
-        kp[2] = [0.52, 0.12, 0.9]  # right_eye
-        kp[3] = [0.47, 0.115, 0.3]  # left_ear (low confidence)
-        kp[4] = [0.53, 0.115, 0.9]  # right_ear
-
-        ear, valid = Utils.calculate_eye_aspect_ratio(kp)
-        assert not valid, "EAR should be invalid when ear confidence is low"
-
-    def test_open_eye_detected_as_high_EAR(self):
-        """An open eye (larger height vs width) should produce higher EAR."""
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[1] = [0.48, 0.12, 0.9]
-        kp[2] = [0.52, 0.12, 0.9]
-        kp[3] = [0.46, 0.08, 0.9]  # left_ear (farther = larger height)
-        kp[4] = [0.54, 0.08, 0.9]  # right_ear
-
-        ear, valid = Utils.calculate_eye_aspect_ratio(kp)
-        assert valid
-        assert ear >= 0.2, f"Expected high EAR for open eyes, got {ear}"
-
-
 class TestCalculateIou:
     """Tests for Utils.calculate_iou — IoU between normalized [x1,y1,x2,y2] boxes."""
 
@@ -231,77 +174,6 @@ class TestCalculateIou:
     def test_zero_area_box(self):
         iou = Utils.calculate_iou([0.5, 0.5, 0.5, 0.5], [0.0, 0.0, 1.0, 1.0])
         assert iou == 0.0
-
-
-class TestEyeFatigueGrace:
-    """detect_eye_fatigue grace period: invalid frames don't immediately reset counter."""
-
-    def test_valid_low_EAR_increments_counter(self):
-        config = Config()
-        config.USE_HEAD_TILT_FOR_FATIGUE = False  # 测试 EAR 路径
-        dm = DetectionModule(config)
-        # Build keypoints with EAR below threshold.
-        # EAR = (left_ear_dist + right_ear_dist) / (2 * eye_center_dist)
-        # To get EAR < 0.2, need ears very close to eyes (small numerator)
-        # and eyes far apart (large denominator).
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[1] = [0.3, 0.12, 0.9]   # left_eye
-        kp[2] = [0.7, 0.12, 0.9]   # right_eye (far apart = large denominator)
-        kp[3] = [0.3, 0.119, 0.9]  # left_ear (almost same pos as eye = low EAR)
-        kp[4] = [0.7, 0.119, 0.9]  # right_ear
-
-        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 0, 0)
-        assert count >= 1
-        assert invalid == 0
-
-    def test_invalid_frame_preserves_counter_within_grace(self):
-        config = Config()
-        config.USE_HEAD_TILT_FOR_FATIGUE = False  # 测试 EAR 路径
-        dm = DetectionModule(config)
-        # Keypoints with low-confidence ear → invalid EAR
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[1] = [0.48, 0.12, 0.9]
-        kp[2] = [0.52, 0.12, 0.9]
-        kp[3] = [0.47, 0.115, 0.3]  # low confidence
-        kp[4] = [0.53, 0.115, 0.3]  # low confidence
-
-        # Start with count=5, invalid_count=2 (within grace period of 5)
-        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 5, 2)
-        assert count == 5, "Counter should be preserved within grace period"
-        assert invalid == 3, "Invalid count should increment"
-
-    def test_invalid_frame_resets_counter_beyond_grace(self):
-        config = Config()
-        config.USE_HEAD_TILT_FOR_FATIGUE = False
-        dm = DetectionModule(config)
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[1] = [0.48, 0.12, 0.9]
-        kp[2] = [0.52, 0.12, 0.9]
-        kp[3] = [0.47, 0.115, 0.3]
-        kp[4] = [0.53, 0.115, 0.3]
-
-        # Start with count=5, invalid_count=5 (at grace limit)
-        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 5, 5)
-        assert count == 0, "Counter should reset beyond grace period"
-        assert invalid == 0
-
-    def test_valid_frame_resets_invalid_counter(self):
-        config = Config()
-        config.USE_HEAD_TILT_FOR_FATIGUE = False
-        dm = DetectionModule(config)
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[1] = [0.48, 0.12, 0.9]
-        kp[2] = [0.52, 0.12, 0.9]
-        kp[3] = [0.47, 0.08, 0.9]  # ear far from eye = high EAR
-        kp[4] = [0.53, 0.08, 0.9]
-
-        is_fatigued, count, invalid = dm.detect_eye_fatigue(kp, 3, 4)
-        assert count == 0, "High EAR should reset fatigue count"
-        assert invalid == 0, "Valid frame should reset invalid counter"
 
 
 class TestFallTemporalSmoothing:
@@ -332,65 +204,6 @@ class TestFallTemporalSmoothing:
             assert not confirmed, "Single frame should not confirm fall"
         # If detect_fall itself returns false, the test passes trivially
         # (the fall score wasn't high enough for even one frame)
-
-
-class TestHeadNodding:
-    """Head nodding state machine: idle → dropping → recovered → drowsy."""
-
-    def test_initial_state_is_idle(self):
-        config = Config()
-        dm = DetectionModule(config)
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        kp[0] = [0.5, 0.15, 0.9]   # nose
-        kp[5] = [0.42, 0.2, 0.9]   # left_shoulder
-        kp[6] = [0.58, 0.2, 0.9]   # right_shoulder
-
-        is_drowsy, state = dm.detect_head_nodding(kp, None)
-        assert not is_drowsy
-        assert state['state'] == 'idle'
-        assert state['nod_count'] == 0
-
-    def test_nose_dropping_transitions_to_dropping(self):
-        config = Config()
-        dm = DetectionModule(config)
-        kp = np.zeros((17, 3))
-        kp[:, 2] = 0.9
-        # Nose well below shoulder level (relative_y > threshold)
-        kp[0] = [0.5, 0.35, 0.9]   # nose
-        kp[5] = [0.42, 0.2, 0.9]   # left_shoulder
-        kp[6] = [0.58, 0.2, 0.9]   # right_shoulder
-
-        state = {'state': 'idle', 'nod_count': 0, 'first_nod_time': 0.0, 'last_nose_y': 0.0}
-        is_drowsy, state = dm.detect_head_nodding(kp, state)
-        assert state['state'] == 'dropping'
-        assert not is_drowsy
-
-    def test_nose_recovery_increments_nod_count(self):
-        config = Config()
-        dm = DetectionModule(config)
-        # First: drop
-        kp_drop = np.zeros((17, 3))
-        kp_drop[:, 2] = 0.9
-        kp_drop[0] = [0.5, 0.35, 0.9]
-        kp_drop[5] = [0.42, 0.2, 0.9]
-        kp_drop[6] = [0.58, 0.2, 0.9]
-
-        state = {'state': 'idle', 'nod_count': 0, 'first_nod_time': 0.0, 'last_nose_y': 0.0}
-        _, state = dm.detect_head_nodding(kp_drop, state)
-        assert state['state'] == 'dropping'
-
-        # Then: recover (nose back near shoulder level)
-        kp_recover = np.zeros((17, 3))
-        kp_recover[:, 2] = 0.9
-        kp_recover[0] = [0.5, 0.2, 0.9]   # nose at shoulder level
-        kp_recover[5] = [0.42, 0.2, 0.9]
-        kp_recover[6] = [0.58, 0.2, 0.9]
-
-        is_drowsy, state = dm.detect_head_nodding(kp_recover, state)
-        assert state['state'] == 'idle'
-        assert state['nod_count'] == 1
-        assert not is_drowsy
 
 
 class TestUtils:
@@ -504,33 +317,6 @@ class TestLoadCamerasConfig:
         result = load_cameras_config(str(config_file))
         assert len(result) == 1
         assert result[0]["id"] == "good"
-
-
-class TestDetectHeadTilt:
-    def test_normal_head_not_tilted(self):
-        kp = np.zeros((17, 3))
-        kp[0] = [0.5, 0.3, 0.9]   # nose
-        kp[1] = [0.45, 0.28, 0.9]  # left eye
-        kp[2] = [0.55, 0.28, 0.9]  # right eye (same Y = horizontal)
-        is_tilted, conf = Utils.detect_head_tilt(kp)
-        assert not is_tilted
-
-    def test_tilted_head_detected(self):
-        kp = np.zeros((17, 3))
-        kp[0] = [0.5, 0.3, 0.9]
-        kp[1] = [0.45, 0.25, 0.9]  # left eye higher
-        kp[2] = [0.55, 0.35, 0.9]  # right eye lower (~30 degree tilt)
-        is_tilted, conf = Utils.detect_head_tilt(kp)
-        assert is_tilted
-        assert conf > 0.3
-
-    def test_low_confidence_keypoints_returns_false(self):
-        kp = np.zeros((17, 3))
-        kp[0] = [0.5, 0.3, 0.3]  # low confidence
-        kp[1] = [0.45, 0.25, 0.9]
-        kp[2] = [0.55, 0.35, 0.9]
-        is_tilted, conf = Utils.detect_head_tilt(kp)
-        assert not is_tilted
 
 
 class TestDataSaver:

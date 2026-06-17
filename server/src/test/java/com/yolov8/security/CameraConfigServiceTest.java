@@ -44,7 +44,7 @@ class CameraConfigServiceTest {
                 brand VARCHAR(64), model VARCHAR(128), ip VARCHAR(64), port INT DEFAULT 554,
                 rtsp_url VARCHAR(512), http_url VARCHAR(512), username VARCHAR(128), password VARCHAR(128),
                 channel INT DEFAULT 1, status VARCHAR(32) DEFAULT 'offline', enabled BOOLEAN DEFAULT TRUE,
-                go2rtc_id VARCHAR(64), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                go2rtc_id VARCHAR(64), http_mjpeg_url VARCHAR(512), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """);
 
@@ -59,7 +59,7 @@ class CameraConfigServiceTest {
         pythonConfig.setScriptPath(scriptPath.toString());
         appConfig.setPython(pythonConfig);
 
-        service = new CameraConfigService(repository, objectMapper, null, appConfig);
+        service = new CameraConfigService(repository, objectMapper, null, appConfig, null);
     }
 
     // --- Read tests ---

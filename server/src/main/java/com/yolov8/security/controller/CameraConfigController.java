@@ -66,6 +66,18 @@ public class CameraConfigController {
         }
     }
 
+    @DeleteMapping("/camera_config")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> deleteAllCameras() {
+        try {
+            cameraConfigService.deleteAllCameras();
+            return ResponseEntity.ok(ApiResponse.success("所有摄像头已清空", Map.of("deleted", true)));
+        } catch (Exception e) {
+            log.error("Error clearing cameras", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("清空摄像头失败: " + e.getMessage()));
+        }
+    }
+
     @DeleteMapping("/camera_config/{id}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> deleteCamera(@PathVariable String id) {
         try {

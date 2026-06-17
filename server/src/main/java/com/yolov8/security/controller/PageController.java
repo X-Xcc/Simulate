@@ -24,6 +24,6 @@ public class PageController {
 
     @GetMapping("/training")
     public String trainingPage() {
-        return "forward:/training.html";
+        return "forward:/index.html";
     }
 }

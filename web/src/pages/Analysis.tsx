@@ -1,7 +1,6 @@
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer,
   AreaChart, Area, XAxis, YAxis, Tooltip,
-  BarChart, Bar, Cell
 } from "recharts";
 import {
   TrendingUp, BarChart2, Download,
@@ -10,99 +9,94 @@ import {
 import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import { cn } from "../lib/utils";
+import { isZeroPort } from "../lib/api";
 import {
-  useMockSystemStatus,
-  useMockTrendData, useMockModelInfo, useMockRegionalStats, useMockFpsStats,
-} from "../lib/useMock";
+  useRealSystemStatus,
+  useRealTrendData,
+  useRealModelInfo,
+  useRealRegionalStats,
+  useRealFpsStats,
+} from "../lib/useRealData";
 import { useRealAlerts } from "../lib/useRealAlerts";
 import { useToast } from "../components/Toast";
 import Prison3D from "../components/Prison3D";
-
-const isZeroPort = typeof window !== "undefined" && window.location.port === "5001";
-
+import {
+  ANALYSIS_RANGE_OPTIONS,
+  AnalysisTimeRange,
+  buildAnalysisTrendSummary,
+  buildRadarData,
+  getAnalysisAccuracy,
+  getAverageLatencyLabel,
+  getBehaviorMaxValue,
+  getConfirmedAlertCount,
+  getRegionalMaxValue,
+  sumAnalysisAlerts,
+  zeroNumber,
+  zeroRegionalData,
+  zeroString,
+  zeroTrendData,
+} from "../services/analysis-data";
+import { exportAnalysisReport } from "../services/analysis-service";
 
 export default function Analysis() {
   const toast = useToast();
-  const [timeRange, setTimeRange] = useState<"week" | "month" | "quarter">("week");
+  const [timeRange, setTimeRange] = useState<AnalysisTimeRange>("week");
   const { alerts } = useRealAlerts();
-  const status = useMockSystemStatus();
-  const modelInfo = useMockModelInfo();
-  const regionalData = useMockRegionalStats();
-  const fpsStats = useMockFpsStats();
-  const trendDataRaw = useMockTrendData(timeRange);
+  const status = useRealSystemStatus();
+  const modelInfo = useRealModelInfo();
+  const regionalData = useRealRegionalStats();
+  const fpsStats = useRealFpsStats();
+  const trendDataRaw = useRealTrendData(timeRange);
 
-  // 从 trendData 派生卡片 + 图表，保证数据同步
-  const { trendData, trendTotals } = useMemo(() => {
-    if (!trendDataRaw?.labels) return { trendData: [], trendTotals: {} as Record<string, number> };
-    const totals: Record<string, number> = {};
-    const chart = trendDataRaw.labels.map((label: string, i: number) => {
-      let sum = 0;
-      for (const [key, arr] of Object.entries(trendDataRaw.data)) {
-        const val = (arr as number[])[i] ?? 0;
-        sum += val;
-        totals[key] = (totals[key] ?? 0) + val;
-      }
-      return { name: label, alerts: sum };
-    });
-    return { trendData: chart, trendTotals: totals };
-  }, [trendDataRaw]);
+  const { trendData, trendTotals } = useMemo(() => buildAnalysisTrendSummary(trendDataRaw), [trendDataRaw]);
 
-  const totalAlerts = Object.values(trendTotals).reduce((s, v) => s + v, 0);
+  const totalAlerts = sumAnalysisAlerts(trendTotals);
   const behaviorCounts = trendTotals;
-  const confirmedAlerts = alerts.filter(a => a.status === "confirmed").length;
-  const accuracy = alerts.length > 0 ? (confirmedAlerts / alerts.length * 100).toFixed(1) : "0";
-  const avgLatency = fpsStats?.avg ? `${(1000 / fpsStats.avg).toFixed(0)}ms` : "—";
-  const maxVal = Math.max(...Object.values(behaviorCounts as Record<string, number>), 1);
-  const maxRegionalValue = regionalData.length > 0 ? Math.max(...regionalData.map(d => d.value)) : 1;
+  const confirmedAlerts = getConfirmedAlertCount(alerts);
+  const accuracy = getAnalysisAccuracy(alerts.length, confirmedAlerts);
+  const avgLatency = getAverageLatencyLabel(fpsStats?.avg);
+  const maxVal = getBehaviorMaxValue(behaviorCounts);
+  const maxRegionalValue = getRegionalMaxValue(regionalData);
 
-  // 5001 端口 — 数据全部置零
-  const zero = (v: number) => isZeroPort ? 0 : v;
-  const zeroStr = (v: string) => isZeroPort ? "0" : v;
   const zeroedTrendData = useMemo(
-    () => trendData.map(d => ({ ...d, alerts: zero(d.alerts) })),
+    () => zeroTrendData(trendData, isZeroPort),
     [trendData],
   );
   const zeroedRegionalData = useMemo(
-    () => regionalData.map(d => ({ ...d, value: zero(d.value) })),
+    () => zeroRegionalData(regionalData, isZeroPort),
     [regionalData],
   );
-
-  const radarData = [
-    { subject: "打架", A: zero(behaviorCounts["打架"] ?? 0), fullMark: maxVal },
-    { subject: "跌倒", A: zero(behaviorCounts["跌倒"] ?? 0), fullMark: maxVal },
-    { subject: "自杀", A: zero(behaviorCounts["自杀"] ?? 0), fullMark: maxVal },
-    { subject: "聚集", A: zero(behaviorCounts["人员聚集"] ?? 0), fullMark: maxVal },
-  ];
+  const radarData = useMemo(
+    () => buildRadarData(behaviorCounts, maxVal, isZeroPort),
+    [behaviorCounts, maxVal],
+  );
 
   return (
     <div className="space-y-5 max-w-[1600px] mx-auto pb-8 animate-fade-in-up">
       <header className="flex justify-between items-end">
         <div className="flex gap-2.5">
           <div className="flex bg-white border border-outline-variant rounded-lg p-0.5 shadow-sm">
-            {(["week", "month", "quarter"] as const).map(r => (
-              <button key={r} onClick={() => setTimeRange(r)}
+            {ANALYSIS_RANGE_OPTIONS.map(option => (
+              <button key={option.value} onClick={() => setTimeRange(option.value)}
                 className={cn("px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all",
-                  timeRange === r ? "bg-primary text-white shadow-sm" : "text-on-surface-variant hover:text-on-surface"
+                  timeRange === option.value ? "bg-primary text-white shadow-sm" : "text-on-surface-variant hover:text-on-surface"
                 )}>
-                {r === "week" ? "近7天" : r === "month" ? "近30天" : "近90天"}
+                {option.label}
               </button>
             ))}
           </div>
-          <button onClick={() => toast.show("分析报告已导出")} className="bg-gradient-to-r from-primary to-blue-500 text-white px-4 py-2 rounded-lg font-semibold text-[13px] flex items-center gap-2 shadow-md hover:shadow-lg hover:shadow-primary/20 transition-all">
+          <button onClick={() => { exportAnalysisReport(); toast.show("已开始导出分析报告"); }} className="bg-gradient-to-r from-primary to-blue-500 text-white px-4 py-2 rounded-lg font-semibold text-[13px] flex items-center gap-2 shadow-md hover:shadow-lg hover:shadow-primary/20 transition-all">
             <Download size={14} /> 导出报告
           </button>
         </div>
       </header>
 
-      {/* ┌──────────────────────────────────────────────────────┐
-      // │  4 张摘要卡片 — 告警总数/AI准确率/平均时延/设备负载     │
-      // └──────────────────────────────────────────────────────┘ */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "本周告警", value: zeroStr(totalAlerts.toString()), change: isZeroPort ? "—" : "+12.4%", icon: AlertCircle, color: "text-danger-red", bg: "bg-danger-red/10" },
-          { label: "AI 准确率", value: `${zeroStr(accuracy)}%`, change: isZeroPort ? "—" : "+0.8%", icon: ShieldCheck, color: "text-success-green", bg: "bg-success-green/10" },
+          { label: "本周告警", value: zeroString(totalAlerts.toString(), isZeroPort), change: isZeroPort ? "—" : "+12.4%", icon: AlertCircle, color: "text-danger-red", bg: "bg-danger-red/10" },
+          { label: "AI 准确率", value: `${zeroNumber(accuracy, isZeroPort)}%`, change: isZeroPort ? "—" : "+0.8%", icon: ShieldCheck, color: "text-success-green", bg: "bg-success-green/10" },
           { label: "识别时延", value: isZeroPort ? "0ms" : avgLatency, change: isZeroPort ? "—" : "正常", icon: Target, color: "text-info-cyan", bg: "bg-info-cyan/10" },
-          { label: "设备负载", value: `${zeroStr(status.cpuUsage.toString())}%`, change: isZeroPort ? "—" : "运行中", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
+          { label: "设备负载", value: `${zeroString(status.cpuUsage.toString(), isZeroPort)}%`, change: isZeroPort ? "—" : "运行中", icon: Activity, color: "text-primary", bg: "bg-primary/10" },
         ].map((s, i) => (
           <div key={i} className="bg-white p-4 border border-outline-variant rounded-xl shadow-sm hover:shadow-md transition-all">
             <div className="flex justify-between items-start mb-2.5">
@@ -119,9 +113,7 @@ export default function Analysis() {
         ))}
       </div>
 
-      {/* 3D 监区热力图 + 七日趋势 并排 */}
       <div className="grid grid-cols-2 gap-4">
-        {/* 3D 监区热力图 */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant/50 bg-surface-container-low/50">
             <h3 className="font-bold text-[14px] flex items-center gap-2">
@@ -138,7 +130,6 @@ export default function Analysis() {
           )}
         </section>
 
-        {/* 7日趋势 */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm flex flex-col">
           <header className="px-4 py-2.5 border-b border-outline-variant/50 bg-surface-container-low/50">
             <h3 className="font-bold text-[14px] flex items-center gap-2"><BarChart2 size={15} className="text-outline" /> 七日告警趋势</h3>
@@ -163,9 +154,6 @@ export default function Analysis() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  RadarChart 雷达图 — AI 识别效能分析                   │
-        // └──────────────────────────────────────────────────────┘ */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant/50 bg-surface-container-low/50">
             <h3 className="font-bold text-[14px]">AI 识别效能</h3>
@@ -183,11 +171,11 @@ export default function Analysis() {
             <div className="col-span-2 space-y-4 border-l border-outline-variant/30 pl-4">
               <div>
                 <p className="text-[11px] text-outline font-semibold uppercase mb-0.5">总检测数</p>
-                <p className="text-[20px] font-mono font-bold text-primary tabular-nums">{zero(totalAlerts)}</p>
+                <p className="text-[20px] font-mono font-bold text-primary tabular-nums">{zeroNumber(totalAlerts, isZeroPort)}</p>
               </div>
               <div>
                 <p className="text-[11px] text-outline font-semibold uppercase mb-0.5">总告警数</p>
-                <p className="text-[20px] font-mono font-bold text-detect-purple tabular-nums">{zero(totalAlerts)}</p>
+                <p className="text-[20px] font-mono font-bold text-detect-purple tabular-nums">{zeroNumber(confirmedAlerts, isZeroPort)}</p>
               </div>
               <div className="pt-3 border-t border-outline-variant/20">
                 <p className="text-[11px] font-semibold text-on-surface-variant">YOLOv8n-pose</p>
@@ -197,9 +185,6 @@ export default function Analysis() {
           </div>
         </section>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  区域分布条形图 — 各监区告警数量对比                    │
-        // └──────────────────────────────────────────────────────┘ */}
         <section className="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
           <header className="px-4 py-2.5 border-b border-outline-variant/50 bg-surface-container-low/50">
             <h3 className="font-bold text-[14px] flex items-center gap-2"><TrendingUp size={15} className="text-outline" /> 各监区告警分布</h3>

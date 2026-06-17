@@ -35,7 +35,8 @@ public class AlertController {
             ApiResponse.PageData<Alert> result = alertService.getAlertsPage(page, size, type, status, since);
             return ResponseEntity.ok(ApiResponse.success(result));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("获取告警列表失败: " + e.getMessage()));
         }
     }
 
@@ -51,7 +52,9 @@ public class AlertController {
                 .contentType(MediaType.parseMediaType("text/csv; charset=UTF-8"))
                 .body(csv.getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(("{\"status\":\"error\",\"message\":\"导出告警失败\"}").getBytes(StandardCharsets.UTF_8));
         }
     }
 

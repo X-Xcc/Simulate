@@ -154,18 +154,18 @@ export function generateSystemStatus(): SystemStatus {
 // ── 趋势数据（确定性，使用 seed 保证刷新不跳变） ────────────────────────────────
 
 export function generateTrendData(range: "day" | "week" | "month" | "quarter") {
-  const keys = ["打架", "跌倒", "自杀", "人员聚集"] as const;
+  const keys = ["打架", "跌倒", "离岗", "人员聚集"] as const;
 
   // ── 月数据：主数据源（seeded 保证刷新不跳变） ──
   const rand = seededRandom(300);
   const monthLabels: string[] = [];
-  const monthData: Record<string, number[]> = { "打架": [], "跌倒": [], "自杀": [], "人员聚集": [] };
+  const monthData: Record<string, number[]> = { "打架": [], "跌倒": [], "离岗": [], "人员聚集": [] };
   for (let i = 0; i < 30; i++) {
     monthLabels.push(`${i + 1}日`);
     const waveFactor = 0.6 + 0.4 * Math.sin((i / 7) * Math.PI);
     monthData["打架"].push(Math.round((rand() * 5 + 1) * waveFactor));
     monthData["跌倒"].push(Math.round((rand() * 3 + 0.5) * waveFactor));
-    monthData["自杀"].push(Math.round((rand() * 8 + 2) * waveFactor));
+    monthData["离岗"].push(Math.round((rand() * 8 + 2) * waveFactor));
     monthData["人员聚集"].push(Math.round((rand() * 4 + 1) * waveFactor));
   }
 
@@ -189,7 +189,7 @@ export function generateTrendData(range: "day" | "week" | "month" | "quarter") {
       for (const key of keys) {
         const weekFactor = 0.6 + 0.4 * Math.sin((i / 7) * Math.PI);
         const weekdayFactor = i < 5 ? 1.0 : 0.5;
-        const base = key === "打架" ? 3 : key === "跌倒" ? 2 : key === "自杀" ? 5 : 3;
+        const base = key === "打架" ? 3 : key === "跌倒" ? 2 : key === "离岗" ? 5 : 3;
         data[key].push(Math.round((rand() * base + 1) * weekFactor * weekdayFactor));
       }
     }
@@ -202,7 +202,7 @@ export function generateTrendData(range: "day" | "week" | "month" | "quarter") {
     const labels = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, "0")}:00`);
     const data: Record<string, number[]> = {};
     for (const key of keys) {
-      const base = key === "打架" ? 3 : key === "跌倒" ? 2 : key === "自杀" ? 5 : 3;
+      const base = key === "打架" ? 3 : key === "跌倒" ? 2 : key === "离岗" ? 5 : 3;
       data[key] = labels.map((_, hour) => {
         const f = (hour >= 2 && hour <= 5) ? 0.05 : (hour >= 8 && hour <= 20) ? 0.07 : 0.03;
         return Math.max(0, Math.round(base * f * (0.5 + rand() * 0.5)));
@@ -214,7 +214,7 @@ export function generateTrendData(range: "day" | "week" | "month" | "quarter") {
   // quarter: 90 天
   const qRand = seededRandom(400);
   const qLabels: string[] = [];
-  const qData: Record<string, number[]> = { "打架": [], "跌倒": [], "自杀": [], "人员聚集": [] };
+  const qData: Record<string, number[]> = { "打架": [], "跌倒": [], "离岗": [], "人员聚集": [] };
   for (let i = 0; i < 90; i++) {
     const d = new Date();
     d.setDate(d.getDate() - 90 + i);
@@ -225,7 +225,7 @@ export function generateTrendData(range: "day" | "week" | "month" | "quarter") {
     const factor = weekFactor * weekdayFactor;
     qData["打架"].push(Math.round((qRand() * 5 + 1) * factor));
     qData["跌倒"].push(Math.round((qRand() * 3 + 0.5) * factor));
-    qData["自杀"].push(Math.round((qRand() * 8 + 2) * factor));
+    qData["离岗"].push(Math.round((qRand() * 8 + 2) * factor));
     qData["人员聚集"].push(Math.round((qRand() * 4 + 1) * factor));
   }
   return { labels: qLabels, data: qData };
@@ -237,7 +237,7 @@ export function generateStatsCompare() {
   return {
     "打架": { today: randomInt(2, 12), yesterday: randomInt(2, 12), change: randomInt(-30, 30) },
     "跌倒": { today: randomInt(0, 6), yesterday: randomInt(0, 6), change: randomInt(-40, 40) },
-    "自杀": { today: randomInt(3, 15), yesterday: randomInt(3, 15), change: randomInt(-20, 20) },
+    "离岗": { today: randomInt(3, 15), yesterday: randomInt(3, 15), change: randomInt(-20, 20) },
     "人员聚集": { today: randomInt(1, 8), yesterday: randomInt(1, 8), change: randomInt(-25, 25) },
   };
 }
@@ -249,7 +249,7 @@ export function generateStatsSummary() {
     behaviorCounts: {
       "打架": randomInt(8, 35),
       "跌倒": randomInt(3, 18),
-      "自杀": randomInt(12, 50),
+      "离岗": randomInt(12, 50),
       "人员聚集": randomInt(5, 25),
     },
     total: randomInt(2000, 8000),
@@ -273,7 +273,7 @@ export function generateRegionalStats() {
 // ── 证据列表 ─────────────────────────────────────────────────────────────────
 
 export function generateEvidenceItems(count = 24) {
-  const actions = ["打架", "跌倒", "自杀", "人员聚集"];
+  const actions = ["打架", "跌倒", "离岗", "人员聚集"];
   return Array.from({ length: count }, (_, i) => {
     const cam = pick(CAMERAS_FOR_ALERTS);
     const camIdx = CAMERAS_FOR_ALERTS.indexOf(cam);
@@ -373,7 +373,7 @@ const ZONE_DEFS: Omit<HeatmapZone, "intensity" | "alertCount" | "topBehavior">[]
   { id: "F", name: "F区医疗/图书", x: 67, y: 54, w: 28, h: 38 },
 ];
 
-const BEHAVIORS = ["打架", "跌倒", "自杀", "人员聚集"];
+const BEHAVIORS = ["打架", "跌倒", "离岗", "人员聚集"];
 
 export function generateHeatmapData(): HeatmapZone[] {
   const rand = seededRandom(500);
@@ -396,5 +396,5 @@ export const ALARM_SNAPSHOT_URLS: Record<string, string> = {
   "打架":     "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=800&q=80",
   "跌倒":     "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80",
   "人员聚集": "https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80",
-  "自杀":     "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
+  "离岗":     "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
 };

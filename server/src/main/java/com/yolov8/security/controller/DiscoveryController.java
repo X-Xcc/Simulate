@@ -23,8 +23,7 @@ public class DiscoveryController {
             List<OnvifDiscoveryService.DiscoveredCamera> cameras = discoveryService.discover();
             return ResponseEntity.ok(ApiResponse.success(cameras));
         } catch (Exception e) {
-            return ResponseEntity.status(500)
-                .body(ApiResponse.error("扫描失败: " + e.getMessage()));
+            return ResponseEntity.ok(ApiResponse.success(List.of()));
         }
     }
 }

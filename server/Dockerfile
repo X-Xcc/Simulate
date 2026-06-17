@@ -1,5 +1,5 @@
-FROM eclipse-temurin:18-jdk-alpine
+FROM eclipse-temurin:17-jdk-alpine
 WORKDIR /app
-COPY target/*.jar app.jar
+COPY target/*.war app.war
 EXPOSE 5000
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "app.war"]

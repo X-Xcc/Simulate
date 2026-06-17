@@ -66,12 +66,14 @@ def load_model():
             print(f"检测到blobs目录，从父目录加载处理器配置: {processor_path}")
         
         # 加载处理器
+        # trust_remote_code: 仅用于官方 Qwen2.5-VL 模型的自定义代码，第三方模型慎用
         processor = AutoProcessor.from_pretrained(processor_path, trust_remote_code=True)
         
         # 加载模型
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"使用设备: {device}")
         
+        # trust_remote_code: 仅用于官方 Qwen2.5-VL 模型的自定义代码，第三方模型慎用
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             MODEL_PATH,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
@@ -359,7 +361,7 @@ def main():
     
     # 启动服务
     port = int(os.environ.get('QWEN_VL_PORT', 5002))
-    host = os.environ.get('QWEN_VL_HOST', '0.0.0.0')
+    host = os.environ.get('QWEN_VL_HOST', '127.0.0.1')
     
     print(f"\n启动 HTTP 服务: http://{host}:{port}")
     print("API 端点:")

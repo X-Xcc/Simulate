@@ -63,7 +63,9 @@ public class AnnotationController {
                     .body(data);
         } catch (Exception e) {
             log.error("Error exporting annotations", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(("{\"status\":\"error\",\"message\":\"导出标注失败: " + e.getMessage().replace("\"", "'") + "\"}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
     }
 

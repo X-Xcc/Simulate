@@ -1,6 +1,0 @@
-import{c as o,j as t}from"./index-COn5NMvO.js";/**
- * @license lucide-react v0.474.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */const c=[["path",{d:"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",key:"1a8usu"}],["path",{d:"m15 5 4 4",key:"1mk7zo"}]],r=o("Pencil",c),l=[{label:"数据标注",href:"/annotation.html",icon:r}];function p(){const e=window.location.pathname;return t.jsx("nav",{className:"sticky top-0 z-50 bg-white border-b border-outline-variant shadow-sm",children:t.jsxs("div",{className:"max-w-[1800px] mx-auto px-5 h-12 flex items-center gap-6",children:[t.jsx("span",{className:"font-bold text-body text-primary tracking-tight shrink-0",children:"长明灯"}),t.jsx("div",{className:"flex items-center gap-1",children:l.map(({label:n,href:a,icon:s})=>{const i=e.endsWith(a);return t.jsxs("a",{href:a,className:`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-caption font-semibold transition-colors ${i?"bg-primary/10 text-primary":"text-on-surface-variant hover:bg-surface-container-high"}`,children:[t.jsx(s,{size:14}),n]},a)})})]})})}export{p as W};

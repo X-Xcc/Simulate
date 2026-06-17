@@ -10,10 +10,9 @@ import {
   HardDrive,
   Zap,
   TrendingUp,
-  ChevronRight,
   AlertTriangle,
 } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import {
@@ -29,16 +28,23 @@ import {
   Cell,
 } from "recharts";
 import { cn } from "../lib/utils";
-import { exportCsv } from "../services/dataService";
-import { AlertType, Alert as RealAlert } from "../types";
-import { subscribeSse } from "../lib/api";
+import { Alert, AlertType } from "../types";
+import { useRealAlerts } from "../lib/useRealAlerts";
 import {
-  useMockSystemStatus,
-  useMockTrendData,
-  useMockAlerts,
-} from "../lib/useMock";
+  useRealSystemStatus,
+  useRealTrendData,
+} from "../lib/useRealData";
+import {
+  buildBehaviorCounts,
+  buildDashboardTrend,
+  buildDistributionData,
+  DASHBOARD_RANGE_OPTIONS,
+  DashboardTrendRange,
+  selectRecentAlerts,
+  sumDistributionValues,
+} from "../services/dashboard-data";
+import { exportDashboardReport } from "../services/dashboard-service";
 
-/* ── palette ── */
 const C = {
   fight:   { line: "#e54d4d", fill: "rgba(229,77,77,0.08)",  bg: "bg-error-container",    text: "text-danger-red",    badge: "bg-error-container text-danger-red" },
   fall:    { line: "#e5952e", fill: "rgba(229,149,46,0.08)", bg: "bg-warning-container",  text: "text-warning-orange", badge: "bg-warning-container text-warning-orange" },
@@ -49,14 +55,14 @@ const C = {
 const TREND_COLORS: Record<string, string> = {
   "打架": "#e54d4d",
   "跌倒": "#e5952e",
-  "自杀": "#ef4444",
+  "离岗": "#06b6d4",
   "人员聚集": "#8b5cf6",
 };
 
 const TREND_FILLS: Record<string, string> = {
   "打架": "url(#gradFight)",
   "跌倒": "url(#gradFall)",
-  "自杀": "url(#gradAbsent)",
+  "离岗": "url(#gradAbsent)",
   "人员聚集": "url(#gradCrowd)",
 };
 
@@ -67,13 +73,6 @@ const TYPE_STYLE: Record<string, typeof C.fight> = {
   [AlertType.CROWD]: C.crowd,
 };
 
-const RANGE_OPTIONS = [
-  { key: "day" as const,   label: "24小时" },
-  { key: "week" as const,  label: "7天" },
-  { key: "month" as const, label: "30天" },
-];
-
-/* ── custom tooltip ── */
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   const total = payload.reduce((s: number, p: any) => s + (p.value ?? 0), 0);
@@ -99,121 +98,48 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-/* ── main component ── */
 export default function Dashboard() {
   const toast = useToast();
   const navigate = useNavigate();
+  const { alerts: allRealAlerts } = useRealAlerts();
+  const mergedAlerts = useMemo(() => selectRecentAlerts(allRealAlerts), [allRealAlerts]);
+  const status = useRealSystemStatus();
+  const [trendRange, setTrendRange] = useState<DashboardTrendRange>("week");
+  const trendDataRaw = useRealTrendData(trendRange);
 
-  // ┌──────────────────────────────────────────────────────┐
-  // │  SSE 订阅手动报警 — 底层是单例 EventSource            │
-  // │  演讲提示: "5种事件(摄像头/告警/系统指标/审计/统计)    │
-  // │            共享一条 SSE 连接，subscribeSse 内部用       │
-  // │            引用计数管理，第一个订阅者创建连接，          │
-  // │            最后一个归零时断开"                          │
-  // └──────────────────────────────────────────────────────┘
-  const [manualAlerts, setManualAlerts] = useState<RealAlert[]>([]);
-
-  useEffect(() => {
-    return subscribeSse("alerts", (data: any) => {
-      if (!Array.isArray(data)) return;
-      const manual = data.filter((a: any) => a.snapshotUrl && a.message?.startsWith("手动报警"));
-      setManualAlerts(manual);
-    });
-  }, []);
-  const [mockAlerts] = useMockAlerts();
-  const mergedAlerts = useMemo(() => {
-    return mockAlerts.slice(0, 10);
-  }, [mockAlerts]);
-
-  const status = useMockSystemStatus();
-  const [trendRange, setTrendRange] = useState<"day" | "week" | "month">("week");
-  const trendDataRaw = useMockTrendData(trendRange);
-  const monthDataRaw = useMockTrendData("month");
-
-  // 趋势数据转换 + 派生分布
-  const { trendData, trendKeys } = useMemo(() => {
-    if (!trendDataRaw?.labels) return { trendData: [], trendKeys: [] as string[] };
-    const keys = Object.keys(trendDataRaw.data);
-    return {
-      trendKeys: keys,
-      trendData: trendDataRaw.labels.map((label: string, i: number) => {
-        const point: Record<string, any> = { name: label };
-        for (const key of keys) point[key] = trendDataRaw.data[key][i] ?? 0;
-        return point;
-      }),
-    };
-  }, [trendDataRaw]);
-
-  // 从月度趋势数据求和，派生卡片计数（与趋势图/饼图同源）
-  const monthlyCounts = useMemo(() => {
-    if (!monthDataRaw?.data) return { "打架": 0, "跌倒": 0, "自杀": 0, "人员聚集": 0 };
-    const counts: Record<string, number> = {};
-    for (const [key, vals] of Object.entries(monthDataRaw.data)) {
-      counts[key] = (vals as number[]).reduce((s, v) => s + v, 0);
-    }
-    return counts;
-  }, [monthDataRaw]);
-
-  const enrichedBehaviorCounts = useMemo(() => {
-    const base = { ...monthlyCounts };
-    const typeToKey: Record<string, string> = {
-      "打架": "打架", "跌倒": "跌倒", "自杀": "自杀", "人员聚集": "人员聚集",
-    };
-    for (const a of manualAlerts) {
-      const key = typeToKey[a.type] ?? a.type;
-      base[key] = (base[key] ?? 0) + 1;
-    }
-    return base;
-  }, [monthlyCounts, manualAlerts]);
+  const { trendData, trendKeys } = useMemo(() => buildDashboardTrend(trendDataRaw), [trendDataRaw]);
+  const enrichedBehaviorCounts = useMemo(() => buildBehaviorCounts(allRealAlerts), [allRealAlerts]);
 
   const cards = useMemo(() => [
     { key: "fight",  icon: <ShieldAlert size={22}/>,  label: "打架事件", count: enrichedBehaviorCounts["打架"] ?? 0, style: C.fight },
     { key: "fall",   icon: <Accessibility size={22}/>, label: "人员跌倒", count: enrichedBehaviorCounts["跌倒"] ?? 0, style: C.fall },
-    { key: "absent", icon: <UserMinus size={22}/>,    label: "自杀行为", count: enrichedBehaviorCounts["自杀"] ?? 0, style: C.absent },
+    { key: "absent", icon: <UserMinus size={22}/>,    label: "离岗行为", count: enrichedBehaviorCounts["离岗"] ?? 0, style: C.absent },
     { key: "crowd",  icon: <Users size={22}/>,        label: "人员聚集", count: enrichedBehaviorCounts["人员聚集"] ?? 0, style: C.crowd },
   ], [enrichedBehaviorCounts]);
 
-  const distributionData = useMemo(() => {
-    const totals: Record<string, number> = {};
-    for (const point of trendData) {
-      for (const key of trendKeys) {
-        totals[key] = (totals[key] ?? 0) + (point[key] ?? 0);
-      }
-    }
-    return [
-      { name: "跌倒",     value: totals["跌倒"] ?? 0,     color: C.fall.line },
-      { name: "打架",     value: totals["打架"] ?? 0,     color: C.fight.line },
-      { name: "自杀",     value: totals["自杀"] ?? 0,     color: C.absent.line },
-      { name: "人员聚集", value: totals["人员聚集"] ?? 0, color: C.crowd.line },
-    ];
-  }, [trendData, trendKeys]);
+  const distributionData = useMemo(
+    () => buildDistributionData(trendData, trendKeys, TREND_COLORS),
+    [trendData, trendKeys],
+  );
 
-  const totalBehaviors = useMemo(() =>
-    distributionData.reduce((sum, d) => sum + d.value, 0),
-  [distributionData]);
+  const totalBehaviors = useMemo(() => sumDistributionValues(distributionData), [distributionData]);
 
   return (
     <div className="space-y-5 max-w-[1600px] mx-auto pb-8">
-      {/* header */}
       <header className="flex justify-between items-end pt-1">
         <div className="flex gap-2.5">
-          <button onClick={() => { exportCsv(); toast.show("报告已导出成功"); }}
+          <button onClick={() => { exportDashboardReport(); toast.show("已开始导出看板报告"); }}
             className="h-9 px-5 bg-gradient-to-r from-primary to-blue-500 text-white rounded-lg text-[13px] font-semibold flex items-center gap-2 hover:shadow-lg hover:shadow-primary/20 transition-all shadow-md cursor-pointer">
             <Download size={14}/> 导出报告
           </button>
         </div>
       </header>
 
-      {/* ┌──────────────────────────────────────────────────────┐
-      // │  4 张指标卡片 — 打架/跌倒/离岗/聚集                   │
-      // └──────────────────────────────────────────────────────┘ */}
       <div className="grid grid-cols-4 gap-4">
         {cards.map(c => (
           <div key={c.key}
             className={cn("relative bg-white rounded-xl border border-outline-variant p-5 hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-default", c.style.bg)}>
-            {/* 顶部装饰线 */}
             <div className="absolute left-0 top-0 right-0 h-[3px] rounded-t-xl" style={{ background: `linear-gradient(90deg, ${c.style.line}, transparent)` }}/>
-            {/* 图标区 */}
             <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-4 shadow-sm", c.style.bg)}>
               <div className={cn("", c.style.text)}>{c.icon}</div>
             </div>
@@ -228,11 +154,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* trend + distribution row */}
       <div className="grid grid-cols-3 gap-4">
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  AreaChart 趋势图 — 多系列面积图                      │
-        // └──────────────────────────────────────────────────────┘ */}
         <div className="col-span-2 bg-white rounded-xl border border-outline-variant p-5 flex flex-col h-[440px] shadow-sm">
           <div className="flex justify-between items-center mb-5">
             <div className="flex items-center gap-2.5">
@@ -242,7 +164,6 @@ export default function Dashboard() {
               <h3 className="text-[15px] font-bold text-on-surface tracking-tight">异常行为趋势</h3>
             </div>
             <div className="flex items-center gap-4">
-              {/* legend */}
               <div className="flex gap-4 mr-2">
                 {trendKeys.map(key => (
                   <div key={key} className="flex items-center gap-1.5">
@@ -251,9 +172,8 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-              {/* range toggle */}
               <div className="flex bg-surface-container-low rounded-lg p-0.5">
-                {RANGE_OPTIONS.map(opt => (
+                {DASHBOARD_RANGE_OPTIONS.map(opt => (
                   <button key={opt.key} onClick={() => setTrendRange(opt.key)}
                     className={cn(
                       "px-3 py-1 text-[12px] font-medium rounded-md transition-all cursor-pointer",
@@ -309,9 +229,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  PieChart 饼图 — 行为分布                              │
-        // └──────────────────────────────────────────────────────┘ */}
         <div className="bg-white rounded-xl border border-outline-variant p-5 flex flex-col h-[440px] shadow-sm">
           <div className="flex items-center gap-2.5 mb-3">
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -355,9 +272,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* status + alerts row */}
       <div className="grid grid-cols-3 gap-4">
-        {/* system status */}
         <div className="bg-white rounded-xl border border-outline-variant p-5 h-[360px] flex flex-col shadow-sm">
           <div className="flex justify-between items-center mb-5">
             <div className="flex items-center gap-2.5">
@@ -383,9 +298,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  实时告警表格 — 最近 10 条                              │
-        // └──────────────────────────────────────────────────────┘ */}
         <div className="col-span-2 bg-white rounded-xl border border-outline-variant h-[360px] flex flex-col overflow-hidden shadow-sm">
           <div className="px-5 py-3 border-b border-outline-variant/50 flex justify-between items-center">
             <div className="flex items-center gap-2.5">
@@ -410,12 +322,12 @@ export default function Dashboard() {
               <tbody className="divide-y divide-outline-variant/50 text-[13px]">
                 {mergedAlerts.length === 0 ? (
                   <tr><td colSpan={5} className="px-5 py-10 text-center text-outline/60">暂无告警</td></tr>
-                ) : mergedAlerts.map(a => {
+                ) : mergedAlerts.map((a: Alert) => {
                   const s = TYPE_STYLE[a.type] ?? C.crowd;
                   return (
                     <tr key={a.id} className="hover:bg-surface-container-low transition-colors group">
                       <td className="px-5 py-3 font-mono text-[12px] text-on-surface-variant font-medium">
-                        {new Date(a.time).toLocaleTimeString()}
+                        {new Date(a.time).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                       </td>
                       <td className="px-5 py-3">
                         <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-md", s.badge)}>
@@ -445,8 +357,6 @@ export default function Dashboard() {
     </div>
   );
 }
-
-/* ── helpers ── */
 
 function StatusRow({ icon, label, value, color }: { icon: React.ReactNode, label: string, value: number, color: string }) {
   return (

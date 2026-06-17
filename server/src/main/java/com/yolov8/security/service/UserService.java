@@ -5,17 +5,25 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.util.JsonFileUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.stream.Collectors;
 
 @Service
-public class UserService extends AbstractJsonFileService<UserService.User> {
+public class UserService {
 
+    private static final TypeReference<List<User>> TYPE_REF = new TypeReference<>() {};
+
+    private final Path filePath;
+    private final ObjectMapper objectMapper;
+    private final ReadWriteLock lock = JsonFileUtils.newLock();
     private final int bcryptCost;
 
     @Autowired
@@ -24,25 +32,29 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
     }
 
     public UserService(AppConfig appConfig, ObjectMapper objectMapper, int bcryptCost) {
-        super(Paths.get(appConfig.getFile().getUploadDir()).resolve("users.json"), objectMapper);
+        this.filePath = Paths.get(appConfig.getFile().getUploadDir()).resolve("users.json");
+        this.objectMapper = objectMapper;
         this.bcryptCost = bcryptCost;
+        JsonFileUtils.cleanupTmp(filePath);
     }
 
-    @Override
-    protected TypeReference<List<User>> typeRef() {
-        return new TypeReference<>() {};
+    private List<User> read() {
+        return JsonFileUtils.readList(filePath, objectMapper, TYPE_REF);
+    }
+
+    private void write(List<User> data) {
+        JsonFileUtils.writeList(filePath, data, objectMapper);
     }
 
     public List<User> getAllUsers() {
         lock.readLock().lock();
         try {
-            List<User> users = readConfig();
-            return users.stream().map(u -> {
+            return read().stream().map(u -> {
                 User copy = new User();
                 copy.setId(u.getId());
                 copy.setUsername(u.getUsername());
                 copy.setRole(u.getRole());
-                copy.setPassword(null); // mask password
+                copy.setPassword(null);
                 return copy;
             }).collect(Collectors.toList());
         } finally {
@@ -54,24 +66,20 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
         lock.writeLock().lock();
         try {
             validate(user, false);
-            List<User> users = readConfig();
+            List<User> users = read();
 
-            // Check duplicate username
             boolean exists = users.stream()
                     .anyMatch(u -> u.getUsername().equals(user.getUsername()));
             if (exists) {
                 throw new IllegalArgumentException("用户名已存在: " + user.getUsername());
             }
 
-            // Auto-generate ID
             user.setId(generateId(users));
-
-            // Hash password
             String hashed = BCrypt.withDefaults().hashToString(bcryptCost, user.getPassword().toCharArray());
             user.setPassword(hashed);
 
             users.add(user);
-            writeConfig(users);
+            write(users);
             return user;
         } finally {
             lock.writeLock().unlock();
@@ -81,19 +89,17 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
     public User updateUser(String username, User update) {
         lock.writeLock().lock();
         try {
-            List<User> users = readConfig();
+            List<User> users = read();
 
             User existing = users.stream()
                     .filter(u -> u.getUsername().equals(username))
                     .findFirst()
                     .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + username));
 
-            // Update role
             if (update.getRole() != null) {
                 existing.setRole(update.getRole());
             }
 
-            // Update password if provided
             if (update.getPassword() != null && !update.getPassword().isEmpty()) {
                 if (update.getPassword().length() < 6) {
                     throw new IllegalArgumentException("密码长度不能少于6位");
@@ -102,7 +108,7 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
                 existing.setPassword(hashed);
             }
 
-            writeConfig(users);
+            write(users);
             return existing;
         } finally {
             lock.writeLock().unlock();
@@ -112,7 +118,7 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
     public boolean deleteUser(String username) {
         lock.writeLock().lock();
         try {
-            List<User> users = readConfig();
+            List<User> users = read();
 
             User existing = users.stream()
                     .filter(u -> u.getUsername().equals(username))
@@ -128,7 +134,7 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
             }
 
             users.removeIf(u -> u.getUsername().equals(username));
-            writeConfig(users);
+            write(users);
             return true;
         } finally {
             lock.writeLock().unlock();
@@ -138,7 +144,7 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
     public boolean validatePassword(String username, String password) {
         lock.readLock().lock();
         try {
-            List<User> users = readConfig();
+            List<User> users = read();
             User user = users.stream()
                     .filter(u -> u.getUsername().equals(username))
                     .findFirst()
@@ -175,8 +181,7 @@ public class UserService extends AbstractJsonFileService<UserService.User> {
                 try {
                     int num = Integer.parseInt(id.substring(4));
                     if (num > maxNum) maxNum = num;
-                } catch (NumberFormatException ignored) {
-                }
+                } catch (NumberFormatException ignored) {}
             }
         }
         return "user" + (maxNum + 1);

@@ -4,19 +4,29 @@ import { useToast } from "../components/Toast";
 import { Alert, AlertLevel, AlertType } from "../types";
 import {
   Download,
-  ShieldAlert,
   CheckCircle2,
   XCircle,
   ChevronLeft,
   ChevronRight,
-  Clock,
-  MapPin,
-  Filter,
   X,
   Eye,
+  Loader2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useRealAlerts } from "../lib/useRealAlerts";
+import { useImageRetry } from "../hooks/useImageRetry";
+import {
+  ALERTS_PAGE_SIZE,
+  filterAlerts,
+  getAlertLevelLabel,
+  getAlertStatusLabel,
+  getAlertTotalPages,
+  getAlertTriggerRule,
+  getCriticalAlertCount,
+  getPendingAlertCount,
+  paginateAlerts,
+} from "../services/alerts-data";
+import { exportAlertsReport } from "../services/alerts-service";
 
 export default function Alerts() {
   const toast = useToast();
@@ -26,41 +36,50 @@ export default function Alerts() {
   const [filterType, setFilterType] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
-  const pageSize = 15;
+  const [actionLoading, setActionLoading] = useState(false);
 
-  // ┌──────────────────────────────────────────────────────┐
-  // │  筛选逻辑 — 按类型(打架/跌倒) + 状态(待处理/已确认/已忽略) │
-  // │  演讲提示: "两个 select 下拉框联动过滤，                  │
-  // │            改变筛选条件时自动重置到第 1 页"               │
-  // └──────────────────────────────────────────────────────┘
-  const filteredAlerts = useMemo(() => {
-    return alerts.filter(a => {
-      if (filterType && a.type !== filterType) return false;
-      if (filterStatus && a.status !== filterStatus) return false;
-      return true;
-    });
-  }, [alerts, filterType, filterStatus]);
+  const resetFilters = () => {
+    setFilterType("");
+    setFilterStatus("");
+    setCurrentPage(0);
+  };
 
-  const totalPages = Math.ceil(filteredAlerts.length / pageSize) || 1;
-  const pagedAlerts = filteredAlerts.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const handleFilterChange = (setter: (v: string) => void) => (value: string) => {
+    setter(value);
+    setCurrentPage(0);
+  };
+  const { onError: onImgError } = useImageRetry(3, 500, (el) => { el.style.display = "none"; });
+
+  const filteredAlerts = useMemo(
+    () => filterAlerts(alerts, filterType, filterStatus),
+    [alerts, filterType, filterStatus],
+  );
+
+  const totalPages = getAlertTotalPages(filteredAlerts.length, ALERTS_PAGE_SIZE);
+  const pagedAlerts = paginateAlerts(filteredAlerts, currentPage, ALERTS_PAGE_SIZE);
 
   const handleUpdateStatus = (status: "confirmed" | "ignored") => {
     if (!selectedAlert) return;
-    updateAlertStatus(selectedAlert.id, status);
-    setSelectedAlert(prev => prev ? { ...prev, status } : null);
+    const alertId = selectedAlert.id;
+    setActionLoading(true);
+    updateAlertStatus(alertId, status)
+      .catch(() => toast.show("操作失败", "error"))
+      .finally(() => {
+        setActionLoading(false);
+        setSelectedAlert(prev => prev && prev.id === alertId ? { ...prev, status } : prev);
+      });
   };
 
-  const pendingCount = alerts.filter(a => a.status === "pending").length;
-  const criticalCount = alerts.filter(a => a.level === AlertLevel.CRITICAL).length;
+  const pendingCount = getPendingAlertCount(alerts);
+  const criticalCount = getCriticalAlertCount(alerts);
 
   return (
     <div className="h-full flex flex-col gap-4 overflow-hidden animate-fade-in-up">
-      {/* 页头 */}
       <section className="flex items-center justify-between shrink-0">
         <div className="flex gap-2">
           <select
             value={filterType}
-            onChange={e => { setFilterType(e.target.value); setCurrentPage(0); }}
+            onChange={e => handleFilterChange(setFilterType)(e.target.value)}
             className="bg-white border border-outline-variant rounded-lg h-9 px-3 text-body font-medium focus:ring-1 focus:ring-primary outline-none shadow-sm"
           >
             <option value="">全部类型</option>
@@ -68,7 +87,7 @@ export default function Alerts() {
           </select>
           <select
             value={filterStatus}
-            onChange={e => { setFilterStatus(e.target.value); setCurrentPage(0); }}
+            onChange={e => handleFilterChange(setFilterStatus)(e.target.value)}
             className="bg-white border border-outline-variant rounded-lg h-9 px-3 text-body font-medium focus:ring-1 focus:ring-primary outline-none shadow-sm"
           >
             <option value="">全部状态</option>
@@ -76,21 +95,16 @@ export default function Alerts() {
             <option value="confirmed">已确认</option>
             <option value="ignored">已忽略</option>
           </select>
-          <button onClick={() => toast.show("告警数据已导出")} className="bg-primary text-white rounded-lg h-9 px-4 font-semibold flex items-center gap-2 text-body shadow-sm hover:shadow-md transition-all">
+          <button onClick={() => { exportAlertsReport(filterType, filterStatus); toast.show("告警数据已导出"); }} className="bg-primary text-white rounded-lg h-9 px-4 font-semibold flex items-center gap-2 text-body shadow-sm hover:shadow-md transition-all">
             <Download size={15} /> 导出
           </button>
         </div>
+        <div className="text-body-sm text-outline">
+          待处理 {pendingCount} 条 · 严重 {criticalCount} 条
+        </div>
       </section>
 
-      {/* 主内容区 */}
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  告警表格 — pending 状态带红色脉冲动画                  │
-        // │  演讲提示: "待处理告警左侧有红色小圆点 animate-pulse，  │
-        // │            已确认/已忽略则变灰点静止，                 │
-        // │            点击行可展开右侧详情面板"                   │
-        // └──────────────────────────────────────────────────────┘ */}
-        {/* 表格 */}
         <div className="flex-1 bg-white border border-outline-variant rounded-xl flex flex-col overflow-hidden shadow-sm">
           <div className="overflow-auto flex-1">
             <table className="w-full text-left">
@@ -135,7 +149,7 @@ export default function Alerts() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-body-sm tabular-nums text-on-surface-variant">
-                      {new Date(alert.time).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                      {new Date(alert.time).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="font-mono text-body-sm font-semibold tabular-nums text-on-surface">
@@ -151,7 +165,7 @@ export default function Alerts() {
                           "w-1.5 h-1.5 rounded-full",
                           alert.status === "pending" ? "bg-danger-red animate-pulse" : "bg-outline"
                         )} />
-                        {alert.status === "pending" ? "待处理" : alert.status === "confirmed" ? "已确认" : "已忽略"}
+                        {getAlertStatusLabel(alert.status)}
                       </span>
                     </td>
                   </tr>
@@ -181,14 +195,6 @@ export default function Alerts() {
           </footer>
         </div>
 
-        {/* ┌──────────────────────────────────────────────────────┐
-        // │  详情面板 — 报警快照 + HUD 叠加                       │
-        // │  演讲提示: "左上角是告警截帧照片，                      │
-        // │            底部 HUD 叠加了时间戳和置信度标签，           │
-        // │            这张图可直接作为电子证据使用，               │
-        // │            图片加载失败会自动重试 3 次(500ms 间隔)"     │
-        // └──────────────────────────────────────────────────────┘ */}
-        {/* 详情面板 */}
         {selectedAlert && (
           <div className="w-[360px] bg-white border border-outline-variant rounded-xl flex flex-col shadow-sm overflow-hidden shrink-0 animate-fade-in-up">
             <header className="p-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
@@ -205,21 +211,15 @@ export default function Alerts() {
             </header>
 
             <div className="p-4 flex-1 overflow-y-auto space-y-4">
-              {/* 快照 */}
               <div className="rounded-lg overflow-hidden border border-outline-variant bg-dark-bg relative aspect-video flex items-center justify-center">
                 {selectedAlert.snapshotUrl ? (
-                    <img
-                      key={selectedAlert.id}
-                      src={selectedAlert.snapshotUrl}
-                      alt={`${selectedAlert.type} 快照`}
-                      className="w-full h-full object-cover"
-                      onError={e => {
-                        const el = e.target as HTMLImageElement;
-                        const left = (el as any)._retryLeft ?? 3;
-                        if (left > 0) { (el as any)._retryLeft = left - 1; setTimeout(() => { el.src = el.src; }, 500); }
-                        else { el.style.display = "none"; }
-                      }}
-                    />
+                  <img
+                    key={selectedAlert.id}
+                    src={selectedAlert.snapshotUrl}
+                    alt={`${selectedAlert.type} 快照`}
+                    className="w-full h-full object-cover"
+                    onError={onImgError}
+                  />
                 ) : null}
                 <div className="text-center absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <Eye size={24} className="text-white/20 mb-2" />
@@ -238,54 +238,36 @@ export default function Alerts() {
                 </div>
               </div>
 
-              {/* 元数据 */}
               <div className="grid grid-cols-2 gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">
                 <DataField label="检测类型" value={selectedAlert.type} highlight />
                 <DataField label="发生位置" value={selectedAlert.cameraName} />
                 <DataField label="持续时间" value={selectedAlert.duration ?? "—"} mono />
-                <DataField label="告警级别" value={
-                  selectedAlert.level === AlertLevel.CRITICAL ? "四级严重"
-                  : selectedAlert.level === AlertLevel.WARNING ? "三级较重"
-                  : selectedAlert.level === AlertLevel.MINOR ? "二级一般"
-                  : "一级轻微"
-                } highlight />
+                <DataField label="告警级别" value={getAlertLevelLabel(selectedAlert.level)} highlight />
               </div>
 
-              {/* 触发规则说明 */}
               <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">
                 <p className="text-caption font-semibold text-outline uppercase mb-1">触发规则</p>
                 <p className="text-body text-on-surface">
-                  {selectedAlert.type === AlertType.FIGHT && "检测到两人或以上肢体动作剧烈冲突，持续超过3秒"}
-                  {selectedAlert.type === AlertType.FALL && "检测到人员姿态由站立变为水平，疑似跌倒或晕厥"}
-                  {selectedAlert.type === AlertType.ABSENCE && "检测到指定岗位持续无人值守超过设定阈值"}
-                  {selectedAlert.type === AlertType.CROWD && "检测到局部区域人员密度超过安全阈值"}
+                  {getAlertTriggerRule(selectedAlert.type)}
                 </p>
               </div>
             </div>
 
-            {/* ┌──────────────────────────────────────────────────────┐
-            // │  状态操作按钮 — 忽略误报 / 确认告警 / 查看录像回放     │
-            // │  演讲提示: "只有 pending 状态的告警才能操作，          │
-            // │            忽略和确认都会调 updateAlertStatus 更新      │
-            // │            JSON 状态，回放按钮跳转到 /monitor 页面      │
-            // │            并携带 camId 和 time 参数"                  │
-            // └──────────────────────────────────────────────────────┘ */}
-            {/* 操作按钮 */}
             <div className="p-4 border-t border-outline-variant space-y-2">
               <div className="flex gap-2">
                 <button
                   onClick={() => handleUpdateStatus("ignored")}
-                  disabled={selectedAlert.status !== "pending"}
+                  disabled={selectedAlert.status !== "pending" || actionLoading}
                   className="flex-1 h-10 bg-surface-container border border-outline-variant rounded-lg font-semibold text-body flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors disabled:opacity-40"
                 >
-                  <XCircle size={15} /> 忽略误报
+                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />} {actionLoading ? "处理中…" : "忽略误报"}
                 </button>
                 <button
                   onClick={() => handleUpdateStatus("confirmed")}
-                  disabled={selectedAlert.status !== "pending"}
+                  disabled={selectedAlert.status !== "pending" || actionLoading}
                   className="flex-1 h-10 bg-primary text-white rounded-lg font-semibold text-body flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all disabled:opacity-40"
                 >
-                  <CheckCircle2 size={15} /> 确认告警
+                  {actionLoading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} {actionLoading ? "处理中…" : "确认告警"}
                 </button>
               </div>
               <button onClick={() => navigate(`/monitor?cam=${selectedAlert.cameraId}&time=${selectedAlert.time}`)} className="w-full h-9 border border-primary/20 text-primary text-body font-medium rounded-lg flex items-center justify-center gap-1.5 hover:bg-primary/5 transition-colors">

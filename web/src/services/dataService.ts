@@ -1,5 +1,6 @@
 import { Camera, DiscoveredCamera, Alert, AuditLog, CameraStatus, SystemStatus, SystemInfo, Settings, PageResponse, TrendData, RegionalStat, EvidenceStats, AlertFilterParams, AuditFilterParams, FpsStats, StatsSummary, ModelInfo, FullStatsResponse, AnnotationData, ImageItem } from "../types";
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, createSseConnection, setToken, clearToken } from "../lib/api";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, apiDownload, subscribeSse, setToken, clearToken, API_BASE } from "../lib/api";
+import { DEFAULT_DEVICE_SETTINGS } from "./devices-data";
 
 // --- Camera Config ---
 
@@ -22,6 +23,7 @@ export async function fetchCameras(signal?: AbortSignal): Promise<Camera[]> {
     brand: c.brand,
     model: c.model,
     go2rtcId: c.go2rtcId,
+    httpMjpegUrl: c.httpMjpegUrl,
     ip: c.ip,
     port: c.port,
     status: activeIds.has(c.id || "") ? CameraStatus.ONLINE : CameraStatus.OFFLINE,
@@ -33,7 +35,7 @@ export async function fetchCameras(signal?: AbortSignal): Promise<Camera[]> {
 // --- Auth ---
 
 export async function login(username: string, password: string): Promise<void> {
-  const res = await fetch("/api/login", {
+  const res = await fetch(`${API_BASE}/api/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
@@ -71,49 +73,39 @@ export function subscribeToCameras(callback: (cameras: Camera[]) => void): () =>
   refreshActive();
   const timer = setInterval(refreshActive, 5000);
 
-  const unsub = createSseConnection({
-    onCameras: (data: any) => {
-      if (!Array.isArray(data)) { callback([]); return; }
-      const cameras = data.map((raw: any) => transformCamera(raw, activeCamIds));
-      callback(cameras);
-    },
-    onCameraStats: () => refreshActive(),
+  const unsubCameras = subscribeSse("cameras", (data: any) => {
+    if (!Array.isArray(data)) { callback([]); return; }
+    const cameras = data.map((raw: any) => transformCamera(raw, activeCamIds));
+    callback(cameras);
   });
+  const unsubStats = subscribeSse("camera_stats", () => refreshActive());
 
-  return () => { clearInterval(timer); unsub(); };
+  return () => { clearInterval(timer); unsubCameras(); unsubStats(); };
 }
 
 export function subscribeToAlerts(callback: (alerts: Alert[]) => void): () => void {
-  return createSseConnection({
-    onAlerts: (data: any) => callback(Array.isArray(data) ? data : []),
-  });
+  return subscribeSse("alerts", (data: any) => callback(Array.isArray(data) ? data : []));
 }
 
 export function subscribeToSystemStatus(callback: (status: SystemStatus) => void): () => void {
-  return createSseConnection({
-    onSystemMetrics: (data: any) => callback(transformSystemMetrics(data)),
-  });
+  return subscribeSse("system_metrics", (data: any) => callback(transformSystemMetrics(data)));
 }
 
 export function subscribeToAuditLogs(callback: (logs: AuditLog[]) => void): () => void {
-  return createSseConnection({
-    onAuditLogs: (data: any) => callback(Array.isArray(data) ? data : []),
-  });
+  return subscribeSse("audit_logs", (data: any) => callback(Array.isArray(data) ? data : []));
 }
 
 // --- Camera Stats ---
 
 export function subscribeToCameraStats(callback: (stats: Record<string, number>) => void): () => void {
-  return createSseConnection({
-    onCameraStats: (data: any) => {
-      if (data?.cameras) {
-        const map: Record<string, number> = {};
-        for (const c of data.cameras) {
-          map[c.camId] = c.personCount ?? 0;
-        }
-        callback(map);
+  return subscribeSse("camera_stats", (data: any) => {
+    if (data?.cameras) {
+      const map: Record<string, number> = {};
+      for (const c of data.cameras) {
+        map[c.camId] = c.personCount ?? 0;
       }
-    },
+      callback(map);
+    }
   });
 }
 
@@ -158,6 +150,10 @@ export async function deleteCamera(cameraId: string) {
   await apiDelete(`/api/camera_config/${cameraId}`);
 }
 
+export async function deleteAllCameras() {
+  await apiDelete("/api/camera_config");
+}
+
 export async function testCamera(camera: { type: string; address: string | number; user?: string; password?: string }): Promise<{ reachable: boolean; message: string }> {
   return apiPost("/api/camera_config/test", camera);
 }
@@ -190,7 +186,23 @@ export async function uploadScreenshot(params: {
 // --- Settings ---
 
 export async function fetchSettings(signal?: AbortSignal): Promise<Settings> {
-  return apiGet("/api/settings", signal);
+  const raw = await apiGet<Partial<Settings>>("/api/settings", signal);
+  return {
+    ...DEFAULT_DEVICE_SETTINGS,
+    ...raw,
+    aiSensitivity: {
+      ...DEFAULT_DEVICE_SETTINGS.aiSensitivity,
+      ...(raw?.aiSensitivity ?? {}),
+    },
+    notifications: {
+      ...DEFAULT_DEVICE_SETTINGS.notifications,
+      ...(raw?.notifications ?? {}),
+    },
+    storage: {
+      ...DEFAULT_DEVICE_SETTINGS.storage,
+      ...(raw?.storage ?? {}),
+    },
+  };
 }
 
 export async function updateSettings(settings: Partial<Settings>): Promise<Settings> {
@@ -380,10 +392,10 @@ export function exportAnnotation(format: "yolo" | "coco" = "yolo"): void {
 }
 
 export async function uploadAnnotationImage(file: File): Promise<{ filename: string }> {
-  const token = localStorage.getItem("auth_token");
+  const token = localStorage.getItem("jwt_token");
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch("/api/annotations/upload", {
+  const res = await fetch(`${API_BASE}/api/annotations/upload`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
@@ -400,7 +412,11 @@ export async function uploadAnnotationImage(file: File): Promise<{ filename: str
 
 export async function discoverCameras(): Promise<DiscoveredCamera[]> {
   const result = await apiPost<any>("/api/discover", undefined);
-  return Array.isArray(result) ? result : (result?.data ?? []);
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.items)) return result.items;
+  if (Array.isArray(result?.cameras)) return result.cameras;
+  return [];
 }
 
 export async function batchAddCameras(cameras: Partial<Camera>[]): Promise<{ added: number; errors: string[] }> {

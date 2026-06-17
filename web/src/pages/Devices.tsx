@@ -21,29 +21,41 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useToast } from "../components/Toast";
-import { fetchCameras, addCamera, updateCamera, deleteCamera, testCamera, discoverCameras, batchAddCameras } from "../services/dataService";
-
-const TYPE_LABELS: Record<string, string> = {
-  usb: "USB 摄像头",
-  rtsp: "RTSP 网络摄像机",
-  http_snapshot: "HTTP 快照",
-};
+import { useRealSystemStatus } from "../lib/useRealData";
+import {
+  DEFAULT_DEVICE_FORM,
+  DEFAULT_DEVICE_SETTINGS,
+  buildBatchCameraPayload,
+  createSelectedDiscoverySet,
+  getDeviceStorageBarWidth,
+  getOnlineCameraCount,
+  toDeviceForm,
+  toggleSelectedDiscovery,
+  TYPE_LABELS,
+} from "../services/devices-data";
+import { addDiscoveredDevices, clearDevices, createDevice, loadDeviceSettings, loadDevices, removeDevice, saveDevice, saveDeviceSettings, scanDevices, validateDeviceConnection } from "../services/devices-service";
 
 export default function Devices() {
   const toast = useToast();
+  const storageUsage = useRealSystemStatus().storageUsage ?? 0;
+
+  const withToast = async (action: () => Promise<void>, successMsg: string, onSuccess?: () => void) => {
+    try {
+      await action();
+      toast.show(successMsg);
+      onSuccess?.();
+    } catch (e: any) {
+      toast.show("操作失败: " + e.message, "error");
+    }
+  };
+
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
   const [testingConn, setTestingConn] = useState(false);
-  const [settings, setSettings] = useState<Settings>({
-    confidence: 0.5, iou: 0.45, interval: 2, maxPeople: 50, cooldown: 30, fatigueThreshold: 15,
-    aiSensitivity: { fightDetection: 80, fallDetection: 75, climbingDetection: 70, crowdGathering: 65 },
-    notifications: { email: true, sms: false, centralAlarm: true },
-    storage: { autoOverwrite: true },
-  });
+  const [settings, setSettings] = useState<Settings>(DEFAULT_DEVICE_SETTINGS);
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", type: "rtsp" as "usb" | "rtsp" | "http_snapshot", address: "", user: "", password: "" });
-  const [successMsg, setSuccessMsg] = useState("");
+  const [form, setForm] = useState(DEFAULT_DEVICE_FORM);
   const [discovered, setDiscovered] = useState<DiscoveredCamera[]>([]);
   const [scanning, setScanning] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
@@ -51,65 +63,99 @@ export default function Devices() {
 
   const loadCameras = useCallback(async () => {
     try {
-      const data = await fetchCameras();
+      const data = await loadDevices();
       setCameras(data);
     } catch {
-      // 静默失败，不弹窗
+      // silent load failure
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, []);
 
-  useEffect(() => { loadCameras(); }, [loadCameras]);
-
-  // Auto-clear success message
   useEffect(() => {
-    if (!successMsg) return;
-    const t = setTimeout(() => setSuccessMsg(""), 3000);
-    return () => clearTimeout(t);
-  }, [successMsg]);
+    loadCameras();
+  }, [loadCameras]);
 
-  const onlineCount = cameras.filter(c => c.status === CameraStatus.ONLINE).length;
+  useEffect(() => {
+    let cancelled = false;
+    loadDeviceSettings()
+      .then((data) => {
+        if (!cancelled) setSettings({
+          ...DEFAULT_DEVICE_SETTINGS,
+          ...data,
+          aiSensitivity: { ...DEFAULT_DEVICE_SETTINGS.aiSensitivity, ...data.aiSensitivity },
+          notifications: { ...DEFAULT_DEVICE_SETTINGS.notifications, ...data.notifications },
+          storage: { ...DEFAULT_DEVICE_SETTINGS.storage, ...data.storage },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSettings(DEFAULT_DEVICE_SETTINGS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onlineCount = getOnlineCameraCount(cameras);
+
+  const openCreateModal = () => {
+    setEditId(null);
+    setForm(DEFAULT_DEVICE_FORM);
+    setShowModal(true);
+  };
+
+  const openEditModal = (camera: Camera) => {
+    setEditId(camera.id);
+    setForm(toDeviceForm(camera));
+    setShowModal(true);
+  };
 
   const handleAdd = async () => {
-    if (!form.name || !form.address) { toast.show("请填写名称和地址", "error"); return; }
-    try {
-      await addCamera({ name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
-      setSuccessMsg("设备已添加");
-      setShowModal(false);
-      await loadCameras();
-    } catch (e: any) {
-      toast.show("添加失败: " + e.message, "error");
+    if (!form.name || !form.address) {
+      toast.show("请填写名称和地址", "error");
+      return;
     }
+
+    await withToast(
+      () => createDevice(form).then(() => loadCameras()),
+      "设备已添加",
+      () => setShowModal(false),
+    );
   };
 
   const handleEdit = async () => {
-    if (!editId || !form.name || !form.address) { toast.show("请填写名称和地址", "error"); return; }
-    try {
-      await updateCamera(editId, { name: form.name, type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
-      setSuccessMsg("设备已更新");
-      setShowModal(false);
-      await loadCameras();
-    } catch (e: any) {
-      toast.show("更新失败: " + e.message, "error");
-    }
+    if (!editId) return;
+    await withToast(
+      () => saveDevice(editId, form).then(() => loadCameras()),
+      "设备已更新",
+    );
+    setShowModal(false);
   };
 
   const handleDelete = async (id: string) => {
-    try {
-      await deleteCamera(id);
-      toast.show("设备已删除");
-      await loadCameras();
-    } catch (e: any) {
-      toast.show("删除失败: " + e.message, "error");
-    }
+    if (!window.confirm("确认删除该设备？")) return;
+    await withToast(
+      () => removeDevice(id).then(() => loadCameras()),
+      "设备已删除",
+    );
+  };
+
+  const handleClearAll = async () => {
+    if (!window.confirm("确认清空所有设备？此操作不可撤销。")) return;
+    await withToast(
+      () => clearDevices().then(() => loadCameras()),
+      "所有设备已清空",
+    );
   };
 
   const handleTest = async () => {
-    if (!form.address) { toast.show("请先填写设备地址", "error"); return; }
+    if (!form.address) {
+      toast.show("请先填写设备地址", "error");
+      return;
+    }
     setTestingConn(true);
     try {
-      const res = await testCamera({ type: form.type, address: form.type === "usb" ? Number(form.address) : form.address, user: form.user || undefined, password: form.password || undefined });
+      const res = await validateDeviceConnection(form);
       toast.show(res.message, res.reachable ? "success" : "error");
     } catch (e: any) {
       toast.show("测试失败: " + e.message, "error");
@@ -121,10 +167,10 @@ export default function Devices() {
   const handleScan = async () => {
     setScanning(true);
     try {
-      const result = await discoverCameras();
+      const result = await scanDevices();
       setDiscovered(result);
       setShowDiscovery(true);
-      setSelectedDevices(new Set(result.map(d => d.ip)));
+      setSelectedDevices(createSelectedDiscoverySet(result));
       toast.show(`发现 ${result.length} 个摄像头`, "success");
     } catch (e: any) {
       toast.show("扫描失败: " + e.message, "error");
@@ -134,19 +180,9 @@ export default function Devices() {
   };
 
   const handleBatchAdd = async () => {
-    const toAdd = discovered
-      .filter(d => selectedDevices.has(d.ip))
-      .map(d => ({
-        name: d.name,
-        type: "rtsp" as const,
-        address: d.rtspUrl,
-        ip: d.ip,
-        brand: d.brand || undefined,
-        model: d.model || undefined,
-        port: 554,
-      }));
+    const toAdd = buildBatchCameraPayload(discovered, selectedDevices);
     try {
-      const result = await batchAddCameras(toAdd);
+      const result = await addDiscoveredDevices(toAdd);
       toast.show(`成功添加 ${result.added} 个摄像头`, "success");
       if (result.errors.length > 0) {
         toast.show(`${result.errors.length} 个失败: ${result.errors.join(", ")}`, "error");
@@ -159,22 +195,32 @@ export default function Devices() {
     }
   };
 
+  const handleSaveSettings = async () => {
+    try {
+      const saved = await saveDeviceSettings(settings);
+      setSettings(saved);
+      toast.show("设备设置已保存", "success");
+    } catch (e: any) {
+      toast.show("设置保存失败: " + e.message, "error");
+    }
+  };
+
   return (
     <div className="max-w-[1600px] mx-auto space-y-4 animate-fade-in-up">
-      {successMsg && (
-        <div className="bg-success-green/10 text-success-green px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2">
-          <Check size={16} /> {successMsg}
-        </div>
-      )}
-
-      {/* 页头 */}
       <header className="flex justify-between items-center">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setEditId(null); setForm({ name: "", type: "rtsp", address: "", user: "", password: "" }); setShowModal(true); }}
+            onClick={openCreateModal}
             className="bg-primary text-white px-4 py-2 rounded-lg font-semibold text-body flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
           >
             <Plus size={16} /> 添加摄像头
+          </button>
+          <button
+            onClick={handleClearAll}
+            disabled={cameras.length === 0}
+            className="px-3 py-2 rounded-lg text-body font-semibold text-danger-red border border-danger-red/30 hover:bg-danger-red/10 transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={14} className="inline mr-1" /> 清空所有
           </button>
           <button
             onClick={handleScan}
@@ -188,9 +234,7 @@ export default function Devices() {
       </header>
 
       <div className="grid grid-cols-12 gap-4">
-        {/* 设备列表 + AI灵敏度 */}
         <div className="col-span-12 lg:col-span-8 space-y-4">
-          {/* 设备列表 */}
           <section className="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden">
             <div className="p-4 border-b border-outline-variant flex items-center gap-2">
               <CameraIcon size={16} className="text-primary" />
@@ -245,11 +289,7 @@ export default function Devices() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right space-x-1">
-                          <button onClick={() => {
-                            setEditId(cam.id);
-                            setForm({ name: cam.name, type: cam.type, address: String(cam.address), user: cam.user || "", password: cam.password || "" });
-                            setShowModal(true);
-                          }} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors" title="编辑">
+                          <button onClick={() => openEditModal(cam)} className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors" title="编辑">
                             <Edit3 size={14} />
                           </button>
                           <button onClick={() => handleDelete(cam.id)} className="p-1.5 text-outline hover:text-danger-red hover:bg-error-container/30 rounded-lg transition-colors" title="删除">
@@ -264,7 +304,6 @@ export default function Devices() {
             )}
           </section>
 
-          {/* AI 灵敏度 */}
           <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
             <div className="flex items-center gap-2 mb-4">
               <Activity size={16} className="text-detect-purple" />
@@ -303,22 +342,20 @@ export default function Devices() {
               <button
                 onClick={() => setSettings(prev => ({
                   ...prev,
-                  aiSensitivity: { fightDetection: 80, fallDetection: 75, climbingDetection: 70, crowdGathering: 65 },
+                  aiSensitivity: DEFAULT_DEVICE_SETTINGS.aiSensitivity,
                 }))}
                 className="px-4 py-2 bg-surface-container-high rounded-lg font-semibold text-body flex items-center gap-1.5 hover:bg-surface-container-highest transition-colors"
               >
                 <RotateCcw size={14} /> 恢复默认
               </button>
-              <button onClick={() => toast.show("灵敏度配置已应用")} className="px-5 py-2 bg-primary text-white rounded-lg font-semibold text-body flex items-center gap-1.5 shadow-sm">
-                <Check size={14} /> 应用变更
+              <button onClick={handleSaveSettings} className="px-5 py-2 bg-primary text-white rounded-lg font-semibold text-body flex items-center gap-1.5 shadow-sm">
+                <Check size={14} /> 保存设置
               </button>
             </div>
           </section>
         </div>
 
-        {/* 侧栏 */}
         <div className="col-span-12 lg:col-span-4 space-y-4">
-          {/* 存储 */}
           <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
             <div className="flex items-center gap-2 mb-3">
               <Database size={16} className="text-info-cyan" />
@@ -327,10 +364,10 @@ export default function Devices() {
             <div>
               <div className="flex justify-between text-body-sm font-semibold text-on-surface-variant mb-1.5">
                 <span>录像存储 (SSD)</span>
-                <span className="font-mono">1.8GB / 40GB</span>
+                <span className="font-mono">{storageUsage}% 已用</span>
               </div>
               <div className="w-full h-2 bg-surface-container-high rounded-full overflow-hidden">
-                <div className="bg-primary h-full rounded-full" style={{ width: "4.5%" }} />
+                <div className="bg-primary h-full rounded-full" style={{ width: getDeviceStorageBarWidth(storageUsage) }} />
               </div>
             </div>
             <div className="mt-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/50">
@@ -355,7 +392,6 @@ export default function Devices() {
             </div>
           </section>
 
-          {/* 通知策略 */}
           <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
             <div className="flex items-center gap-2 mb-3">
               <BellRing size={16} className="text-warning-orange" />
@@ -389,7 +425,6 @@ export default function Devices() {
             </div>
           </section>
 
-          {/* 快捷信息 */}
           <section className="bg-white rounded-xl border border-outline-variant shadow-sm p-4">
             <h3 className="font-bold text-body-lg mb-3">设备概要</h3>
             <div className="space-y-3">
@@ -408,7 +443,6 @@ export default function Devices() {
         </div>
       </div>
 
-      {/* 添加/编辑模态框 */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-[460px] mx-4 overflow-hidden animate-fade-in-up">
@@ -473,7 +507,6 @@ export default function Devices() {
         </div>
       )}
 
-      {/* ONVIF 自动发现弹窗 */}
       {showDiscovery && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-[700px] mx-4 overflow-hidden animate-fade-in-up">
@@ -492,7 +525,7 @@ export default function Devices() {
                         <input
                           type="checkbox"
                           checked={selectedDevices.size === discovered.length && discovered.length > 0}
-                          onChange={(e) => setSelectedDevices(e.target.checked ? new Set(discovered.map(d => d.ip)) : new Set())}
+                          onChange={(e) => setSelectedDevices(e.target.checked ? createSelectedDiscoverySet(discovered) : new Set())}
                         />
                       </th>
                       <th className="px-3 py-2 text-caption font-semibold text-outline uppercase tracking-wider">IP</th>
@@ -508,13 +541,7 @@ export default function Devices() {
                           <input
                             type="checkbox"
                             checked={selectedDevices.has(d.ip)}
-                            onChange={(e) => {
-                              setSelectedDevices(prev => {
-                                const next = new Set(prev);
-                                if (e.target.checked) next.add(d.ip); else next.delete(d.ip);
-                                return next;
-                              });
-                            }}
+                            onChange={(e) => setSelectedDevices(prev => toggleSelectedDiscovery(prev, d.ip, e.target.checked))}
                           />
                         </td>
                         <td className="px-3 py-2 font-mono">{d.ip}</td>

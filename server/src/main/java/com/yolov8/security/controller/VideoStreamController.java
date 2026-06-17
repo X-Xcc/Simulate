@@ -1,12 +1,14 @@
 package com.yolov8.security.controller;
 
 import com.yolov8.security.config.AppConfig;
+import com.yolov8.security.service.CameraConfigService;
 import com.yolov8.security.service.DemoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,10 +18,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.imageio.ImageIO;
 
@@ -37,28 +36,60 @@ public class VideoStreamController {
     @Value("${app.video.frame-ttl-ms:30000}")
     private long frameTtlMs;
 
-    // ConcurrentHashMap<camId, jpegBytes>，每个摄像头独立存储最新帧
-    /** Multi-camera frame storage: camId -> latest frame bytes (JPEG) */
-    private final Map<String, byte[]> latestFrameBytes = new ConcurrentHashMap<>();
-    private final Map<String, Long> lastFrameIds = new ConcurrentHashMap<>();
+    private static final long TEST_FRAME_CACHE_MS = 5000L; // 5s cache, avoid flicker
 
-    /** Test frame cache per camera */
+    // Test frame cache per camera
     private final Map<String, BufferedImage> cachedTestFrames = new ConcurrentHashMap<>();
     private final Map<String, Long> cachedTestFrameAtMs = new ConcurrentHashMap<>();
-    private static final long TEST_FRAME_CACHE_MS = 750L;
+
+    // ConcurrentHashMap<camId, jpegBytes>，每个摄像头独立存储最新帧
+    /** Multi-camera frame storage: camId -> latest frame bytes (JPEG) */
+    private static final int MAX_FRAME_ENTRIES = 32;
+    private final Map<String, byte[]> latestFrameBytes = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastFrameIds = new ConcurrentHashMap<>();
 
     /** Default camera ID */
     private static final String DEFAULT_CAM = "0";
 
     private final AppConfig appConfig;
     private final DemoService demoService;
+    private final CameraConfigService cameraConfigService;
 
-    public VideoStreamController(AppConfig appConfig, DemoService demoService) {
+    public VideoStreamController(AppConfig appConfig, DemoService demoService, CameraConfigService cameraConfigService) {
         this.appConfig = appConfig;
         this.demoService = demoService;
+        this.cameraConfigService = cameraConfigService;
     }
 
     // Python POST进来，MJPEG读出去
+    /**
+     * Update frame bytes for a specific camera.
+     * The incoming Python payload is already JPEG, so keep it as-is to avoid extra decode/re-encode work.
+     */
+    public void updateFrame(byte[] frameBytes, String camId) {
+        String id = (camId != null && !camId.isEmpty()) ? camId : DEFAULT_CAM;
+        if (frameBytes == null || frameBytes.length == 0) {
+            return;
+        }
+        // OOM 防护：限制最大条目数，移除最旧的条目
+        if (latestFrameBytes.size() >= MAX_FRAME_ENTRIES && !latestFrameBytes.containsKey(id)) {
+            String oldest = null;
+            long oldestTs = Long.MAX_VALUE;
+            for (Map.Entry<String, Long> e : lastFrameIds.entrySet()) {
+                if (e.getValue() < oldestTs) {
+                    oldestTs = e.getValue();
+                    oldest = e.getKey();
+                }
+            }
+            if (oldest != null) {
+                latestFrameBytes.remove(oldest);
+                lastFrameIds.remove(oldest);
+            }
+        }
+        latestFrameBytes.put(id, frameBytes);
+        lastFrameIds.put(id, System.currentTimeMillis());
+    }
+
     /**
      * Update frame for a specific camera. Converts to JPEG bytes immediately.
      */
@@ -67,8 +98,7 @@ public class VideoStreamController {
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ImageIO.write(frame, "jpg", baos);
-            latestFrameBytes.put(id, baos.toByteArray());
-            lastFrameIds.put(id, System.currentTimeMillis());
+            updateFrame(baos.toByteArray(), id);
         } catch (IOException e) {
             log.error("Error encoding frame for cam={}", id, e);
         }
@@ -89,10 +119,76 @@ public class VideoStreamController {
     }
 
     // ┌──────────────────────────────────────────────┐
-    // │  MJPEG流输出 — multipart/x-mixed-replace      │
-    // │  演讲提示: "不是WebSocket不是HLS，就是最朴素的   │
-    // │            MJPEG一帧帧拼接，兼容性最好"         │
+    // │  摄像头 HTTP MJPEG 代理 — 绕过浏览器嵌入式凭证限制 │
     // └──────────────────────────────────────────────┘
+    /**
+     * Proxy camera MJPEG stream. Maps /proxy/cam-N/ to camera's HTTP MJPEG URL.
+     */
+    @GetMapping(value = "/proxy/{camId}/")
+    public void proxyCameraMjpeg(@PathVariable String camId, HttpServletResponse response) {
+        // 从 cameras.json 读取目标 URL
+        String targetUrl = null;
+        String username = null;
+        String password = null;
+        try {
+            var cameras = cameraConfigService.getAllCameras();
+            for (var cam : cameras) {
+                if (camId.equals(cam.getId())) {
+                    targetUrl = cam.getHttpMjpegUrl();
+                    username = cam.getUsername();
+                    password = cam.getPassword();
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取摄像头配置失败: {}", e.getMessage());
+        }
+
+        if (targetUrl == null || targetUrl.isEmpty()) {
+            response.setStatus(404);
+            return;
+        }
+
+        try {
+            java.net.URL url = new java.net.URL(targetUrl);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(0); // 无限读取
+            conn.setRequestProperty("Accept", "multipart/x-mixed-replace, image/jpeg, */*");
+
+            // Basic auth
+            if (username != null && !username.isEmpty() && password != null && !password.isEmpty()) {
+                String auth = username + ":" + password;
+                conn.setRequestProperty("Authorization",
+                    "Basic " + java.util.Base64.getEncoder().encodeToString(auth.getBytes()));
+            }
+
+            int status = conn.getResponseCode();
+            if (status >= 200 && status < 400) {
+                response.setContentType(conn.getContentType() != null ? conn.getContentType() : "multipart/x-mixed-replace;boundary=frame");
+                response.setHeader("Cache-Control", "no-cache");
+                response.setHeader("Connection", "keep-alive");
+
+                try (java.io.InputStream in = conn.getInputStream();
+                     java.io.OutputStream out = response.getOutputStream()) {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = in.read(buf)) != -1) {
+                        out.write(buf, 0, n);
+                        out.flush();
+                    }
+                }
+            } else {
+                response.setStatus(502);
+                log.warn("摄像头代理返回 HTTP {}: {}", status, targetUrl);
+            }
+            conn.disconnect();
+        } catch (java.io.IOException e) {
+            log.debug("摄像头代理断开: {} - {}", camId, e.getMessage());
+        }
+    }
+
+    // MJPEG流
     /**
      * MJPEG video feed endpoint. Supports ?cam=0, ?cam=1, etc.
      */
@@ -105,18 +201,12 @@ public class VideoStreamController {
         response.setHeader("Pragma", "no-cache");
 
         try (OutputStream out = response.getOutputStream()) {
-            byte[] lastSentFrame = null;
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     byte[] frameBytes = getFrameBytes(cam);
                     if (frameBytes != null && frameBytes.length > 0) {
-                        if (!java.util.Arrays.equals(frameBytes, lastSentFrame)) {
-                            writeFrame(out, frameBytes);
-                            lastSentFrame = frameBytes;
-                            Thread.sleep(streamPollIntervalMs);
-                        } else {
-                            Thread.sleep(streamPollIntervalMs / 2);
-                        }
+                        writeFrame(out, frameBytes);
+                        Thread.sleep(streamPollIntervalMs);
                     } else {
                         byte[] testFrame = getTestFrameBytes(cam);
                         if (testFrame.length > 0) {
@@ -139,13 +229,21 @@ public class VideoStreamController {
 
     /**
      * Get list of active cameras (for API).
+     * Returns both cameras with live frames AND configured cameras (so frontend can display them).
      */
     @GetMapping(value = "/api/cameras", produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, Object> getCameras() {
+        // Merge live frame cameras with configured cameras
+        java.util.Set<String> allCameraIds = new java.util.LinkedHashSet<>(latestFrameBytes.keySet());
+        try {
+            cameraConfigService.getAllCameras().forEach(cam -> allCameraIds.add(cam.getId()));
+        } catch (Exception e) {
+            log.debug("Failed to load camera config: {}", e.getMessage());
+        }
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("status", "success");
-        result.put("cameras", latestFrameBytes.keySet());
-        result.put("count", latestFrameBytes.size());
+        result.put("cameras", allCameraIds);
+        result.put("count", allCameraIds.size());
         return result;
     }
 
@@ -238,68 +336,15 @@ public class VideoStreamController {
         for (int i = 0; i < width; i += 50) g2d.drawLine(i, 0, i, height);
         for (int i = 0; i < height; i += 50) g2d.drawLine(0, i, width, i);
 
-        // Camera-specific label
-        String camLabel = getCameraLabel(cam);
-
-        // Detection boxes
-        Random random = new Random(cam.hashCode()); // Deterministic per camera
-        int boxCount = 2 + random.nextInt(3);
-        for (int i = 0; i < boxCount; i++) {
-            int boxX = 100 + random.nextInt(width - 400);
-            int boxY = 150 + random.nextInt(height - 350);
-            int boxWidth = 150 + random.nextInt(100);
-            int boxHeight = 200 + random.nextInt(100);
-
-            Color boxColor;
-            String label;
-            if (random.nextBoolean()) {
-                boxColor = new Color(239, 68, 68);
-                label = "person: " + (75 + random.nextInt(20)) + "%";
-            } else {
-                boxColor = new Color(245, 158, 11);
-                label = "object: " + (65 + random.nextInt(25)) + "%";
-            }
-
-            g2d.setColor(boxColor);
-            g2d.drawRect(boxX, boxY, boxWidth, boxHeight);
-            g2d.fillRect(boxX, boxY, g2d.getFontMetrics().stringWidth(label) + 16, 24);
-
-            g2d.setColor(Color.WHITE);
-            g2d.setFont(new Font("Consolas", Font.BOLD, 14));
-            g2d.drawString(label, boxX + 8, boxY + 17);
-        }
-
-        // Info panels
+        // Camera label centered
         g2d.setColor(new Color(0, 0, 0, 150));
-        g2d.fillRect(20, 20, 400, 120);
-        g2d.fillRect(width - 320, 20, 300, 80);
-        g2d.fillRect(20, height - 100, width - 40, 80);
+        g2d.fillRect(0, height / 2 - 40, width, 80);
 
-        // Title
-        g2d.setColor(Color.WHITE);
-        g2d.setFont(new Font("Microsoft YaHei", Font.BOLD, 28));
-        g2d.drawString("YOLOv8 智能监控系统", 40, 60);
-
-        g2d.setFont(new Font("Microsoft YaHei", Font.PLAIN, 18));
-        g2d.drawString("实时目标检测 - " + camLabel, 40, 95);
-
-        // Status
-        g2d.setColor(new Color(16, 185, 129));
-        g2d.fillOval(width - 300, 40, 16, 16);
-        g2d.setColor(Color.WHITE);
-        g2d.setFont(new Font("Microsoft YaHei", Font.BOLD, 16));
-        g2d.drawString("系统在线", width - 275, 55);
-
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        g2d.setFont(new Font("Consolas", Font.PLAIN, 16));
-        g2d.drawString(sdf.format(new Date()), width - 300, 85);
-
-        // Stats
-        g2d.setColor(Color.WHITE);
-        g2d.setFont(new Font("Microsoft YaHei", Font.PLAIN, 18));
-        g2d.drawString("检测人数: " + (2 + random.nextInt(4)), 40, height - 65);
-        g2d.drawString("FPS: " + (25 + random.nextInt(10)), 200, height - 65);
-        g2d.drawString("置信度: " + (78 + random.nextInt(15)) + "%", 360, height - 65);
+        g2d.setColor(new Color(160, 180, 200));
+        g2d.setFont(new Font("Microsoft YaHei", Font.BOLD, 24));
+        String label = "等待视频信号 - " + getCameraLabel(cam);
+        FontMetrics fm = g2d.getFontMetrics();
+        g2d.drawString(label, (width - fm.stringWidth(label)) / 2, height / 2 + 8);
 
         g2d.dispose();
         return image;

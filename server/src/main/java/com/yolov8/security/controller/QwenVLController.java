@@ -1,12 +1,12 @@
 package com.yolov8.security.controller;
 
+import com.yolov8.security.model.ApiResponse;
 import com.yolov8.security.service.QwenVLService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.File;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,16 +38,13 @@ public class QwenVLController {
      * 分析图片（Base64）
      */
     @PostMapping("/analyze")
-    public ResponseEntity<Map<String, Object>> analyzeImage(@RequestBody Map<String, String> request) {
+    public ResponseEntity<?> analyzeImage(@RequestBody Map<String, String> request) {
         try {
             String base64Image = request.get("image");
             String prompt = request.getOrDefault("prompt", "描述这张图片");
 
             if (base64Image == null || base64Image.isEmpty()) {
-                Map<String, Object> error = new HashMap<>();
-                error.put("status", "error");
-                error.put("message", "缺少图片数据");
-                return ResponseEntity.badRequest().body(error);
+                return ResponseEntity.badRequest().body(ApiResponse.error("缺少图片数据"));
             }
 
             String result = qwenVLService.analyzeImage(base64Image, prompt);
@@ -59,10 +56,7 @@ public class QwenVLController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("分析图片失败", e);
-            Map<String, Object> error = new HashMap<>();
-            error.put("status", "error");
-            error.put("message", e.getMessage());
-            return ResponseEntity.internalServerError().body(error);
+            return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
         }
     }
 
@@ -70,17 +64,14 @@ public class QwenVLController {
      * 分析检测到的安全图片
      */
     @PostMapping("/analyze-security")
-    public ResponseEntity<Map<String, Object>> analyzeSecurityImage(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<?> analyzeSecurityImage(@RequestBody Map<String, Object> request) {
         try {
             String imagePath = (String) request.get("imagePath");
             @SuppressWarnings("unchecked")
             List<String> actions = (List<String>) request.get("actions");
 
             if (imagePath == null || imagePath.isEmpty()) {
-                Map<String, Object> error = new HashMap<>();
-                error.put("status", "error");
-                error.put("message", "缺少图片路径");
-                return ResponseEntity.badRequest().body(error);
+                return ResponseEntity.badRequest().body(ApiResponse.error("缺少图片路径"));
             }
 
             String result = qwenVLService.analyzeSecurityImage(imagePath, actions);
@@ -92,10 +83,7 @@ public class QwenVLController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("分析安全图片失败", e);
-            Map<String, Object> error = new HashMap<>();
-            error.put("status", "error");
-            error.put("message", e.getMessage());
-            return ResponseEntity.internalServerError().body(error);
+            return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
         }
     }
 
@@ -103,17 +91,14 @@ public class QwenVLController {
      * 批量分析图片
      */
     @PostMapping("/batch-analyze")
-    public ResponseEntity<Map<String, Object>> batchAnalyzeImages(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<?> batchAnalyzeImages(@RequestBody Map<String, Object> request) {
         try {
             @SuppressWarnings("unchecked")
             List<String> images = (List<String>) request.get("images");
             String prompt = (String) request.getOrDefault("prompt", "描述这张图片");
 
             if (images == null || images.isEmpty()) {
-                Map<String, Object> error = new HashMap<>();
-                error.put("status", "error");
-                error.put("message", "缺少图片数据");
-                return ResponseEntity.badRequest().body(error);
+                return ResponseEntity.badRequest().body(ApiResponse.error("缺少图片数据"));
             }
 
             List<Map<String, Object>> results = qwenVLService.batchAnalyzeImages(images, prompt);
@@ -125,10 +110,7 @@ public class QwenVLController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("批量分析图片失败", e);
-            Map<String, Object> error = new HashMap<>();
-            error.put("status", "error");
-            error.put("message", e.getMessage());
-            return ResponseEntity.internalServerError().body(error);
+            return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
         }
     }
 }

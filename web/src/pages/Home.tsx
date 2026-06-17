@@ -1,246 +1,12 @@
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useState, Suspense, lazy } from "react";
 import { useNavigate } from "react-router-dom";
-import { Canvas, useFrame } from "@react-three/fiber";
 import { motion, useInView, useScroll, useTransform } from "motion/react";
-import * as THREE from "three";
 import {
   Shield, ArrowRight, PersonStanding, Swords, ScanEye,
   Eye, MapPinOff, Users, Radio, Zap, Activity, ChevronDown,
 } from "lucide-react";
 
-/* ═══════════════════════════════════════════
-   星云粒子背景 — 圆形发光粒子
-   自定义 ShaderMaterial 实现圆形光粒 + 球形分布
-   ═══════════════════════════════════════════ */
-function ParticleBackground() {
-  const pointsRef = useRef<THREE.Points>(null!);
-  const linesRef = useRef<THREE.LineSegments>(null!);
-  const mouseRef = useRef({ x: 0, y: 0 });
-  const mouseWorldRef = useRef(new THREE.Vector3());
-  const targetRotRef = useRef({ x: 0, y: 0 });
-  const rotRef = useRef({ x: 0, y: 0 });
-  const timeRef = useRef(0);
-
-  const PARTICLE_COUNT = 4000;
-
-  // 自定义着色器：圆形发光粒子
-  const vertexShader = `
-    attribute float size;
-    attribute vec3 customColor;
-    varying vec3 vColor;
-    void main() {
-      vColor = customColor;
-      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = size * (200.0 / -mvPosition.z);
-      gl_Position = projectionMatrix * mvPosition;
-    }
-  `;
-
-  const fragmentShader = `
-    varying vec3 vColor;
-    void main() {
-      vec2 center = gl_PointCoord - vec2(0.5);
-      float dist = length(center);
-      if (dist > 0.5) discard;
-      float alpha = 1.0 - smoothstep(0.2, 0.5, dist);
-      gl_FragColor = vec4(vColor, alpha);
-    }
-  `;
-
-  // 预计算粒子大小和颜色
-  const particleSizes = useMemo(() => {
-    const sizes = new Float32Array(PARTICLE_COUNT);
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      sizes[i] = 1.5 + Math.random() * 3.5; // 1.5-5.0 大小
-    }
-    return sizes;
-  }, []);
-
-  const particleColors = useMemo(() => {
-    const colors = new Float32Array(PARTICLE_COUNT * 3);
-    // 淡蓝 + 淡紫 + 淡青 配色
-    const colorPalette = [
-      [0.7, 0.85, 1.0],   // 淡蓝
-      [0.75, 0.8, 0.95],  // 冷蓝
-      [0.8, 0.75, 0.9],   // 淡紫
-      [0.75, 0.85, 0.9],  // 淡青
-      [0.85, 0.8, 0.9],   // 浅紫蓝
-    ];
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
-      const brightness = 0.7 + Math.random() * 0.3;
-      colors[i * 3] = color[0] * brightness;
-      colors[i * 3 + 1] = color[1] * brightness;
-      colors[i * 3 + 2] = color[2] * brightness;
-    }
-    return colors;
-  }, []);
-
-  // 初始化粒子位置和速度
-  useEffect(() => {
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const velocities = new Float32Array(PARTICLE_COUNT * 3);
-
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const i3 = i * 3;
-      // 球形分布
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-      const r = 35 + Math.random() * 65;
-      positions[i3] = r * Math.sin(phi) * Math.cos(theta);
-      positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      positions[i3 + 2] = r * Math.cos(phi);
-      // 极缓慢漂浮
-      velocities[i3] = (Math.random() - 0.5) * 0.008;
-      velocities[i3 + 1] = (Math.random() - 0.5) * 0.008;
-      velocities[i3 + 2] = (Math.random() - 0.5) * 0.008;
-    }
-
-    (pointsRef.current as any)._positions = positions;
-    (pointsRef.current as any)._velocities = velocities;
-
-    // 初始化几何
-    const geo = pointsRef.current.geometry;
-    (geo.attributes.position.array as Float32Array).set(positions);
-    geo.attributes.position.needsUpdate = true;
-  }, []);
-
-  // 鼠标跟踪
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const x = (e.clientX / window.innerWidth) * 2 - 1;
-      const y = -(e.clientY / window.innerHeight) * 2 + 1;
-      mouseRef.current = { x, y };
-      mouseWorldRef.current.set(x * 60, y * 50, 0);
-      targetRotRef.current = { x: y * 0.3, y: x * 0.3 };
-    };
-    window.addEventListener('mousemove', onMove);
-    return () => window.removeEventListener('mousemove', onMove);
-  }, []);
-
-  // 每帧更新
-  useFrame((_, delta) => {
-    if (!pointsRef.current || !(pointsRef.current as any)._positions) return;
-
-    timeRef.current += delta;
-    const positions = (pointsRef.current as any)._positions as Float32Array;
-    const velocities = (pointsRef.current as any)._velocities as Float32Array;
-
-    // 球形缓慢自转 + 鼠标响应
-    rotRef.current.x += (targetRotRef.current.x - rotRef.current.x) * 0.01;
-    rotRef.current.y += (targetRotRef.current.y - rotRef.current.y) * 0.01;
-    pointsRef.current.rotation.x = rotRef.current.x + timeRef.current * 0.015;
-    pointsRef.current.rotation.y = rotRef.current.y + timeRef.current * 0.01;
-
-    // 更新粒子位置
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const i3 = i * 3;
-      positions[i3] += velocities[i3];
-      positions[i3 + 1] += velocities[i3 + 1];
-      positions[i3 + 2] += velocities[i3 + 2];
-
-      // 鼠标斥力
-      const dx = positions[i3] - mouseWorldRef.current.x;
-      const dy = positions[i3 + 1] - mouseWorldRef.current.y;
-      const dz = positions[i3 + 2] - mouseWorldRef.current.z;
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-      if (dist < 20 && dist > 0) {
-        const force = (20 - dist) / 20 * 0.4;
-        positions[i3] += (dx / dist) * force;
-        positions[i3 + 1] += (dy / dist) * force;
-        positions[i3 + 2] += (dz / dist) * force;
-      }
-
-      // 边界反弹
-      if (Math.abs(positions[i3]) > 100) velocities[i3] *= -1;
-      if (Math.abs(positions[i3 + 1]) > 80) velocities[i3 + 1] *= -1;
-      if (Math.abs(positions[i3 + 2]) > 80) velocities[i3 + 2] *= -1;
-    }
-
-    // 更新几何
-    const geo = pointsRef.current.geometry;
-    (geo.attributes.position.array as Float32Array).set(positions);
-    geo.attributes.position.needsUpdate = true;
-
-    // 更新连接线
-    if (linesRef.current) {
-      linesRef.current.rotation.x = pointsRef.current.rotation.x;
-      linesRef.current.rotation.y = pointsRef.current.rotation.y;
-
-      const lineGeo = linesRef.current.geometry;
-      const linePos = lineGeo.attributes.position.array as Float32Array;
-      let lineIndex = 0;
-      const maxDist = 9;
-
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const i3 = i * 3;
-        const x1 = positions[i3];
-        const y1 = positions[i3 + 1];
-        const z1 = positions[i3 + 2];
-
-        for (let j = i + 1; j < PARTICLE_COUNT && lineIndex < 2000; j++) {
-          const j3 = j * 3;
-          const dx = x1 - positions[j3];
-          const dy = y1 - positions[j3 + 1];
-          const dz = z1 - positions[j3 + 2];
-          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-          if (dist < maxDist) {
-            linePos[lineIndex++] = x1;
-            linePos[lineIndex++] = y1;
-            linePos[lineIndex++] = z1;
-            linePos[lineIndex++] = positions[j3];
-            linePos[lineIndex++] = positions[j3 + 1];
-            linePos[lineIndex++] = positions[j3 + 2];
-          }
-        }
-      }
-
-      lineGeo.setDrawRange(0, lineIndex);
-      lineGeo.attributes.position.needsUpdate = true;
-    }
-  });
-
-  return (
-    <>
-      {/* 粒子层 */}
-      <points ref={pointsRef}>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array(PARTICLE_COUNT * 3), 3]}
-          />
-          <bufferAttribute
-            attach="attributes-size"
-            args={[particleSizes, 1]}
-          />
-          <bufferAttribute
-            attach="attributes-customColor"
-            args={[particleColors, 3]}
-          />
-        </bufferGeometry>
-        <shaderMaterial
-          vertexShader={vertexShader}
-          fragmentShader={fragmentShader}
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-        />
-      </points>
-      {/* 连接线 */}
-      <lineSegments ref={linesRef}>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            args={[new Float32Array(12000), 3]}
-          />
-        </bufferGeometry>
-        <lineBasicMaterial color="#8090a0" transparent opacity={0.08} blending={THREE.AdditiveBlending} />
-      </lineSegments>
-    </>
-  );
-}
+const LazyParticleCanvas = lazy(() => import("../components/ParticleCanvas"));
 
 /* ═══════════════════════════════════════════
    数字递增
@@ -314,7 +80,7 @@ const FEATURES = [
   { icon: Swords, name: "打架检测", desc: "多目标动作分析与冲突预警" },
   { icon: ScanEye, name: "疲劳检测", desc: "面部特征驱动的疲劳状态分析" },
   { icon: Eye, name: "眼疲劳检测", desc: "EAR 算法精准眨眼频率监测" },
-  { icon: MapPinOff, name: "自杀检测", desc: "电子围栏与区域越界实时告警" },
+  { icon: MapPinOff, name: "离岗检测", desc: "电子围栏与区域越界实时告警" },
   { icon: Users, name: "人员聚集", desc: "密度分析与异常聚集自动识别" },
 ];
 
@@ -358,9 +124,9 @@ export default function Home() {
 
         {/* ── 全屏粒子背景 (fixed) ── */}
         <div className="fixed inset-0 z-0">
-          <Canvas camera={{ position: [0, 0, 50], fov: 75 }} dpr={[1, 2]} gl={{ antialias: true }}>
-            <ParticleBackground />
-          </Canvas>
+          <Suspense fallback={null}>
+            <LazyParticleCanvas particleCount={4000} showLines />
+          </Suspense>
         </div>
 
         {/* ── 左侧栏导航 (仿 Active Theory) ── */}
@@ -459,7 +225,7 @@ export default function Home() {
             <Reveal delay={0.1}>
               <p className="mt-8 text-[27px] leading-[1.8] text-gray-500 max-w-[600px]"
                  style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 300 }}>
-                覆盖跌倒、打架、疲劳、眼疲劳、自杀、人员聚集六大核心场景。基于 YOLOv8 姿态估计，从摄像头接入到智能告警，全链路毫秒级响应。
+                覆盖跌倒、打架、疲劳、眼疲劳、离岗、人员聚集六大核心场景。基于 YOLOv8 姿态估计，从摄像头接入到智能告警，全链路毫秒级响应。
               </p>
             </Reveal>
             <Reveal delay={0.2}>

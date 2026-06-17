@@ -32,10 +32,14 @@ export function useRealAlerts() {
     return subscribeSse("alerts", (data: any) => {
       if (!Array.isArray(data)) return;
       setAlerts((prev) => {
-        const existingIds = new Set(prev.map((a) => a.id));
-        const fresh = data.filter((a: Alert) => !existingIds.has(a.id));
-        if (fresh.length === 0) return prev;
-        return [...fresh, ...prev].slice(0, 200);
+        const incoming = new Map<string, Alert>();
+        for (const alert of data as Alert[]) incoming.set(alert.id, alert);
+
+        const merged = prev.map(alert => incoming.get(alert.id) ?? alert);
+        const existingIds = new Set(merged.map(alert => alert.id));
+        const fresh = (data as Alert[]).filter(alert => !existingIds.has(alert.id));
+
+        return [...fresh, ...merged].slice(0, 200);
       });
     });
   }, []);

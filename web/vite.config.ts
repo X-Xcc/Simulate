@@ -14,6 +14,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: '0.0.0.0',
     proxy: {
       '/api': 'http://localhost:5000',
       '/video_feed': 'http://localhost:5000',
@@ -21,12 +22,5 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        annotation: resolve(__dirname, 'annotation.html'),
-        training: resolve(__dirname, 'training.html'),
-      },
-    },
   },
 });
